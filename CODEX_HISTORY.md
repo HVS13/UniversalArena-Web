@@ -27,3 +27,6 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-03: Added typed exports for keywords, status effects, terms, card types, and roles to align with the expanded docs-side data pipeline.
 - 2026-01-03: Added structured effect types, rewired the core engine for zones/clash/priority flow, and updated the client to pick zones with live Active Zone status.
 - 2026-01-03: Updated README and TODO to reflect current engine status and structured effect coverage.
+- 2026-01-03: Added status-state handling, conditional effect/transforms, multihit support, and updated the UI status display while syncing Goku's structured effects.
+- 2026-01-03: Updated AGENTS/README/TODO to capture the status-state model, structured effect extensions, and current roadmap.
+- 2026-01-04: Added card instances with hand/deck/discard/exhaust zones, draw-to-hand start, spend/draw/create/reload/switch text handling, Stagnate cost adjustments, follow-up cost modifiers, and updated the client UI to play from hand with deck/discard counts and X/choice prompts.

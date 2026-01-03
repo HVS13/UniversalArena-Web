@@ -61,18 +61,64 @@ export type EffectTiming =
   | "after_use"
   | "always";
 
+export type StatusValueStat = "potency" | "count" | "stack" | "value";
+
+export type EffectCondition =
+  | { kind: "self_has_status"; status: string; min?: number }
+  | { kind: "self_missing_status"; status: string }
+  | { kind: "target_has_status"; status: string; min?: number }
+  | { kind: "target_missing_status"; status: string };
+
+export type EffectScalar =
+  | number
+  | { kind: "x" }
+  | { kind: "x_plus"; value: number }
+  | { kind: "x_minus"; value: number }
+  | { kind: "x_times"; value: number };
+
 export type EffectAmount =
   | { kind: "flat"; value: number }
   | { kind: "power" }
-  | { kind: "power_div"; divisor: number };
+  | { kind: "power_div"; divisor: EffectScalar }
+  | { kind: "x" }
+  | { kind: "x_plus"; value: number }
+  | { kind: "x_minus"; value: number }
+  | { kind: "x_times"; value: number };
+
+export type CardTransform = {
+  condition: EffectCondition;
+  cardSlot: string;
+};
+
+type EffectBase = {
+  timing: EffectTiming;
+  condition?: EffectCondition;
+};
+
+export type EffectOption = {
+  label?: string;
+  effects: Effect[];
+};
 
 export type Effect =
-  | { timing: EffectTiming; type: "deal_damage"; amount: EffectAmount }
-  | { timing: EffectTiming; type: "gain_shield"; amount: EffectAmount }
-  | { timing: EffectTiming; type: "heal"; amount: EffectAmount }
-  | { timing: EffectTiming; type: "gain_ultimate"; amount: EffectAmount }
-  | { timing: EffectTiming; type: "gain_status"; status: string; amount: EffectAmount }
-  | { timing: EffectTiming; type: "inflict_status"; status: string; amount: EffectAmount };
+  | (EffectBase & { type: "deal_damage"; amount: EffectAmount; hits?: EffectScalar })
+  | (EffectBase & { type: "gain_shield"; amount: EffectAmount })
+  | (EffectBase & { type: "heal"; amount: EffectAmount })
+  | (EffectBase & { type: "gain_ultimate"; amount: EffectAmount })
+  | (EffectBase & {
+      type: "gain_status";
+      status: string;
+      amount: EffectAmount;
+      stat?: StatusValueStat;
+    })
+  | (EffectBase & {
+      type: "inflict_status";
+      status: string;
+      amount: EffectAmount;
+      stat?: StatusValueStat;
+    })
+  | (EffectBase & { type: "choose"; options: EffectOption[] })
+  | (EffectBase & { type: "retain" });
 
 export type Card = {
   slot: string;
@@ -84,6 +130,7 @@ export type Card = {
   speed: string;
   effect: string[];
   effects?: Effect[];
+  transforms?: CardTransform[];
 };
 
 export type Character = {

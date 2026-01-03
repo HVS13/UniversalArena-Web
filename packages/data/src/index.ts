@@ -16,9 +16,11 @@ import type {
 export type {
   Card,
   CardType,
+  CardTransform,
   Character,
   Effect,
   EffectAmount,
+  EffectCondition,
   EffectTiming,
   Innate,
   Keyword,
@@ -26,6 +28,7 @@ export type {
   StatusEffect,
   StatusEffectDefinition,
   StatusRule,
+  StatusValueStat,
   Term,
 } from "./types";
 

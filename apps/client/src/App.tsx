@@ -3,7 +3,6 @@ import { characters as roster } from "@ua/data";
 import type { Card, Character } from "@ua/data";
 import {
   applyAction,
-  canAfford,
   createMatchState,
   parseCost,
   type MatchState,
@@ -31,10 +30,98 @@ const sortRoster = (list: Character[]) =>
 
 const getCharacter = (list: Character[], id: string) => list.find((entry) => entry.id === id);
 
-const getMaxX = (player: MatchState["players"][PlayerId], cost: ReturnType<typeof parseCost>) => {
+type CardInstance = MatchState["players"][PlayerId]["hand"][number];
+
+const getCardBySlot = (character: Character | undefined, slot: string) => {
+  if (!character) return undefined;
+  const card = character.cards.find((entry) => entry.slot === slot);
+  if (card) return card;
+  return character.createdCards?.find((entry) => entry.slot === slot);
+};
+
+const isUltimateCard = (card: Card) =>
+  card.types.some((type) => type.toLowerCase() === "ultimate");
+
+const isStatusActive = (state?: MatchState["players"][PlayerId]["statuses"][string]) => {
+  if (!state) return false;
+  if (state.potency > 0) return state.count > 0;
+  if (state.stack > 0) return true;
+  return state.value > 0;
+};
+
+const getStatusStat = (
+  player: MatchState["players"][PlayerId],
+  status: string,
+  stat: "potency" | "count" | "stack" | "value"
+) => {
+  const state = player.statuses[status];
+  if (!isStatusActive(state)) return 0;
+  return state[stat];
+};
+
+const getEnergyCostAdjustment = (player: MatchState["players"][PlayerId]) => {
+  const focus = getStatusStat(player, "Focus", "potency");
+  const strain = getStatusStat(player, "Strain", "potency");
+  const bloodFocus = getStatusStat(player, "Blood Focus", "value");
+  return strain - focus - bloodFocus;
+};
+
+const getAdjustedEnergyCost = (
+  player: MatchState["players"][PlayerId],
+  cost: ReturnType<typeof parseCost>,
+  xValue: number,
+  cardInstance?: CardInstance,
+  followUpAdjustment = 0
+) => {
+  const variableEnergy =
+    cost.variable?.type === "energy" ? cost.variable.multiplier * xValue : 0;
+  const base =
+    cost.energy +
+    variableEnergy +
+    getEnergyCostAdjustment(player) +
+    (cardInstance?.costAdjustment ?? 0) +
+    followUpAdjustment;
+  return Math.max(0, base);
+};
+
+const canAffordWithAdjustments = (
+  player: MatchState["players"][PlayerId],
+  cost: ReturnType<typeof parseCost>,
+  xValue: number,
+  cardInstance?: CardInstance,
+  followUpAdjustment = 0
+) => {
+  const energyCost = getAdjustedEnergyCost(
+    player,
+    cost,
+    xValue,
+    cardInstance,
+    followUpAdjustment
+  );
+  const variableUltimate =
+    cost.variable?.type === "ultimate" ? cost.variable.multiplier * xValue : 0;
+  const ultimateCost = cost.ultimate + variableUltimate;
+  return player.energy >= energyCost && player.ultimate >= ultimateCost;
+};
+
+const getMaxX = (
+  player: MatchState["players"][PlayerId],
+  cost: ReturnType<typeof parseCost>,
+  cardInstance?: CardInstance,
+  followUpAdjustment = 0
+) => {
   if (!cost.variable) return 0;
   const available =
-    cost.variable.type === "energy" ? player.energy - cost.energy : player.ultimate - cost.ultimate;
+    cost.variable.type === "energy"
+      ? player.energy -
+        Math.max(
+          0,
+          cost.energy +
+            getEnergyCostAdjustment(player) +
+            (cardInstance?.costAdjustment ?? 0) +
+            followUpAdjustment
+        )
+      : player.ultimate - cost.ultimate;
   if (available <= 0) return 0;
   return Math.floor(available / cost.variable.multiplier);
 };
@@ -42,8 +129,26 @@ const getMaxX = (player: MatchState["players"][PlayerId], cost: ReturnType<typeo
 const formatRoles = (roles: string[]) =>
   roles.map((role) => role.replace("role-", "")).join(", ");
 
-const formatStatusList = (statuses: Record<string, number>) =>
-  Object.entries(statuses).filter(([, value]) => value > 0);
+const formatStatusValue = (state: MatchState["players"][PlayerId]["statuses"][string]) => {
+  if (state.potency > 0 || state.count > 0) {
+    return `P${state.potency}/C${state.count}`;
+  }
+  if (state.stack > 0) {
+    return `${state.stack}`;
+  }
+  if (state.value > 0) {
+    return `${state.value}`;
+  }
+  return null;
+};
+
+const formatStatusList = (statuses: MatchState["players"][PlayerId]["statuses"]) =>
+  Object.entries(statuses)
+    .map(([status, state]) => {
+      const value = formatStatusValue(state);
+      return value ? [status, value] : null;
+    })
+    .filter((entry): entry is [string, string] => entry !== null);
 
 const zoneRank: Record<ZoneName, number> = { slow: 0, normal: 1, fast: 2 };
 
@@ -56,12 +161,132 @@ const getLegalZonesForSpeed = (speed: string): ZoneName[] => {
   return ["slow"];
 };
 
-const getPlayableZones = (card: Card, state: MatchState): ZoneName[] => {
-  const legal = getLegalZonesForSpeed(card.speed);
+const getSpeedShift = (player: MatchState["players"][PlayerId]) => {
+  const haste = Math.min(2, getStatusStat(player, "Haste", "potency"));
+  const slow = Math.min(2, getStatusStat(player, "Slow", "potency"));
+  return Math.max(-2, Math.min(2, haste - slow));
+};
+
+const getEffectiveSpeed = (
+  speed: string,
+  player: MatchState["players"][PlayerId]
+) => {
+  const shift = getSpeedShift(player);
+  if (shift === 0) return speed;
+  const normalized = speed.trim().toLowerCase();
+  const order = ["slow", "normal", "fast"];
+  const labels = ["Slow", "Normal", "Fast"];
+  const index = order.findIndex((entry) => normalized.includes(entry));
+  if (index === -1) return speed;
+  const nextIndex = Math.max(0, Math.min(order.length - 1, index + shift));
+  return labels[nextIndex];
+};
+
+const getXRangeFromText = (card: Card) => {
+  for (const line of card.effect) {
+    const match = line.match(/Choose X\s*\((\d+)\s*-\s*(\d+)\)/i);
+    if (match) {
+      const min = Number(match[1]);
+      const max = Number(match[2]);
+      if (!Number.isNaN(min) && !Number.isNaN(max)) {
+        return { min, max };
+      }
+    }
+  }
+  return null;
+};
+
+const getFollowUpCostAdjustment = (card: Card) => {
+  for (const line of card.effect) {
+    const match = line.match(/On Follow-Up:\s*([+-]\d+)\s+Energy Cost/i);
+    if (match) {
+      const value = Number(match[1]);
+      if (!Number.isNaN(value)) return value;
+    }
+  }
+  return 0;
+};
+
+const getPlayableZones = (
+  card: Card,
+  state: MatchState,
+  playerId: PlayerId
+): ZoneName[] => {
+  const player = state.players[playerId];
+  const effectiveSpeed = getEffectiveSpeed(card.speed, player);
+  const legal = getLegalZonesForSpeed(effectiveSpeed);
   if (!state.activeZone) return legal;
   return legal.filter(
     (zone) => zone === state.activeZone || zoneRank[zone] > zoneRank[state.activeZone!]
   );
+};
+
+const getCardKeywords = (card: Card) => {
+  const flags = { followUp: false, assistAttack: false };
+  card.effect.forEach((line) => {
+    const normalized = line.trim().replace(/\.$/, "").toLowerCase();
+    if (normalized === "follow-up") flags.followUp = true;
+    if (normalized === "assist attack") flags.assistAttack = true;
+  });
+  return flags;
+};
+
+const getTextChoiceOptions = (card: Card) => {
+  const choiceIndex = card.effect.findIndex(
+    (line) => line.trim().toLowerCase().replace(/\.$/, "") === "choose 1:"
+  );
+  if (choiceIndex === -1) return [];
+  const options: string[] = [];
+  for (let index = choiceIndex + 1; index < card.effect.length; index += 1) {
+    const line = card.effect[index]?.trim();
+    if (!line) continue;
+    if (/^if\s+/i.test(line)) continue;
+    if (/^innate\b/i.test(line)) continue;
+    if (/^retain\b/i.test(line)) continue;
+    options.push(line);
+  }
+  return options;
+};
+
+const canReactAfterUse = (state: MatchState, playerId: PlayerId, card: Card) => {
+  const window = state.afterUseWindow;
+  if (!window || window.validForAction !== state.actionId + 1) return false;
+  const flags = getCardKeywords(card);
+  const timeStop = state.players[playerId].statuses["The World: Time Stop"];
+  const timeStopFollowUp =
+    isStatusActive(timeStop) && card.types.some((type) => type.toLowerCase() === "attack");
+  if (playerId === window.lastUsedBy) return flags.followUp || timeStopFollowUp;
+  return flags.assistAttack;
+};
+
+const getReactivePlayers = (state: MatchState, rosterList: Character[]) => {
+  const window = state.afterUseWindow;
+  if (!window || window.validForAction !== state.actionId + 1) return [];
+  return (["p1", "p2"] as PlayerId[]).filter((playerId) => {
+    const player = state.players[playerId];
+    const character = getCharacter(rosterList, player.characterId);
+    if (!character) return false;
+    const handCards = player.hand
+      .map((instance) => getCardBySlot(character, instance.cardSlot))
+      .filter((card): card is Card => Boolean(card));
+    return handCards.some((card) => canReactAfterUse(state, playerId, card));
+  });
+};
+
+const getCardChoices = (card: Card) => {
+  const choice = card.effects?.find((effect) => effect.type === "choose");
+  if (choice && choice.type === "choose") {
+    return choice.options.map((option, index) => ({
+      index,
+      label: option.label ?? `Option ${index + 1}`,
+    }));
+  }
+  const textChoices = getTextChoiceOptions(card);
+  if (!textChoices.length) return [];
+  return textChoices.map((option, index) => ({
+    index,
+    label: option,
+  }));
 };
 
 
@@ -75,9 +300,13 @@ const App = () => {
   const [pendingPlay, setPendingPlay] = useState<{
     playerId: PlayerId;
     card: Card;
+    cardInstanceId?: string;
     zones: ZoneName[];
     zone: ZoneName;
     xValue: number;
+    xRange?: { min: number; max: number } | null;
+    choices: { index: number; label: string }[];
+    choiceIndex: number;
   } | null>(null);
 
   const startMatch = () => {
@@ -102,25 +331,70 @@ const App = () => {
     setMessage(result.error ?? null);
   };
 
-  const handlePlayCard = (playerId: PlayerId, card: Card) => {
+  const handlePlayCard = (playerId: PlayerId, card: Card, cardInstanceId?: string) => {
     if (!matchState) return;
-    const zones = getPlayableZones(card, matchState);
+    const zones = getPlayableZones(card, matchState, playerId);
     if (!zones.length) {
       setMessage("No legal zones available.");
       return;
     }
-    const cost = parseCost(card.cost);
     const player = matchState.players[playerId];
-    const max = cost.variable ? getMaxX(player, cost) : 0;
-    if (cost.variable && max <= 0 && !canAfford(player, cost, 0)) {
+    const cardInstance = cardInstanceId
+      ? player.hand.find((instance) => instance.id === cardInstanceId)
+      : undefined;
+    const cost = parseCost(card.cost);
+    const xRange = getXRangeFromText(card);
+    const isAfterUse =
+      matchState.afterUseWindow &&
+      matchState.afterUseWindow.validForAction === matchState.actionId + 1;
+    const isFollowUpPlay =
+      Boolean(isAfterUse) && matchState.afterUseWindow?.lastUsedBy === playerId;
+    const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+    const max = cost.variable ? getMaxX(player, cost, cardInstance, followUpAdjustment) : 0;
+    const choices = getCardChoices(card);
+    const needsModal =
+      zones.length > 1 || cost.variable || choices.length > 0 || Boolean(xRange);
+    if (
+      cost.variable &&
+      max <= 0 &&
+      !canAffordWithAdjustments(player, cost, 0, cardInstance, followUpAdjustment)
+    ) {
       setMessage("Insufficient resources.");
       return;
     }
-    if (zones.length === 1 && !cost.variable) {
-      handleAction({ type: "play_card", playerId, cardSlot: card.slot, zone: zones[0] });
+    if (
+      !cost.variable &&
+      xRange &&
+      !canAffordWithAdjustments(player, cost, 0, cardInstance, followUpAdjustment)
+    ) {
+      setMessage("Insufficient resources.");
       return;
     }
-    setPendingPlay({ playerId, card, zones, zone: zones[0], xValue: max });
+    if (xRange && xRange.max < xRange.min) {
+      setMessage("Invalid X range.");
+      return;
+    }
+    if (!needsModal) {
+      handleAction({
+        type: "play_card",
+        playerId,
+        cardInstanceId,
+        cardSlot: card.slot,
+        zone: zones[0],
+      });
+      return;
+    }
+    setPendingPlay({
+      playerId,
+      card,
+      cardInstanceId,
+      zones,
+      zone: zones[0],
+      xValue: xRange ? xRange.max : max,
+      xRange,
+      choices,
+      choiceIndex: 0,
+    });
   };
 
   const confirmXPlay = () => {
@@ -129,8 +403,10 @@ const App = () => {
       type: "play_card",
       playerId: pendingPlay.playerId,
       cardSlot: pendingPlay.card.slot,
+      cardInstanceId: pendingPlay.cardInstanceId,
       zone: pendingPlay.zone,
       xValue: pendingPlay.xValue,
+      choiceIndex: pendingPlay.choices.length ? pendingPlay.choiceIndex : undefined,
     });
     setPendingPlay(null);
   };
@@ -241,6 +517,24 @@ const App = () => {
   const pausedZonesLabel = matchState.pausedZones.length
     ? matchState.pausedZones.map(zoneLabel).join(", ")
     : "None";
+  const allReactivePlayers = getReactivePlayers(matchState, roster);
+  const reactivePlayers = allReactivePlayers.filter(
+    (playerId) => playerId !== matchState.activePlayerId
+  );
+  const reactionNames = allReactivePlayers
+    .map((playerId) => matchState.players[playerId]?.name)
+    .filter((name): name is string => Boolean(name));
+  const activeHand = activeCharacter
+    ? activePlayer.hand
+        .map((instance) => ({
+          instance,
+          card: getCardBySlot(activeCharacter, instance.cardSlot),
+        }))
+        .filter((entry): entry is { instance: CardInstance; card: Card } => Boolean(entry.card))
+    : [];
+  const activeUltimates = activeCharacter
+    ? activeCharacter.cards.filter((card) => isUltimateCard(card))
+    : [];
 
   return (
     <div className="ua-shell">
@@ -292,6 +586,22 @@ const App = () => {
                   <div>
                     <span>Ultimate</span>
                     <strong>{player.ultimate}</strong>
+                  </div>
+                  <div>
+                    <span>Hand</span>
+                    <strong>{player.hand.length}</strong>
+                  </div>
+                  <div>
+                    <span>Deck</span>
+                    <strong>{player.deck.length}</strong>
+                  </div>
+                  <div>
+                    <span>Discard</span>
+                    <strong>{player.discard.length}</strong>
+                  </div>
+                  <div>
+                    <span>Exhaust</span>
+                    <strong>{player.exhausted.length}</strong>
                   </div>
                 </div>
                 {statusEntries.length > 0 && (
@@ -359,45 +669,187 @@ const App = () => {
         <p className="ua-zone-status">
           Active Zone: {activeZoneLabel} | Paused Zones: {pausedZonesLabel}
         </p>
+        {reactionNames.length > 0 && (
+          <p className="ua-zone-status">
+            Reaction window: {reactionNames.join(" / ")} can play Follow-Up or Assist Attack now.
+          </p>
+        )}
         {activeCharacter ? (
-          <div className="ua-card-grid">
-            {activeCharacter.cards.map((card) => {
-              const cost = parseCost(card.cost);
-              const isVariable = Boolean(cost.variable);
-              const baseAffordable = canAfford(activePlayer, cost, 0);
-              const maxX = isVariable ? getMaxX(activePlayer, cost) : 0;
-              const disabled = matchState.activePlayerId !== activePlayer.id || (!baseAffordable && maxX === 0);
-              return (
-                <button
-                  key={`${card.slot}-${card.name}`}
-                  className="ua-card"
-                  disabled={disabled}
-                  onClick={() => handlePlayCard(activePlayer.id, card)}
-                >
-                  <div className="ua-card__title">{card.name}</div>
-                  <div className="ua-card__meta">
-                    <span>Cost: {card.cost}</span>
-                    <span>Power: {card.power}</span>
-                  </div>
-                  <div className="ua-card__meta">
-                    <span>Speed: {card.speed}</span>
-                    <span>Target: {card.target}</span>
-                  </div>
-                  <div className="ua-card__tags">{card.types.join(" • ")}</div>
-                  <div className="ua-card__effect">
-                    {card.effect.map((line) => (
-                      <p key={line}>{line}</p>
-                    ))}
-                  </div>
-                  {isVariable && <span className="ua-card__tag">X Cost</span>}
-                </button>
-              );
-            })}
-          </div>
+          <>
+            <h3>Hand</h3>
+            <div className="ua-card-grid">
+              {activeHand.map(({ instance, card }) => {
+                const cost = parseCost(card.cost);
+                const isVariable = Boolean(cost.variable);
+                const xRange = getXRangeFromText(card);
+                const baseAffordable = canAffordWithAdjustments(
+                  activePlayer,
+                  cost,
+                  0,
+                  instance
+                );
+                const maxX = isVariable ? getMaxX(activePlayer, cost, instance) : 0;
+                const canAct =
+                  matchState.activePlayerId === activePlayer.id ||
+                  canReactAfterUse(matchState, activePlayer.id, card);
+                const disabled = !canAct || (!baseAffordable && maxX === 0);
+                const adjustment =
+                  getEnergyCostAdjustment(activePlayer) + (instance.costAdjustment ?? 0);
+                return (
+                  <button
+                    key={instance.id}
+                    className="ua-card"
+                    disabled={disabled}
+                    onClick={() => handlePlayCard(activePlayer.id, card, instance.id)}
+                  >
+                    <div className="ua-card__title">{card.name}</div>
+                    <div className="ua-card__meta">
+                      <span>
+                        Cost: {card.cost}
+                        {adjustment !== 0 &&
+                          ` (Adj ${adjustment >= 0 ? "+" : ""}${adjustment})`}
+                      </span>
+                      <span>Power: {card.power}</span>
+                    </div>
+                    <div className="ua-card__meta">
+                      <span>Speed: {card.speed}</span>
+                      <span>Target: {card.target}</span>
+                    </div>
+                    <div className="ua-card__tags">{card.types.join(" / ")}</div>
+                    <div className="ua-card__effect">
+                      {card.effect.map((line) => (
+                        <p key={line}>{line}</p>
+                      ))}
+                    </div>
+                    {isVariable && <span className="ua-card__tag">X Cost</span>}
+                    {xRange && <span className="ua-card__tag">Choose X</span>}
+                  </button>
+                );
+              })}
+              {activeHand.length === 0 && <p>No cards in hand.</p>}
+            </div>
+            {activeUltimates.length > 0 && (
+              <>
+                <h3>Ultimates</h3>
+                <div className="ua-card-grid">
+                  {activeUltimates.map((card) => {
+                    const cost = parseCost(card.cost);
+                    const isVariable = Boolean(cost.variable);
+                    const baseAffordable = canAffordWithAdjustments(activePlayer, cost, 0);
+                    const maxX = isVariable ? getMaxX(activePlayer, cost) : 0;
+                    const canAct =
+                      matchState.activePlayerId === activePlayer.id ||
+                      canReactAfterUse(matchState, activePlayer.id, card);
+                    const disabled = !canAct || (!baseAffordable && maxX === 0);
+                    return (
+                      <button
+                        key={card.slot}
+                        className="ua-card"
+                        disabled={disabled}
+                        onClick={() => handlePlayCard(activePlayer.id, card)}
+                      >
+                        <div className="ua-card__title">{card.name}</div>
+                        <div className="ua-card__meta">
+                          <span>Cost: {card.cost}</span>
+                          <span>Power: {card.power}</span>
+                        </div>
+                        <div className="ua-card__meta">
+                          <span>Speed: {card.speed}</span>
+                          <span>Target: {card.target}</span>
+                        </div>
+                        <div className="ua-card__tags">{card.types.join(" / ")}</div>
+                        <div className="ua-card__effect">
+                          {card.effect.map((line) => (
+                            <p key={line}>{line}</p>
+                          ))}
+                        </div>
+                        {isVariable && <span className="ua-card__tag">X Cost</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </>
         ) : (
           <p>No character selected.</p>
         )}
       </section>
+
+      {reactivePlayers.map((playerId) => {
+        const player = matchState.players[playerId];
+        const character = getCharacter(roster, player.characterId);
+        if (!character) return null;
+        return (
+          <section key={`react-${playerId}`} className="ua-panel ua-panel--wide">
+            <div className="ua-panel__header">
+              <h2>Reaction ({player.name})</h2>
+            </div>
+            <div className="ua-card-grid">
+              {player.hand.map((instance) => {
+                const card = getCardBySlot(character, instance.cardSlot);
+                if (!card) return null;
+                const cost = parseCost(card.cost);
+                const isVariable = Boolean(cost.variable);
+                const xRange = getXRangeFromText(card);
+                const isAfterUse =
+                  matchState.afterUseWindow &&
+                  matchState.afterUseWindow.validForAction === matchState.actionId + 1;
+                const isFollowUpPlay =
+                  Boolean(isAfterUse) && matchState.afterUseWindow?.lastUsedBy === playerId;
+                const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+                const baseAffordable = canAffordWithAdjustments(
+                  player,
+                  cost,
+                  0,
+                  instance,
+                  followUpAdjustment
+                );
+                const maxX = isVariable
+                  ? getMaxX(player, cost, instance, followUpAdjustment)
+                  : 0;
+                const canReact = canReactAfterUse(matchState, playerId, card);
+                const disabled = !canReact || (!baseAffordable && maxX === 0);
+                const adjustment =
+                  getEnergyCostAdjustment(player) +
+                  (instance.costAdjustment ?? 0) +
+                  followUpAdjustment;
+                return (
+                  <button
+                    key={instance.id}
+                    className="ua-card"
+                    disabled={disabled}
+                    onClick={() => handlePlayCard(playerId, card, instance.id)}
+                  >
+                    <div className="ua-card__title">{card.name}</div>
+                    <div className="ua-card__meta">
+                      <span>
+                        Cost: {card.cost}
+                        {adjustment !== 0 &&
+                          ` (Adj ${adjustment >= 0 ? "+" : ""}${adjustment})`}
+                      </span>
+                      <span>Power: {card.power}</span>
+                    </div>
+                    <div className="ua-card__meta">
+                      <span>Speed: {card.speed}</span>
+                      <span>Target: {card.target}</span>
+                    </div>
+                    <div className="ua-card__tags">{card.types.join(" / ")}</div>
+                    <div className="ua-card__effect">
+                      {card.effect.map((line) => (
+                        <p key={line}>{line}</p>
+                      ))}
+                    </div>
+                    {isVariable && <span className="ua-card__tag">X Cost</span>}
+                    {xRange && <span className="ua-card__tag">Choose X</span>}
+                  </button>
+                );
+              })}
+              {player.hand.length === 0 && <p>No cards in hand.</p>}
+            </div>
+          </section>
+        );
+      })}
 
       {pendingPlay && (
         <div className="ua-modal">
@@ -423,14 +875,39 @@ const App = () => {
                 </div>
               </div>
             )}
-            {parseCost(pendingPlay.card.cost).variable && (
-              <p>Set the X value to spend for this card.</p>
+            {pendingPlay.choices.length > 0 && (
+              <div className="ua-modal__zones">
+                <p>Choose an effect:</p>
+                <div className="ua-modal__zone-buttons">
+                  {pendingPlay.choices.map((choice) => (
+                    <button
+                      key={choice.index}
+                      className={`ua-button ${pendingPlay.choiceIndex === choice.index ? "ua-button--primary" : ""}`}
+                      onClick={() =>
+                        setPendingPlay((prev) =>
+                          prev ? { ...prev, choiceIndex: choice.index } : prev
+                        )
+                      }
+                    >
+                      {choice.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(parseCost(pendingPlay.card.cost).variable || pendingPlay.xRange) && (
+              <p>
+                {pendingPlay.xRange
+                  ? `Choose X between ${pendingPlay.xRange.min} and ${pendingPlay.xRange.max}.`
+                  : "Set the X value to spend for this card."}
+              </p>
             )}
             <div className="ua-modal__controls">
-              {parseCost(pendingPlay.card.cost).variable && (
+              {(parseCost(pendingPlay.card.cost).variable || pendingPlay.xRange) && (
                 <input
                   type="number"
-                  min={0}
+                  min={pendingPlay.xRange ? pendingPlay.xRange.min : 0}
+                  max={pendingPlay.xRange ? pendingPlay.xRange.max : pendingPlay.xValue}
                   value={pendingPlay.xValue}
                   onChange={(event) =>
                     setPendingPlay((prev) =>

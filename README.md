@@ -49,8 +49,9 @@ cmd /c pnpm --filter @ua/client build
 
 ## Current limitations
 
-- Structured effects are partial; legacy text parsing still handles unconverted cards.
-- Status/keyword engine is incomplete (caps, expiry, triggers).
+- Structured effects are partial; legacy text parsing still handles unmodeled mechanics (set-value effects, complex conditional text).
+- Status/keyword handling covers timing windows, caps/expiry, and cost/speed/power/damage modifiers plus spend/draw/creation hooks, but not all unique triggers.
+- Hand/deck/discard/exhaust are implemented, but there is no deck reshuffle or deck/discard inspection UI yet.
 - Multiplayer is not implemented yet.
 
 ## What's next

@@ -1,9 +1,8 @@
 # TODO
 
 ## Core rules
-- Implement zones (Fast/Normal/Slow), priority passing, and clash resolution.
+- Finish structured effect coverage and remove legacy text parsing.
 - Encode full timing windows (On Play, Before Clash, After Clash, Before Use, On Use, On Hit, After Use, Always).
-- Replace text parsing with structured effect data and rule handlers.
 - Add full status/keyword handling (potency/count/stack caps, expiry, triggers).
 
 ## UI/UX

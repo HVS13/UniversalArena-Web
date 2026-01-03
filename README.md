@@ -49,10 +49,11 @@ cmd /c pnpm --filter @ua/client build
 
 ## Current limitations
 
-- Prototype rules engine: automates damage/shield/heal/ultimate gain and simple status counters only.
-- No zone/clash/priority system yet.
-- Complex text effects are not fully encoded.
+- Structured effects are partial; legacy text parsing still handles unconverted cards.
+- Status/keyword engine is incomplete (caps, expiry, triggers).
+- Multiplayer is not implemented yet.
 
-## What’s next
+## What's next
 
 See `TODO.md` for the planned roadmap.
+

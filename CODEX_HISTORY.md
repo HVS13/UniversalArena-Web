@@ -26,3 +26,4 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-03: Bootstrapped the monorepo, wired data export from docs, implemented a local hot-seat UI, and added a minimal rules engine with current character roster.
 - 2026-01-03: Added typed exports for keywords, status effects, terms, card types, and roles to align with the expanded docs-side data pipeline.
 - 2026-01-03: Added structured effect types, rewired the core engine for zones/clash/priority flow, and updated the client to pick zones with live Active Zone status.
+- 2026-01-03: Updated README and TODO to reflect current engine status and structured effect coverage.

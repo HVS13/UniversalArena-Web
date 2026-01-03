@@ -1,7 +1,13 @@
 node_modules/
 dist/
+apps/*/dist/
+packages/*/dist/
+.vite/
+apps/*/.vite/
 .env
 .env.local
 .env.*.local
 coverage/
 pnpm-debug.log
+.DS_Store
+Thumbs.db

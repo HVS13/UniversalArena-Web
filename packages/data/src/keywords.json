@@ -1,0 +1,88 @@
+{
+  "keywords": [
+    {
+      "id": "keyword-ethereal",
+      "name": "Ethereal",
+      "category": "Card Lifecycle",
+      "description": "If this card is in hand at the end of the turn, it is Exhausted."
+    },
+    {
+      "id": "keyword-exhaust",
+      "name": "Exhaust",
+      "category": "Card Lifecycle",
+      "description": "When this card is played, remove this card from play for the rest of the game."
+    },
+    {
+      "id": "keyword-innate",
+      "name": "Innate",
+      "category": "Card Lifecycle",
+      "description": "Start the game with this card in the opening hand."
+    },
+    {
+      "id": "keyword-retain",
+      "name": "Retain",
+      "category": "Card Lifecycle",
+      "description": "Keep the card in hand at the end of the turn instead of discarding it."
+    },
+    {
+      "id": "keyword-prepare",
+      "name": "Prepare X",
+      "category": "Cost Modifiers",
+      "description": "Each turn, increase or reduce the Energy cost of this card by X until the card is used."
+    },
+    {
+      "id": "keyword-evade",
+      "name": "Evade",
+      "category": "Combat",
+      "description": "After Clash: If an Attack vs Defense clash would deal 0 Power damage after Shield, that Attack is not a hit. Reuse this card."
+    },
+    {
+      "id": "keyword-reuse",
+      "name": "Reuse",
+      "category": "Combat",
+      "description": "After this card finishes a clash, do not discard it. Keep it in the current zone so it can be paired again during the same zone resolution."
+    },
+    {
+      "id": "keyword-follow-up",
+      "name": "Follow-Up",
+      "category": "Combat",
+      "description": "After Use: This card can be played after any other card from the same character."
+    },
+    {
+      "id": "keyword-assist-attack",
+      "name": "Assist Attack",
+      "category": "Combat",
+      "description": "After Use: This card can be played after any other card used by a different character."
+    },
+    {
+      "id": "keyword-resist",
+      "name": "Resist X",
+      "category": "Damage Mitigation",
+      "description": "When damage would be dealt to HP, reduce that damage by X after Shield is applied. X can be a flat value (example: Resist 5), a percentage (example: Resist 20%), or both (example: Resist 5/20%). If both are listed, calculate both and use the higher reduction. If damage types or attack tags are listed, Resist applies only to those; if multiple are listed, apply once when any match. Damage cannot go below 0."
+    },
+    {
+      "id": "keyword-immune",
+      "name": "Immune (Damage Type)",
+      "category": "Damage Mitigation",
+      "description": "Damage of the specified type becomes 0 before Shield and HP. The attack still counts as a hit unless another effect says otherwise."
+    },
+    {
+      "id": "keyword-weakness",
+      "name": "Weakness X",
+      "category": "Damage Mitigation",
+      "description": "When damage would be dealt to HP, increase that damage by X after Shield is applied. X can be a flat value (example: Weakness 5), a percentage (example: Weakness 20%), or both (example: Weakness 5/20%). If both are listed, calculate both and use the higher increase. If damage types or attack tags are listed, Weakness applies only to those; if multiple are listed, apply once when any match."
+    },
+    {
+      "id": "keyword-absorb",
+      "name": "Absorb X",
+      "category": "Damage Mitigation",
+      "description": "When damage would be dealt to HP, reduce that damage by X after Shield is applied, then heal for the amount reduced. X can be a flat value (example: Absorb 5), a percentage (example: Absorb 20%), or both (example: Absorb 5/20%). If both are listed, calculate both and use the higher reduction. If damage types or attack tags are listed, Absorb applies only to those; if multiple are listed, apply once when any match. Damage cannot go below 0."
+    },
+    {
+      "id": "keyword-bounce",
+      "name": "Bounce X",
+      "category": "Targeting",
+      "description": "A random adjacent character to the main target will also take the effect. Repeat X times."
+    }
+  ]
+}

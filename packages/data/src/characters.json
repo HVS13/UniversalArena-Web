@@ -1,0 +1,2146 @@
+{
+  "characters": [
+    {
+      "id": "dio-brando-part-3",
+      "name": "DIO",
+      "version": "Part 3",
+      "origin": "JoJo's Bizarre Adventure",
+      "roles": [
+        "role-assassin",
+        "role-controller"
+      ],
+      "difficulty": "High",
+      "gameplan": "Fragile when unfed, oppressive when fed. Land Vampiric Drain to stock Stolen Blood, convert it into Blood Focus to crush Energy costs, then use The World: Time Stop to lock the round and close with knife pressure or ROAD ROLLER DA!\n",
+      "art": "dio-brando-part-3.png",
+      "innates": [
+        {
+          "name": "Vampire Physiology",
+          "text": "Resist 3 (Physical)."
+        },
+        {
+          "name": "Predator's Regeneration",
+          "text": "The first time each turn this character gains Stolen Blood, heal 10 HP."
+        },
+        {
+          "name": "Blood Is Power",
+          "text": "Whenever this character gains X Stolen Blood, gain X Blood Focus. Whenever this character spends X Stolen Blood, reduce Blood Focus Value by X. Once per game, when this character would be reduced to 0 HP: You may spend 3 Stolen Blood. If you do, set HP to 1 instead."
+        }
+      ],
+      "statusEffects": [
+        {
+          "name": "Stolen Blood",
+          "lines": [
+            "Type: Unique.",
+            "Max Value: 10.",
+            "Turn End: Reduce Value by 1.",
+            "Effect: A resource gained by feeding; used to extend Time Stop and empower finishers."
+          ]
+        },
+        {
+          "name": "Blood Focus",
+          "lines": [
+            "Type: Unique.",
+            "Max Value: 10.",
+            "Turn End: Reduce Value by 1.",
+            "Effect: Reduce the Energy cost of this character's cards by Value (minimum 0). This stacks with Focus."
+          ]
+        },
+        {
+          "name": "The World: Time Stop",
+          "lines": [
+            "Type: Unique.",
+            "Count: Max 8.",
+            "On Gain: Gain 2 Strength and +2 Strength Count. Gain 2 Haste and +2 Haste Count.",
+            "Effect: While this has 1+ Count, this character's Attack cards have Follow-Up.",
+            "Turn End: Reduce Count by 1.",
+            "When this expires: Gain 2 Strain and +4 Strain Count."
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "slot": "1-1",
+          "name": "Strike",
+          "cost": "4 Energy",
+          "power": "20-28",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage.",
+            "On Hit: If the target has Stun, gain 1 Stolen Blood.",
+            "If this character has The World: Time Stop: This card becomes Strike: Muda Barrage."
+          ]
+        },
+        {
+          "slot": "1-2",
+          "name": "Strike: Muda Barrage",
+          "cost": "4 Energy",
+          "power": "20-28",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt",
+            "Multihit",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power / 4 damage 4 times.",
+            "On Hit: Inflict 1 Bleed.",
+            "Once per use, if the target has Stun: Gain 2 Stolen Blood."
+          ]
+        },
+        {
+          "slot": "2-1",
+          "name": "Defend",
+          "cost": "4 Energy",
+          "power": "20-28",
+          "types": [
+            "Basic",
+            "Defense",
+            "Physical",
+            "Melee"
+          ],
+          "target": "1 Ally",
+          "speed": "Normal",
+          "effect": [
+            "Gain Power Shield.",
+            "Evade.",
+            "If this character has The World: Time Stop: This card becomes Defend: The World."
+          ]
+        },
+        {
+          "slot": "2-2",
+          "name": "Defend: The World",
+          "cost": "4 Energy",
+          "power": "20-28",
+          "types": [
+            "Basic",
+            "Defense",
+            "Physical",
+            "Melee",
+            "Buff"
+          ],
+          "target": "Self",
+          "speed": "Fast",
+          "effect": [
+            "Gain Power Shield.",
+            "Evade.",
+            "Follow-Up.",
+            "Retain.",
+            "After Use: Gain 1 Haste and +1 Haste Count."
+          ]
+        },
+        {
+          "slot": "3",
+          "name": "Vampiric Drain",
+          "cost": "5 Energy",
+          "power": "24-36",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Pierce",
+            "Recovery",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage.",
+            "Heal for Power / 2 HP.",
+            "Gain 4 Stolen Blood.",
+            "On Hit: Inflict 2 Weak and +2 Weak Count.",
+            "On Hit: If the target has Stun, gain 2 Stolen Blood."
+          ]
+        },
+        {
+          "slot": "4-1",
+          "name": "Throwing Knives",
+          "cost": "7 Energy",
+          "power": "34-50",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Ranged",
+            "Pierce",
+            "Multihit",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "This card's Multihit Count starts at 6.",
+            "Deal Power / 6 damage 6 times.",
+            "On Hit: Inflict 1 Bleed.",
+            "If this character has The World: Time Stop: This card becomes Throwing Knives: Time Stop."
+          ]
+        },
+        {
+          "slot": "4-2",
+          "name": "Throwing Knives: Time Stop",
+          "cost": "7 Energy",
+          "power": "34-50",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Ranged",
+            "Pierce",
+            "Multihit",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "This card's Multihit Count starts at 10.",
+            "Deal Power / 10 damage 10 times.",
+            "On Hit: Inflict 1 Bleed.",
+            "Once per use, if the target has Stun: Deal 10 bonus damage."
+          ]
+        },
+        {
+          "slot": "5",
+          "name": "The World: Time Stop",
+          "cost": "9 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Magical",
+            "Ranged",
+            "AoE",
+            "Transformation",
+            "Debuff"
+          ],
+          "target": "Self",
+          "speed": "Fast",
+          "effect": [
+            "Gain 1 The World: Time Stop and +2 The World: Time Stop Count.",
+            "You may spend X Stolen Blood (0-5). If you do, gain +X The World: Time Stop Count.",
+            "Inflict 1 Stun on All Enemies.",
+            "Until the end of this Combat Round, enemies cannot play cards. (Cards already played still resolve.)",
+            "Retain."
+          ]
+        },
+        {
+          "slot": "ultimate",
+          "name": "ROAD ROLLER DA!",
+          "cost": "40 Ultimate Meter",
+          "power": "72-108",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Splash",
+            "Blunt",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Can only be used if this character has The World: Time Stop.",
+            "Deal Power damage.",
+            "On Hit: Inflict 1 Stun.",
+            "You may spend X Stolen Blood (0-10). If you do, deal 6 times X bonus damage and inflict X Bleed.",
+            "After Use: Set this character's The World: Time Stop Count to 0."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "goku-saiyan-saga",
+      "name": "Goku",
+      "version": "Saiyan Saga",
+      "origin": "Dragon Ball Z",
+      "roles": [
+        "role-striker",
+        "role-bruiser"
+      ],
+      "difficulty": "High",
+      "gameplan": "Chain low-cost attacks to build meter, use Kaioken to ramp Strength/Dexterity while managing the HP drain, then close with Spirit Bomb. Zenkai rewards playing at low HP, so plan a late spike.\n",
+      "art": "goku-saiyan-saga.png",
+      "innates": [
+        {
+          "name": "Zenkai Boost",
+          "text": "Each time this character reaches 25% HP, gain 1 Zenkai."
+        }
+      ],
+      "statusEffects": [
+        {
+          "name": "Kaioken",
+          "lines": [
+            "Type: Unique.",
+            "Potency: Max 4.",
+            "Count: Max 99.",
+            "Turn Start: Gain X Strength. Gain X Dexterity. Gain X-1 Haste. X equal to Potency.",
+            "Turn End: Reduce Count by 1. Reduce current HP by X times 10%."
+          ]
+        },
+        {
+          "name": "Zenkai",
+          "lines": [
+            "Type: Unique.",
+            "Max Value: 999.",
+            "Effect: Increase Attack and Defense Power by 5% times Value."
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "slot": "1",
+          "name": "Strike",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage."
+          ]
+        },
+        {
+          "slot": "2",
+          "name": "Defend",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Defense",
+            "Physical",
+            "Melee"
+          ],
+          "target": "1 Ally",
+          "speed": "Normal",
+          "effect": [
+            "Gain Power Shield.",
+            "Evade."
+          ]
+        },
+        {
+          "slot": "3-1",
+          "name": "Meteor Combination",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt",
+            "Multihit"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power / 3 damage 3 times.",
+            "If this character has Kaioken: This card becomes Kaio-ken Attack."
+          ]
+        },
+        {
+          "slot": "3-2",
+          "name": "Kaio-ken Attack",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt",
+            "Multihit"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power / 4 damage 4 times."
+          ]
+        },
+        {
+          "slot": "4",
+          "name": "Kamehameha",
+          "cost": "2 Energy",
+          "power": "16-24",
+          "types": [
+            "Technique",
+            "Attack",
+            "Magical",
+            "Ranged",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Follow-Up.",
+            "Deal Power damage."
+          ]
+        },
+        {
+          "slot": "5",
+          "name": "Kaioken",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Physical",
+            "Melee",
+            "Transformation"
+          ],
+          "target": "Self",
+          "speed": "Normal",
+          "effect": [
+            "Gain 1 Kaioken and +3 Kaioken Count.",
+            "If this character has Kaioken: Gain 1 Kaioken and +1 Kaioken Count instead."
+          ]
+        },
+        {
+          "slot": "ultimate",
+          "name": "Spirit Bomb",
+          "cost": "20 Ultimate Meter",
+          "power": "27-45",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Magical",
+            "Ranged",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Slow",
+          "effect": [
+            "Deal Power damage."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "kurosaki-ichigo-soul-society",
+      "name": "Kurosaki Ichigo",
+      "version": "Soul Society",
+      "origin": "Bleach",
+      "roles": [
+        "role-striker",
+        "role-skirmisher"
+      ],
+      "difficulty": "Medium",
+      "gameplan": "Win fights the way Ichigo does here: clean sword pressure, Shunpo to steal tempo, build Reiatsu through exchanges, then cash out with Getsuga. Bankai is your end-it speed window, and Hollow Interference is a single risky surge that can save or throw the fight.\n",
+      "art": "kurosaki-ichigo-soul-society.png",
+      "innates": [
+        {
+          "name": "Fighting Spirit",
+          "text": "The first time each turn this character takes damage to HP from an enemy Attack, gain 1 Reiatsu."
+        },
+        {
+          "name": "Inner Hollow (Uncontrolled)",
+          "text": "The first time this character reaches 25% HP, gain 1 Hollow Interference. Gain 2 Reiatsu."
+        }
+      ],
+      "statusEffects": [
+        {
+          "name": "Reiatsu",
+          "lines": [
+            "Type: Unique.",
+            "Max Value: 6.",
+            "Turn End: Reduce Value by 1.",
+            "Effect: A resource gained through combat exchanges; spent to amplify Getsuga Tensho."
+          ]
+        },
+        {
+          "name": "Bankai: Tensa Zangetsu",
+          "lines": [
+            "Type: Unique.",
+            "Count: Max 6.",
+            "Turn Start: Gain 2 Haste. Gain 1 Strength.",
+            "Effect: The first time each turn this character hits with an Attack, gain 1 Reiatsu.",
+            "Turn End: Reduce Count by 1.",
+            "When this expires: Gain 1 Strain and +3 Strain Count."
+          ]
+        },
+        {
+          "name": "Hollow Interference",
+          "lines": [
+            "Type: Unique.",
+            "Max Stack: 1.",
+            "Turn Start: Gain 2 Haste. Gain 2 Strength.",
+            "Turn End: Expires.",
+            "When this expires: Gain 1 Strain and +3 Strain Count."
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "slot": "1-1",
+          "name": "Strike",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Slash"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. On Hit: Gain 1 Reiatsu.",
+            "If this character has Hollow Interference: This card becomes Strike: White.",
+            "Otherwise, if this character has Bankai: Tensa Zangetsu: This card becomes Strike: Tensa Zangetsu."
+          ]
+        },
+        {
+          "slot": "1-2",
+          "name": "Strike: Tensa Zangetsu",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Slash"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power damage. On Hit: Gain 1 Reiatsu."
+          ]
+        },
+        {
+          "slot": "1-3",
+          "name": "Strike: White",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Slash"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Follow-Up.",
+            "Deal Power damage. On Hit: Gain 2 Reiatsu.",
+            "After Use: Gain 1 Vulnerable and +1 Vulnerable Count."
+          ]
+        },
+        {
+          "slot": "2",
+          "name": "Defend",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Basic",
+            "Defense",
+            "Physical",
+            "Melee"
+          ],
+          "target": "1 Ally",
+          "speed": "Normal",
+          "effect": [
+            "Gain Power Shield.",
+            "If this character has Bankai: Tensa Zangetsu: Gain 1 Haste and +1 Haste Count."
+          ]
+        },
+        {
+          "slot": "3",
+          "name": "Shunpo",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Technique",
+            "Defense",
+            "Physical",
+            "Melee",
+            "Buff"
+          ],
+          "target": "Self",
+          "speed": "Fast",
+          "effect": [
+            "Gain Power Shield.",
+            "Evade.",
+            "Follow-Up.",
+            "Retain."
+          ]
+        },
+        {
+          "slot": "4-1",
+          "name": "Getsuga Tensho",
+          "cost": "2 Energy",
+          "power": "16-24",
+          "types": [
+            "Technique",
+            "Attack",
+            "Magical",
+            "Ranged",
+            "Slash"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. On Hit: Gain 1 Reiatsu.",
+            "You may spend X Reiatsu (0-3). If you do, deal 4 times X bonus damage.",
+            "If this character has Bankai: Tensa Zangetsu: This card becomes Getsuga Tensho: Tensa Zangetsu."
+          ]
+        },
+        {
+          "slot": "4-2",
+          "name": "Getsuga Tensho: Tensa Zangetsu",
+          "cost": "2 Energy",
+          "power": "16-24",
+          "types": [
+            "Technique",
+            "Attack",
+            "Magical",
+            "Ranged",
+            "Slash"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power damage. On Hit: Gain 1 Reiatsu.",
+            "You may spend X Reiatsu (0-4). If you do, deal 5 times X bonus damage."
+          ]
+        },
+        {
+          "slot": "5",
+          "name": "Bankai: Tensa Zangetsu",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Physical",
+            "Melee",
+            "Transformation"
+          ],
+          "target": "Self",
+          "speed": "Normal",
+          "effect": [
+            "Gain 1 Bankai: Tensa Zangetsu and +4 Bankai: Tensa Zangetsu Count.",
+            "If this character has Bankai: Tensa Zangetsu, gain +2 Bankai: Tensa Zangetsu Count instead.",
+            "Gain 2 Reiatsu.",
+            "Retain."
+          ]
+        },
+        {
+          "slot": "ultimate",
+          "name": "Getsuga Tensho (Bankai Finisher)",
+          "cost": "30 Ultimate Meter",
+          "power": "36-54",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Magical",
+            "Ranged",
+            "Slash"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Can only be used if this character has Bankai: Tensa Zangetsu.",
+            "Deal Power damage.",
+            "You may spend up to 6 Reiatsu. If you do, deal 4 times Reiatsu spent bonus damage."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "leon-s-kennedy-re4",
+      "name": "Leon S. Kennedy",
+      "version": "Resident Evil 4",
+      "origin": "Resident Evil",
+      "roles": [
+        "role-striker",
+        "role-artillery"
+      ],
+      "difficulty": "Medium",
+      "gameplan": "Choose the right weapon with Switch Weapon, use Handgun for steady multihit poke and Riot Gun for follow-up burst into Suplex stuns, then dump excess Energy into Chicago Typewriter. Defend reloads your current weapon and keeps you safe; save Rocket Launcher for swing turns, and buy it with meter if you need the finisher.\n",
+      "art": "leon-s-kennedy-re4.png",
+      "innates": [
+        {
+          "name": "Special Agent Loadout",
+          "text": "This character starts with Equip: Handgun, 10 Handgun Ammo, 5 Shotgun Ammo, and 1 Rocket Launcher."
+        }
+      ],
+      "statusEffects": [
+        {
+          "name": "Equip: Handgun",
+          "lines": [
+            "Type: Unique.",
+            "Turn Start: Gain 1 Dexterity."
+          ]
+        },
+        {
+          "name": "Equip: Riot Gun",
+          "lines": [
+            "Type: Unique.",
+            "Turn Start: Gain 1 Strength."
+          ]
+        },
+        {
+          "name": "Equip: Chicago Typewriter",
+          "lines": [
+            "Type: Unique.",
+            "Turn Start: Gain 1 Haste."
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "slot": "1",
+          "name": "Strike",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Slash",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. Inflict 1 Bleed."
+          ]
+        },
+        {
+          "slot": "2",
+          "name": "Defend",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Defense",
+            "Physical",
+            "Melee"
+          ],
+          "target": "1 Ally",
+          "speed": "Normal",
+          "effect": [
+            "Gain Power Shield. Reload currently Equipped Weapon.",
+            "Evade."
+          ]
+        },
+        {
+          "slot": "3-1",
+          "name": "Shoot: Handgun",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Ranged",
+            "Pierce",
+            "Multihit"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "This card's Multihit Count starts at 3.",
+            "Set X to this card's remaining Multihit Count (before resolving this card). Spend Handgun Ammo up to X. Spend as many as possible.",
+            "Deal Power / X damage once per Ammo spent."
+          ]
+        },
+        {
+          "slot": "3-2",
+          "name": "Shoot: Riot Gun",
+          "cost": "2 Energy",
+          "power": "15-25",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Ranged",
+            "Pierce",
+            "Multihit"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Follow-Up.",
+            "Spend 1 Shotgun Ammo to deal damage.",
+            "Deal Power / 3 damage 3 times.",
+            "On Follow-Up: -1 Energy Cost."
+          ]
+        },
+        {
+          "slot": "3-3",
+          "name": "Shoot: Chicago Typewriter",
+          "cost": "X Energy",
+          "power": "4-6 + 4-6 times X",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Ranged",
+            "Pierce",
+            "Multihit"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power / (X + 4) damage (X + 4) times."
+          ]
+        },
+        {
+          "slot": "4",
+          "name": "Suplex",
+          "cost": "2 Energy",
+          "power": "16-24",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Follow-Up.",
+            "Deal Power damage.",
+            "On Follow-Up: Deal Power damage. Inflict 1 Stun instead."
+          ]
+        },
+        {
+          "slot": "5",
+          "name": "Switch Weapon",
+          "cost": "0 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Physical"
+          ],
+          "target": "Self",
+          "speed": "Normal",
+          "effect": [
+            "Choose 1:",
+            "Switch to Equip: Handgun.",
+            "Switch to Equip: Riot Gun.",
+            "Switch to Equip: Chicago Typewriter.",
+            "If you choose the same weapon, Reload instead.",
+            "Innate. Retain."
+          ]
+        },
+        {
+          "slot": "ultimate-1",
+          "name": "Shoot: Rocket Launcher",
+          "cost": "30 Ultimate Meter",
+          "power": "45-75",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Physical",
+            "Ranged",
+            "AoE",
+            "Blunt"
+          ],
+          "target": "All Enemies",
+          "speed": "Normal",
+          "effect": [
+            "Spend 1 Rocket Launcher to deal damage.",
+            "Deal Power damage.",
+            "If this character doesn't have Rocket Launcher, this Ultimate becomes Purchase Rocket Launcher."
+          ]
+        },
+        {
+          "slot": "ultimate-2",
+          "name": "Purchase: Rocket Launcher",
+          "cost": "10 Ultimate Meter",
+          "power": "-",
+          "types": [
+            "Ultimate",
+            "Special",
+            "Physical"
+          ],
+          "target": "Self",
+          "speed": "Normal",
+          "effect": [
+            "Gain 1 Rocket Launcher."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "light-yagami-kira",
+      "name": "Light Yagami",
+      "version": "Kira",
+      "origin": "Death Note",
+      "roles": [
+        "role-controller",
+        "role-assassin"
+      ],
+      "difficulty": "High",
+      "gameplan": "Stack Stolen Information with retained intel, stall with tempo denial, then write a single name and spend Ultimate Meter to accelerate the countdown once full intel is secured.\n",
+      "art": "light-yagami-kira.png",
+      "innates": [
+        {
+          "name": "Meticulous Planner",
+          "text": "The first time each turn this character inflicts Stolen Information, draw 1."
+        }
+      ],
+      "statusEffects": [
+        {
+          "name": "Stolen Information",
+          "lines": [
+            "Type: Unique.",
+            "Max Stack: 6.",
+            "Turn End: Reduce Stack by 1 while Stack is 5 or less.",
+            "Effect: Used by Kira's Death Note effects."
+          ]
+        },
+        {
+          "name": "Death by Death Note",
+          "lines": [
+            "Type: Unique.",
+            "Base Value: 3.",
+            "Max Value: 3.",
+            "Turn End: Reduce Value by 1.",
+            "Effect: This status cannot be removed. If Value reaches 0, this character's HP becomes 0."
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "slot": "1",
+          "name": "Strike",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Attack",
+            "Mental",
+            "Ranged",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. On Hit: Inflict 1 Stolen Information.",
+            "On Hit: If the target has 3+ Stolen Information, inflict 1 Slow and +1 Slow Count."
+          ]
+        },
+        {
+          "slot": "2",
+          "name": "Defend",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Defense",
+            "Mental",
+            "Ranged"
+          ],
+          "target": "Self",
+          "speed": "Normal",
+          "effect": [
+            "Gain Power Shield.",
+            "Evade."
+          ]
+        },
+        {
+          "slot": "3",
+          "name": "Surveillance",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Mental",
+            "Ranged",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Inflict 2 Stolen Information. Retain."
+          ]
+        },
+        {
+          "slot": "4",
+          "name": "Blackmail",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Mental",
+            "Ranged",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Inflict 2 Stagnate.",
+            "If the target has 3+ Stolen Information, also inflict 1 Slow."
+          ]
+        },
+        {
+          "slot": "5",
+          "name": "Death Note: Write the Name",
+          "cost": "2 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Mental",
+            "Ranged",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Slow",
+          "effect": [
+            "Can only be used if the target has 6 Stolen Information.",
+            "Inflict 3 Death by Death Note. Then set the target's Stolen Information Value to 0."
+          ]
+        },
+        {
+          "slot": "ultimate",
+          "name": "Death Note: Judgment",
+          "cost": "30 Ultimate Meter + X times 10 Ultimate Meter",
+          "power": "-",
+          "types": [
+            "Ultimate",
+            "Special",
+            "Mental",
+            "Ranged",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Choose 1 enemy with 6 Stolen Information or Death by Death Note.",
+            "If the target has 6 Stolen Information, inflict 3 Death by Death Note and set its Stolen Information Value to 0.",
+            "Reduce the target's Death by Death Note Value by 1.",
+            "Reduce by 1 additional per 10 Ultimate Meter spent (max 2; cannot reduce below 1)."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "monkey-d-luffy-pre-timeskip",
+      "name": "Monkey D. Luffy",
+      "version": "Pre-Timeskip",
+      "origin": "One Piece",
+      "roles": [
+        "role-bruiser",
+        "role-striker"
+      ],
+      "difficulty": "Medium",
+      "gameplan": "Lead with Gear Transformation: Gear 2nd for tempo and fast clashes, Gear 3rd for heavy hits. Plan around Deflate after Gear 3rd and use Jet Gatling as your high-pressure finisher when you are ahead.\n",
+      "art": "monkey-d-luffy-pre-timeskip.png",
+      "innates": [
+        {
+          "name": "Gomu Gomu no Mi",
+          "text": "Resist 5 (non-Haki Pierce, non-Haki Blunt). Immune (Electric)."
+        }
+      ],
+      "statusEffects": [
+        {
+          "name": "Gear 2nd",
+          "lines": [
+            "Type: Unique.",
+            "Max Stack: 1.",
+            "On Gain: Gain 1 Strength. Gain 1 Haste.",
+            "Turn End: Expires."
+          ]
+        },
+        {
+          "name": "Gear 3rd",
+          "lines": [
+            "Type: Unique.",
+            "Max Stack: 1.",
+            "On Gain: Gain 3 Strength. Gain 1 Slow.",
+            "Turn End: Expires.",
+            "When this expires: At your next Turn Start, gain Deflate."
+          ]
+        },
+        {
+          "name": "Deflate",
+          "lines": [
+            "Type: Unique.",
+            "Max Stack: 1.",
+            "Effect: Cannot play any card from this character.",
+            "Turn End: Reduce Stack by 1."
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "slot": "1",
+          "name": "Strike",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage."
+          ]
+        },
+        {
+          "slot": "2",
+          "name": "Defend",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Basic",
+            "Defense",
+            "Physical",
+            "Melee"
+          ],
+          "target": "1 Ally",
+          "speed": "Normal",
+          "effect": [
+            "Gain Power Shield."
+          ]
+        },
+        {
+          "slot": "3-1",
+          "name": "Gomu Gomu no Pistol",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage.",
+            "If this character has Gear 2nd: This card becomes Gomu Gomu no Jet Pistol.",
+            "If this character has Gear 3rd: This card becomes Gomu Gomu no Gigant Pistol."
+          ]
+        },
+        {
+          "slot": "3-2",
+          "name": "Gomu Gomu no Jet Pistol",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power damage."
+          ]
+        },
+        {
+          "slot": "3-3",
+          "name": "Gomu Gomu no Gigant Pistol",
+          "cost": "1 Energy",
+          "power": "10-14",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Slow",
+          "effect": [
+            "Deal Power damage."
+          ]
+        },
+        {
+          "slot": "4-1",
+          "name": "Gomu Gomu no Bazooka",
+          "cost": "2 Energy",
+          "power": "20-28",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage.",
+            "If this character has Gear 2nd: This card becomes Gomu Gomu no Jet Bazooka.",
+            "If this character has Gear 3rd: This card becomes Gomu Gomu no Gigant Bazooka."
+          ]
+        },
+        {
+          "slot": "4-2",
+          "name": "Gomu Gomu no Jet Bazooka",
+          "cost": "2 Energy",
+          "power": "20-30",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power damage."
+          ]
+        },
+        {
+          "slot": "4-3",
+          "name": "Gomu Gomu no Gigant Bazooka",
+          "cost": "2 Energy",
+          "power": "20-30",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Slow",
+          "effect": [
+            "Deal Power damage."
+          ]
+        },
+        {
+          "slot": "5",
+          "name": "Gear Transformation",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Physical",
+            "Melee",
+            "Transformation"
+          ],
+          "target": "Self",
+          "speed": "Normal",
+          "effect": [
+            "Cannot be used if this character has Gear 2nd or Gear 3rd.",
+            "Choose 1:",
+            "Gain 1 Gear 2nd.",
+            "Gain 1 Gear 3rd.",
+            "Retain."
+          ]
+        },
+        {
+          "slot": "ultimate-1",
+          "name": "Gomu Gomu no Jet Gatling",
+          "cost": "30 Ultimate Meter + X Energy",
+          "power": "24-36 + 8-12 times X",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Splash",
+            "Blunt",
+            "Multihit",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Can only be used if this character has Gear 2nd.",
+            "Deal Power / (X + 1) damage (X + 1) times. Inflict X Frail. Gain X Weak and +X Weak Count. Gain X Vulnerable and +X Vulnerable Count.",
+            "If this character has Gear 3rd: This Ultimate becomes Gomu Gomu no Gigant Rifle."
+          ]
+        },
+        {
+          "slot": "ultimate-2",
+          "name": "Gomu Gomu no Gigant Rifle",
+          "cost": "30 Ultimate Meter",
+          "power": "36-54",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Splash",
+            "Blunt",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Slow",
+          "effect": [
+            "Can only be used if this character has Gear 3rd.",
+            "Deal Power damage.",
+            "If this character has Gear 2nd: This Ultimate becomes Gomu Gomu no Jet Gatling."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "naruto-uzumaki-pre-timeskip",
+      "name": "Naruto Uzumaki",
+      "version": "Pre-Timeskip",
+      "origin": "Naruto",
+      "roles": [
+        "role-summoner",
+        "role-striker"
+      ],
+      "difficulty": "High",
+      "gameplan": "Open with Shadow Clone Jutsu to flood your hand with disposable clone attacks and bank Shadow Clones as a resource. Keep 1 clone in reserve to turn Defend into an Evade. Convert the swarm into Naruto Uzumaki Barrage to win zones via Multihit pressure, then cash out with a clone-assisted Rasengan. When Nine-Tails' Resentment triggers, Kyuubi Chakra and One-Tail Cloak fuel Gamabunta follow-ups and unlock One-Tail Rasengan to close.\n",
+      "art": "naruto-uzumaki-pre-timeskip.png",
+      "innates": [
+        {
+          "name": "Nine-Tails' Resentment",
+          "text": "The first time this character reaches 25% HP, gain 4 Kyuubi Chakra and +3 Kyuubi Chakra Count. Gain 4 One-Tail Cloak. Gain 2 Shadow Clones."
+        }
+      ],
+      "statusEffects": [
+        {
+          "name": "Shadow Clones",
+          "lines": [
+            "Type: Unique.",
+            "Max Stack: 6.",
+            "Turn End: Reduce Stack by 1.",
+            "Effect: Used to enhance Naruto's cards."
+          ]
+        },
+        {
+          "name": "Kyuubi Chakra",
+          "lines": [
+            "Type: Unique.",
+            "Potency: Max 4.",
+            "Count: Max 4.",
+            "Turn Start: Gain X Strength. Gain X Haste.",
+            "Effect: The first time each turn this character plays Shadow Clone Jutsu, gain X Shadow Clones. X equals Potency.",
+            "Turn End: Reduce Count by 1. Reduce current HP by X times 5%. X equals Potency."
+          ]
+        },
+        {
+          "name": "Summoned: Gamabunta",
+          "lines": [
+            "Type: Unique.",
+            "Max Stack: 3.",
+            "Allies' Card Played: Once per turn, if Stack is 1+ and any ally plays an Attack that costs 2+ Energy and targets an enemy: Create 1 Gamabunta: Toad Smash in this character's hand.",
+            "Turn End: Reduce Stack by 1."
+          ]
+        },
+        {
+          "name": "One-Tail Cloak",
+          "lines": [
+            "Type: Unique.",
+            "Max Stack: 4.",
+            "Effect: A marker used to unlock Naruto's low-HP finishers.",
+            "Turn End: Reduce Stack by 1."
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "slot": "1",
+          "name": "Strike",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage.",
+            "On Hit: If this character has Kyuubi Chakra, gain 1 Shadow Clones."
+          ]
+        },
+        {
+          "slot": "2",
+          "name": "Defend",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Defense",
+            "Physical",
+            "Melee"
+          ],
+          "target": "1 Ally",
+          "speed": "Normal",
+          "effect": [
+            "Gain Power Shield.",
+            "If this character has 1+ Shadow Clones: You may spend 1 Shadow Clones. If you do, this card gains Evade."
+          ]
+        },
+        {
+          "slot": "3",
+          "name": "Shadow Clone Jutsu",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Magical"
+          ],
+          "target": "Self",
+          "speed": "Fast",
+          "effect": [
+            "Gain 2 Shadow Clones.",
+            "Create 2 Shadow Clone: Strike in hand.",
+            "Innate."
+          ]
+        },
+        {
+          "slot": "4",
+          "name": "Naruto Uzumaki Barrage",
+          "cost": "2 Energy",
+          "power": "16-24",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt",
+            "Multihit"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Choose X (0-3).",
+            "Spend X Shadow Clones.",
+            "Deal Power / (X + 2) damage (X + 2) times.",
+            "On Hit: If X is 3, inflict 1 Stun."
+          ]
+        },
+        {
+          "slot": "5-1",
+          "name": "Rasengan",
+          "cost": "3 Energy",
+          "power": "24-36",
+          "types": [
+            "Technique",
+            "Attack",
+            "Magical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Slow",
+          "effect": [
+            "Deal Power damage.",
+            "If this character has 2+ Shadow Clones: This card becomes Rasengan: Clone Assist."
+          ]
+        },
+        {
+          "slot": "5-2",
+          "name": "Rasengan: Clone Assist",
+          "cost": "3 Energy",
+          "power": "24-36",
+          "types": [
+            "Technique",
+            "Attack",
+            "Magical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Spend 2 Shadow Clones.",
+            "Follow-Up.",
+            "Deal Power damage.",
+            "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count."
+          ]
+        },
+        {
+          "slot": "ultimate-1",
+          "name": "Summoning Jutsu: Gamabunta",
+          "cost": "30 Ultimate Meter",
+          "power": "34-56",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Magical",
+            "Ranged",
+            "AoE",
+            "Blunt",
+            "Debuff"
+          ],
+          "target": "All Enemies",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. Inflict 1 Slow and +1 Slow Count.",
+            "Gain 2 Summoned: Gamabunta.",
+            "If this character has One-Tail Cloak: This Ultimate becomes One-Tail Rasengan."
+          ]
+        },
+        {
+          "slot": "ultimate-2",
+          "name": "One-Tail Rasengan",
+          "cost": "30 Ultimate Meter",
+          "power": "36-54",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Magical",
+            "Melee",
+            "Blunt",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Can only be used if this character has One-Tail Cloak.",
+            "Spend 2 Shadow Clones.",
+            "Follow-Up.",
+            "Deal Power damage.",
+            "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count. Inflict 1 Slow and +1 Slow Count.",
+            "After Use: Reduce Kyuubi Chakra Count by 2."
+          ]
+        }
+      ],
+      "createdCards": [
+        {
+          "slot": "created-1",
+          "name": "Shadow Clone: Strike",
+          "cost": "1 Energy",
+          "power": "7-9",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power damage.",
+            "Exhaust. Ethereal."
+          ]
+        },
+        {
+          "slot": "created-2",
+          "name": "Gamabunta: Toad Smash",
+          "cost": "0 Energy",
+          "power": "8-12",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt",
+            "Splash"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Follow-Up.",
+            "Deal Power damage.",
+            "On Hit: Inflict 1 Slow.",
+            "Exhaust. Ethereal."
+          ]
+        }
+      ]
+    },
+    {
+      "id": "rover-spectro",
+      "name": "Rover",
+      "version": "Spectro",
+      "origin": "Wuthering Waves",
+      "roles": [
+        "role-controller",
+        "role-support"
+      ],
+      "difficulty": "Low",
+      "gameplan": "Build Diminutive Sound with Strike/Aftertune, spend it on Resonating Slashes to stack Spectro Frazzle, and tax hands with Stagnate. Meter comes quickly, so lean on Echoing Orchestra for sustain.\n",
+      "art": "rover-spectro.webp",
+      "innates": [
+        {
+          "name": "World in a Grain of Sand",
+          "text": "Each time any character inflicts Spectro Frazzle, inflict 1 additional Spectro Frazzle."
+        }
+      ],
+      "statusEffects": [
+        {
+          "name": "Diminutive Sound",
+          "lines": [
+            "Type: Unique.",
+            "Max Value: 2.",
+            "Effect: Used to enhance some cards."
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "slot": "1",
+          "name": "Strike",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Slash"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. Gain 1 Diminutive Sound. Gain 1 Ultimate Meter."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Diminutive Sound",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_ultimate",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ]
+        },
+        {
+          "slot": "2",
+          "name": "Defend",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Defense",
+            "Physical",
+            "Melee"
+          ],
+          "target": "1 Ally",
+          "speed": "Normal",
+          "effect": [
+            "Gain Power Shield. Gain 1 Ultimate Meter.",
+            "Evade."
+          ]
+        },
+        {
+          "slot": "3",
+          "name": "Resonating Slashes",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Slash",
+            "Multihit",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power / 2 damage 2 times. On Hit: Spend 1 Diminutive Sound to inflict 2 Spectro Frazzle."
+          ]
+        },
+        {
+          "slot": "4",
+          "name": "Aftertune",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. Gain 1 Diminutive Sound."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Diminutive Sound",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ]
+        },
+        {
+          "slot": "5",
+          "name": "Instant",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special",
+            "Magical",
+            "Ranged",
+            "AoE",
+            "Debuff"
+          ],
+          "target": "All Enemies",
+          "speed": "Normal",
+          "effect": [
+            "Inflict 2 Stagnate."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Stagnate",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            }
+          ]
+        },
+        {
+          "slot": "ultimate",
+          "name": "Echoing Orchestra",
+          "cost": "20 Ultimate Meter",
+          "power": "15-25",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Magical",
+            "Ranged",
+            "AoE",
+            "Blunt",
+            "Recovery",
+            "Debuff"
+          ],
+          "target": "All Enemies",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. Heal for Power / 2 HP. On Hit: Inflict 6 Spectro Frazzle."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "heal",
+              "amount": {
+                "kind": "power_div",
+                "divisor": 2
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Spectro Frazzle",
+              "amount": {
+                "kind": "flat",
+                "value": 6
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "saitama",
+      "name": "Saitama",
+      "version": "Base",
+      "origin": "One Punch Man",
+      "roles": [
+        "role-striker",
+        "role-bruiser"
+      ],
+      "difficulty": "Medium",
+      "gameplan": "Spend early turns on Bored cards to build State, pivot into Normal Punches to push toward Serious, and use your fast finishers plus stuns to swing rounds once the power spikes come online.\n",
+      "art": "saitama-hero-for-fun.png",
+      "innates": [
+        {
+          "name": "Limitless Potential",
+          "text": "This character starts with State at 0 and State: Bored. When State reaches 10, remove State: Bored and gain State: Normal. When State reaches 30, remove State: Normal and gain State: Serious."
+        }
+      ],
+      "statusEffects": [
+        {
+          "name": "State",
+          "lines": [
+            "Type: Unique.",
+            "Max Value: 30.",
+            "Effect: Used to unlock Saitama's state thresholds and scale state bonuses."
+          ]
+        },
+        {
+          "name": "State: Bored",
+          "lines": [
+            "Type: Unique.",
+            "Max Value: 1.",
+            "Turn Start: Draw 1 additional card."
+          ]
+        },
+        {
+          "name": "State: Normal",
+          "lines": [
+            "Type: Unique.",
+            "Max Value: 1.",
+            "Turn Start: Gain X Strength. Gain X Dexterity. Gain X Haste. X equals State Value / 10 (round down)."
+          ]
+        },
+        {
+          "name": "State: Serious",
+          "lines": [
+            "Type: Unique.",
+            "Max Value: 1.",
+            "Turn Start: Gain X Strength. Gain X Dexterity. Gain X Fortified. Gain X Haste. X equals State Value / 10 (round down)."
+          ]
+        }
+      ],
+      "cards": [
+        {
+          "slot": "1-1",
+          "name": "Bored",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Basic",
+            "Special"
+          ],
+          "target": "Self",
+          "speed": "Slow",
+          "effect": [
+            "Gain 1 State.",
+            "If this character has State: Normal or State: Serious, this card becomes Strike."
+          ]
+        },
+        {
+          "slot": "1-2",
+          "name": "Strike",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. Gain 1 State."
+          ]
+        },
+        {
+          "slot": "2-1",
+          "name": "Bored",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Basic",
+            "Special"
+          ],
+          "target": "Self",
+          "speed": "Slow",
+          "effect": [
+            "Gain 1 State.",
+            "If this character has State: Normal or State: Serious, this card becomes Defend."
+          ]
+        },
+        {
+          "slot": "2-2",
+          "name": "Defend",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Basic",
+            "Defense",
+            "Physical",
+            "Melee"
+          ],
+          "target": "1 Ally",
+          "speed": "Normal",
+          "effect": [
+            "Gain Power Shield. Gain 1 State.",
+            "Evade."
+          ]
+        },
+        {
+          "slot": "3-1",
+          "name": "Bored",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special"
+          ],
+          "target": "Self",
+          "speed": "Slow",
+          "effect": [
+            "Gain 1 State.",
+            "If this character has State: Normal or State: Serious, this card becomes Normal Punch."
+          ]
+        },
+        {
+          "slot": "3-2",
+          "name": "Normal Punch",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. Gain 1 State.",
+            "If this character has State: Serious, this card becomes Serious Punch."
+          ]
+        },
+        {
+          "slot": "3-3",
+          "name": "Serious Punch",
+          "cost": "3 Energy",
+          "power": "24-36",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "AoE",
+            "Blunt"
+          ],
+          "target": "All Enemies",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power damage. Gain 1 State."
+          ]
+        },
+        {
+          "slot": "4-1",
+          "name": "Bored",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special"
+          ],
+          "target": "Self",
+          "speed": "Slow",
+          "effect": [
+            "Gain 1 State.",
+            "If this character has State: Normal or State: Serious, this card becomes Normal Punch."
+          ]
+        },
+        {
+          "slot": "4-2",
+          "name": "Normal Punch",
+          "cost": "1 Energy",
+          "power": "8-12",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power damage. Gain 1 State.",
+            "If this character has State: Serious, this card becomes Serious Headbutt."
+          ]
+        },
+        {
+          "slot": "4-3",
+          "name": "Serious Headbutt",
+          "cost": "3 Energy",
+          "power": "24-36",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt",
+            "Debuff"
+          ],
+          "target": "1 Enemy",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power damage. Inflict 1 Stun. Gain 1 State."
+          ]
+        },
+        {
+          "slot": "5-1",
+          "name": "Bored",
+          "cost": "1 Energy",
+          "power": "-",
+          "types": [
+            "Technique",
+            "Special"
+          ],
+          "target": "Self",
+          "speed": "Slow",
+          "effect": [
+            "Gain 1 State.",
+            "If this character has State: Normal or State: Serious, this card becomes Consecutive Normal Punch."
+          ]
+        },
+        {
+          "slot": "5-2",
+          "name": "Consecutive Normal Punch",
+          "cost": "X Energy",
+          "power": "4-6 + 4-6 times X",
+          "types": [
+            "Technique",
+            "Attack",
+            "Physical",
+            "Melee",
+            "Blunt",
+            "Multihit"
+          ],
+          "target": "1 Enemy",
+          "speed": "Normal",
+          "effect": [
+            "Deal Power / (X + 1) damage (X + 1) times. Gain X State.",
+            "If this character has State: Serious, this card becomes Serious Consecutive Side Hops."
+          ]
+        },
+        {
+          "slot": "5-3",
+          "name": "Serious Consecutive Side Hops",
+          "cost": "3 Energy",
+          "power": "24-36",
+          "types": [
+            "Technique",
+            "Attack",
+            "Defense",
+            "Physical",
+            "Melee",
+            "AoE",
+            "Blunt"
+          ],
+          "target": "All Enemies",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power / 2 damage. Gain Power / 2 Shield. Gain 1 State.",
+            "Evade."
+          ]
+        },
+        {
+          "slot": "ultimate-1",
+          "name": "Base",
+          "cost": "10 Ultimate Meter",
+          "power": "-",
+          "types": [
+            "Ultimate",
+            "Special",
+            "Physical"
+          ],
+          "target": "Self",
+          "speed": "Normal",
+          "effect": [
+            "Set State Value to 10."
+          ]
+        },
+        {
+          "slot": "ultimate-2",
+          "name": "Killer Move: Serious Series",
+          "cost": "60 Ultimate Meter",
+          "power": "-",
+          "types": [
+            "Ultimate",
+            "Special",
+            "Physical"
+          ],
+          "target": "Self",
+          "speed": "Fast",
+          "effect": [
+            "Set State Value to 30."
+          ]
+        },
+        {
+          "slot": "ultimate-3",
+          "name": "Serious Table Flip",
+          "cost": "100 Ultimate Meter",
+          "power": "120-180",
+          "types": [
+            "Ultimate",
+            "Attack",
+            "Physical",
+            "Melee",
+            "AoE",
+            "Blunt",
+            "Debuff"
+          ],
+          "target": "All Enemies",
+          "speed": "Fast",
+          "effect": [
+            "Deal Power damage. Inflict 1 Stun."
+          ]
+        }
+      ]
+    }
+  ]
+}

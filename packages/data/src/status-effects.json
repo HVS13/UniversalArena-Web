@@ -1,0 +1,265 @@
+{
+  "statusEffects": [
+    {
+      "id": "status-bleed",
+      "name": "Bleed",
+      "type": "Negative",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Allies' Card Played",
+          "text": "Take Potency damage. Then increase Potency by Energy spent."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-burn",
+      "name": "Burn",
+      "type": "Negative",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Allies' Card Played",
+          "text": "Take Potency damage. Then reduce Count by Energy spent."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Take Potency damage. Then reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-frail",
+      "name": "Frail",
+      "type": "Negative",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Reduce Defense Power by 10% times Potency."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-poison",
+      "name": "Poison",
+      "type": "Negative",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Allies' Card Played",
+          "text": "Increase Potency by Energy spent."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Take Potency damage. Then reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-slow",
+      "name": "Slow",
+      "type": "Negative",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Reduce the card's Speed by Potency steps (Fast -> Normal -> Slow), capped at 2 steps."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-spectro-frazzle",
+      "name": "Spectro Frazzle",
+      "type": "Negative",
+      "stackMax": 10,
+      "rules": [
+        {
+          "timing": "Turn End",
+          "text": "Inflict damage equal to 5 times Stack. Then reduce Stack by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-strain",
+      "name": "Strain",
+      "type": "Negative",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Increase the Energy cost of this character's cards by Potency."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-stagnate",
+      "name": "Stagnate",
+      "type": "Negative",
+      "valueMax": 10,
+      "rules": [
+        {
+          "timing": "Instant",
+          "text": "Increase the Energy cost of a random card in hand by 1 until that card is used. Repeat Value times. Expires."
+        }
+      ]
+    },
+    {
+      "id": "status-stun",
+      "name": "Stun",
+      "type": "Negative",
+      "stackMax": 1,
+      "rules": [
+        {
+          "timing": "Turn Start",
+          "text": "Skip the turn."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Expires."
+        }
+      ]
+    },
+    {
+      "id": "status-weak",
+      "name": "Weak",
+      "type": "Negative",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Reduce Attack Power by 10% times Potency."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-vulnerable",
+      "name": "Vulnerable",
+      "type": "Negative",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Increase damage taken by 10% times Potency."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-dexterity",
+      "name": "Dexterity",
+      "type": "Positive",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Increase Defense Power by 10% times Potency."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-focus",
+      "name": "Focus",
+      "type": "Positive",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Reduce the Energy cost of this character's cards by Potency (minimum 0)."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-fortified",
+      "name": "Fortified",
+      "type": "Positive",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Reduce damage taken by 10% times Potency."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-haste",
+      "name": "Haste",
+      "type": "Positive",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Increase the card's Speed by Potency steps (Slow -> Normal -> Fast), capped at 2 steps."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    },
+    {
+      "id": "status-strength",
+      "name": "Strength",
+      "type": "Positive",
+      "potencyMax": 999,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Increase Attack Power by 10% times Potency."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by Halve."
+        }
+      ]
+    }
+  ]
+}

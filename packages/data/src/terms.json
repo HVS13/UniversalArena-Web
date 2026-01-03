@@ -1,0 +1,256 @@
+{
+  "terms": [
+    {
+      "section": "Resources",
+      "id": "term-energy",
+      "name": "Energy",
+      "definition": "The resource used to play cards. By default, at Turn Start each player sets Energy to 5; effects can modify this and there is no Energy cap."
+    },
+    {
+      "section": "Resources",
+      "id": "term-ultimate-meter",
+      "name": "Ultimate Meter",
+      "definition": "The shared team resource that powers the strongest abilities; any character can spend it. Your team gains Ultimate Meter when you play cards. Design target: in a standard 3v3 match, a normal team gains about 5 Ultimate Meter per turn on average; some characters gain faster or slower."
+    },
+    {
+      "section": "Resources",
+      "id": "term-spend",
+      "name": "Spend",
+      "definition": "When an effect says to Spend X (Energy, Ammo, a status value, etc.), you must reduce that resource by X to resolve that part of the effect. If you cannot spend the full amount, that part of the effect does not happen. Optional Spend must say \"may.\""
+    },
+    {
+      "section": "Resources",
+      "id": "term-ultimate-card",
+      "name": "Ultimate Card",
+      "definition": "A card that starts outside the draw pile and is always available to play. It follows normal card rules and counts as an Ultimate type for effects."
+    },
+    {
+      "section": "Resources",
+      "id": "term-ammo",
+      "name": "Ammo",
+      "definition": "A per-weapon resource tracked separately for each weapon (example: Handgun Ammo, Shotgun Ammo). Cards may require or spend Ammo; if you cannot spend the required amount, that effect does not activate. \"Full\" means the amount granted by the effect or innate that set the Ammo. Switching weapons does not change each weapon's stored Ammo unless stated."
+    },
+    {
+      "section": "Resources",
+      "id": "term-reload",
+      "name": "Reload",
+      "definition": "Lose all current Ammo for the currently equipped weapon, then set that weapon's Ammo to its full value as defined by its source."
+    },
+    {
+      "section": "Turn Structure",
+      "id": "term-initiative",
+      "name": "Initiative",
+      "definition": "Determines who takes the first action at Combat Start each turn."
+    },
+    {
+      "section": "Rules",
+      "id": "term-rule-priority",
+      "name": "Rule Priority",
+      "definition": "If a card or character effect contradicts the core rules, apply the effect as written."
+    },
+    {
+      "section": "Rules",
+      "id": "term-on-gain",
+      "name": "On Gain",
+      "definition": "A status effect timing label that resolves immediately when the status is gained, even mid-turn. See FAQ: faq.md#faq-on-gain."
+    },
+    {
+      "section": "Card Flow",
+      "id": "term-discard",
+      "name": "Discard",
+      "definition": "The act of moving a card from your hand to the Discard Pile. Unplayed cards are typically discarded at the end of each turn. Some card effects also cause you to discard cards during your turn."
+    },
+    {
+      "section": "Card Flow",
+      "id": "term-draw",
+      "name": "Draw",
+      "definition": "The act of taking cards from your Draw Pile and adding them to your hand. By default, at Turn Start you draw until you reach a hand size of 5, modified by draw effects (if any)."
+    },
+    {
+      "section": "Card Flow",
+      "id": "term-played",
+      "name": "Played",
+      "definition": "A card is played when it is placed in a legal zone after paying its cost and selecting legal targets."
+    },
+    {
+      "section": "Card Flow",
+      "id": "term-cannot-play-cards",
+      "name": "Cannot Play Cards",
+      "definition": "If an effect says a player cannot play cards, they cannot add cards to any zone until the restriction ends; they may still pass priority and resolve cards already played. See FAQ: faq.md#faq-cannot-play-cards."
+    },
+    {
+      "section": "Card Flow",
+      "id": "term-used",
+      "name": "Used",
+      "definition": "A card is used when its effects apply. Unless a timing is explicitly stated, a card's text is On Use."
+    },
+    {
+      "section": "Card Flow",
+      "id": "term-becomes",
+      "name": "Becomes",
+      "definition": "If a card becomes another card due to a condition, treat it as that other card in any zone (deck, hand, play) as long as the condition is true. This replacement is automatic, not optional."
+    },
+    {
+      "section": "Card Flow",
+      "id": "term-cancelled",
+      "name": "Cancelled",
+      "definition": "A cancelled card skips its effects from Before Use onward (Before Use, On Use, On Hit, After Use). Always still applies."
+    },
+    {
+      "section": "Card Flow",
+      "id": "term-negated",
+      "name": "Negated",
+      "definition": "A negated card skips all effects, including Always."
+    },
+    {
+      "section": "Card Categories",
+      "id": "term-basic-card",
+      "name": "Basic Card",
+      "definition": "A card tagged Basic. Each character has two Basic cards in their starting five."
+    },
+    {
+      "section": "Card Categories",
+      "id": "term-technique-card",
+      "name": "Technique Card",
+      "definition": "A non-basic, non-ultimate card from a character's kit. Each character has three Technique cards in their starting five."
+    },
+    {
+      "section": "Card Categories",
+      "id": "term-created-card",
+      "name": "Created Card",
+      "definition": "A card generated by an effect that did not start in a character's initial five cards. If the effect does not specify where it goes, add it to the discard pile."
+    },
+    {
+      "section": "Characters",
+      "id": "term-role",
+      "name": "Role",
+      "definition": "A character archetype tag used to communicate playstyle. See roles: roles.md."
+    },
+    {
+      "section": "Combat",
+      "id": "term-combat-round",
+      "name": "Combat Round",
+      "definition": "A sequence that begins when the initiative player plays a card and ends when all zones are empty."
+    },
+    {
+      "section": "Combat",
+      "id": "term-active-zone",
+      "name": "Active Zone",
+      "definition": "The current zone being played in; cards in it are used during a Combat Round."
+    },
+    {
+      "section": "Combat",
+      "id": "term-priority",
+      "name": "Priority",
+      "definition": "The right to act next during Combat. Priority passes after each play or pass."
+    },
+    {
+      "section": "Combat",
+      "id": "term-hit",
+      "name": "Hit",
+      "definition": "An Attack that is used is a hit unless a rule or effect prevents it (example: Evade). See FAQ: faq.md#faq-evade-shield."
+    },
+    {
+      "section": "Combat",
+      "id": "term-damage-types",
+      "name": "Damage Types & Attack Tags",
+      "definition": "Cards can list multiple Damage Types (Physical, Magical, Mental, Electric) and Attack Tags (Slash, Pierce, Blunt, Multihit). A card counts as all listed types and tags for matching. If a single modifier lists multiple types or tags, it applies once when any match; separate modifiers stack."
+    },
+    {
+      "section": "Combat",
+      "id": "term-base-power",
+      "name": "Base Power",
+      "definition": "Design baseline for setting a card's Power. Default target: Energy cost x 10 or Ultimate Meter cost x 1.5, rounded down. Adjust upward for hard requirements or downward for extra utility as needed."
+    },
+    {
+      "section": "Combat",
+      "id": "term-power",
+      "name": "Power",
+      "definition": "The min-max value shown on a card. It is usually +/- floor(Base Power x 0.20) for Melee and +/- floor(Base Power x 0.25) for Ranged."
+    },
+    {
+      "section": "Combat",
+      "id": "term-power-roll",
+      "name": "Power Roll",
+      "definition": "The rolled value from a card's Power used for clash comparisons, damage dealt, Shield gained, and HP recovered. Roll Power each time a card is used."
+    },
+    {
+      "section": "Combat",
+      "id": "term-reuse",
+      "name": "Reuse",
+      "definition": "If a card is instructed to Reuse, do not discard it after its clash; keep it in the current zone so it can be paired again during the same zone resolution."
+    },
+    {
+      "section": "Defense",
+      "id": "term-shield",
+      "name": "Shield",
+      "definition": "Temporary protection that soaks damage before HP. At Turn End, remove all Shield."
+    },
+    {
+      "section": "Targeting",
+      "id": "term-ally",
+      "name": "Ally",
+      "definition": "A character on the same team, including self unless an effect says another ally."
+    },
+    {
+      "section": "Targeting",
+      "id": "term-allies",
+      "name": "Allies",
+      "definition": "All characters on the same team, including self."
+    },
+    {
+      "section": "Targeting",
+      "id": "term-enemy",
+      "name": "Enemy",
+      "definition": "A character on the opposite team."
+    },
+    {
+      "section": "Targeting",
+      "id": "term-enemies",
+      "name": "Enemies",
+      "definition": "All characters on the opposite team."
+    },
+    {
+      "section": "Targeting",
+      "id": "term-self",
+      "name": "Self",
+      "definition": "The character that uses the card."
+    },
+    {
+      "section": "Targeting",
+      "id": "term-adjacent",
+      "name": "Adjacent",
+      "definition": "Characters are arranged left to right in a single row. Adjacent means the immediate left or right neighbor of the target."
+    },
+    {
+      "section": "Area",
+      "id": "term-aoe",
+      "name": "AoE",
+      "definition": "Area of Effect. All characters in the targeted area take the effect."
+    },
+    {
+      "section": "Area",
+      "id": "term-bounce",
+      "name": "Bounce",
+      "definition": "A random adjacent character to the main target will also take the effect."
+    },
+    {
+      "section": "Area",
+      "id": "term-splash",
+      "name": "Splash",
+      "definition": "An adjacent character to the main target will also take the effect."
+    },
+    {
+      "section": "Math",
+      "id": "term-halve",
+      "name": "Halve",
+      "definition": "Set the current value to half its current value, rounding down (floor)."
+    },
+    {
+      "section": "Math",
+      "id": "term-rounding",
+      "name": "Rounding",
+      "definition": "Any time a calculation results in a decimal, round down (floor)."
+    }
+  ]
+}

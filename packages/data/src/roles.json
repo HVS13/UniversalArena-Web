@@ -1,0 +1,54 @@
+{
+  "roles": [
+    {
+      "id": "role-vanguard",
+      "name": "Vanguard",
+      "description": "Frontline anchor that absorbs pressure and holds space."
+    },
+    {
+      "id": "role-defender",
+      "name": "Defender",
+      "description": "Protects allies through mitigation, peel, or bodyguard play."
+    },
+    {
+      "id": "role-bruiser",
+      "name": "Bruiser",
+      "description": "Durable brawler that trades well in extended fights."
+    },
+    {
+      "id": "role-striker",
+      "name": "Striker",
+      "description": "Primary damage dealer focused on securing takedowns."
+    },
+    {
+      "id": "role-assassin",
+      "name": "Assassin",
+      "description": "Burst-focused eliminator that punishes mistakes and low HP."
+    },
+    {
+      "id": "role-skirmisher",
+      "name": "Skirmisher",
+      "description": "Mobile fighter that trades, disengages, and re-engages."
+    },
+    {
+      "id": "role-artillery",
+      "name": "Artillery",
+      "description": "Long-range pressure and zone control from the backline."
+    },
+    {
+      "id": "role-controller",
+      "name": "Controller",
+      "description": "Tempo control through crowd control, debuffs, and denial."
+    },
+    {
+      "id": "role-support",
+      "name": "Support",
+      "description": "Enables allies with healing, buffs, and utility."
+    },
+    {
+      "id": "role-summoner",
+      "name": "Summoner",
+      "description": "Leans on minions, constructs, or companions to apply pressure."
+    }
+  ]
+}

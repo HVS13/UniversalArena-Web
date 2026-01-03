@@ -1,0 +1,136 @@
+{
+  "cardTypes": [
+    {
+      "id": "card-type-basic",
+      "name": "Basic",
+      "category": "Action",
+      "description": "A card tagged as Basic for rules and synergies that reference Basic cards."
+    },
+    {
+      "id": "card-type-technique",
+      "name": "Technique",
+      "category": "Action",
+      "description": "A non-basic, non-ultimate card from a character's kit (the three non-basic cards in the starting five)."
+    },
+    {
+      "id": "card-type-ultimate",
+      "name": "Ultimate",
+      "category": "Action",
+      "description": "A card that costs Ultimate Meter to play and can be referenced by rules that care about Ultimate cards."
+    },
+    {
+      "id": "card-type-attack",
+      "name": "Attack",
+      "category": "Action",
+      "description": "A card that deals damage using Power or directly contributes to dealing damage."
+    },
+    {
+      "id": "card-type-defense",
+      "name": "Defense",
+      "category": "Action",
+      "description": "A card focused on protection or mitigation (example: granting Power Shield)."
+    },
+    {
+      "id": "card-type-special",
+      "name": "Special",
+      "category": "Action",
+      "description": "A card other than an attack or defense (example: granting a buff or debuff). Special cards have Power: - and never roll Power unless stated otherwise."
+    },
+    {
+      "id": "card-type-physical",
+      "name": "Physical",
+      "category": "Damage Type",
+      "description": "Indicates the card's damage is physical (and can be referenced by rules that care about physical damage)."
+    },
+    {
+      "id": "card-type-magical",
+      "name": "Magical",
+      "category": "Damage Type",
+      "description": "Indicates the card's damage is magical (and can be referenced by rules that care about magical damage)."
+    },
+    {
+      "id": "card-type-mental",
+      "name": "Mental",
+      "category": "Damage Type",
+      "description": "Indicates the card's damage is mental (and can be referenced by rules that care about mental damage)."
+    },
+    {
+      "id": "card-type-electric",
+      "name": "Electric",
+      "category": "Damage Type",
+      "description": "Indicates the card's damage is electric (and can be referenced by rules that care about electric damage)."
+    },
+    {
+      "id": "card-type-melee",
+      "name": "Melee",
+      "category": "Range",
+      "description": "Indicates the card is used at melee range (and can be referenced by rules that care about melee range)."
+    },
+    {
+      "id": "card-type-ranged",
+      "name": "Ranged",
+      "category": "Range",
+      "description": "Indicates the card is used at ranged distance (and can be referenced by rules that care about ranged distance)."
+    },
+    {
+      "id": "card-type-aoe",
+      "name": "AoE",
+      "category": "Area",
+      "description": "Area of Effect. A card that affects all characters in the targeted area (example: all enemies)."
+    },
+    {
+      "id": "card-type-splash",
+      "name": "Splash",
+      "category": "Area",
+      "description": "A card that affects the main target and its adjacent neighbors."
+    },
+    {
+      "id": "card-type-slash",
+      "name": "Slash",
+      "category": "Attack Tag",
+      "description": "An attack subtype used for rules and synergies that care about slash attacks."
+    },
+    {
+      "id": "card-type-pierce",
+      "name": "Pierce",
+      "category": "Attack Tag",
+      "description": "An attack subtype used for rules and synergies that care about pierce attacks."
+    },
+    {
+      "id": "card-type-blunt",
+      "name": "Blunt",
+      "category": "Attack Tag",
+      "description": "An attack subtype used for rules and synergies that care about blunt attacks."
+    },
+    {
+      "id": "card-type-multihit",
+      "name": "Multihit",
+      "category": "Attack Tag",
+      "description": "An attack that hits multiple times. The multihit count equals the number of hits the card would deal on this use (example: \"deal damage 3 times\" means count 3; \"deal damage X times\" means count X after X is set). If it loses a clash with another Attack, reduce the multihit count by 1 and Reuse it instead of discarding it. If it reaches 0, treat it as a normal Attack card. If a card references remaining multihit count, use the current count after any reductions."
+    },
+    {
+      "id": "card-type-transformation",
+      "name": "Transformation",
+      "category": "Effect",
+      "description": "A card that changes the character's form or mode, usually by applying or consuming a transformation status effect."
+    },
+    {
+      "id": "card-type-recovery",
+      "name": "Recovery",
+      "category": "Effect",
+      "description": "A card that restores resources (example: healing HP)."
+    },
+    {
+      "id": "card-type-buff",
+      "name": "Buff",
+      "category": "Effect",
+      "description": "A card that applies positive effects, status effects, or other benefits to allies."
+    },
+    {
+      "id": "card-type-debuff",
+      "name": "Debuff",
+      "category": "Effect",
+      "description": "A card that applies negative effects, status effects, or other hindrances to enemies."
+    }
+  ]
+}

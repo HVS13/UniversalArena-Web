@@ -1,0 +1,11 @@
+{
+  "name": "universal-arena-web",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@9.12.3",
+  "scripts": {
+    "dev": "pnpm --filter @ua/client dev",
+    "build": "pnpm --filter @ua/client build",
+    "preview": "pnpm --filter @ua/client preview"
+  }
+}

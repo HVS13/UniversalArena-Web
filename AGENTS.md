@@ -6,6 +6,8 @@ Project rules
 - Skills manifest lives in `SKILLS.md`.
 - Keep source-of-truth data in the docs repo (`C:\Git\UniversalArena\docs\data`), then export into `packages/data`.
 - Do not hand-edit `packages/data/src/characters.json`; re-run the exporter instead.
+- If core or UI changes affect rules/keywords/status effects/terms, update the docs repo reference pages and `docs/data`, then re-export.
+- Keyword data includes an optional Core/Advanced tier; status entries in docs include Mode and explicit Turn End lines.
 - Client UI lives in `apps/client/src/`; core rules live in `packages/core/src/`.
 - Character art assets live in `apps/client/public/assets/characters`.
 - Prefer deterministic, testable rules logic in `packages/core` over UI-side effects.

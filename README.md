@@ -32,6 +32,12 @@ node C:\Git\UniversalArena\docs\scripts\export-game-data.mjs --out C:\Git\Univer
 
 Do not edit `packages/data/src/characters.json` by hand.
 
+## Cross-repo workflow
+
+1. Update rules/reference content and `docs/data` in `C:\Git\UniversalArena`.
+2. Export to this repo after any data change.
+3. If core logic or UI changes affect rules, mirror the change in the docs repo and re-export.
+
 ## Run locally
 
 ```powershell
@@ -53,6 +59,7 @@ cmd /c pnpm --filter @ua/client build
 - Status/keyword handling covers timing windows, caps/expiry, and cost/speed/power/damage modifiers plus spend/draw/creation hooks, but not all unique triggers.
 - Hand/deck/discard/exhaust are implemented, but there is no deck reshuffle or deck/discard inspection UI yet.
 - Multiplayer is not implemented yet.
+- Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines in docs (not yet surfaced in UI).
 
 ## What's next
 

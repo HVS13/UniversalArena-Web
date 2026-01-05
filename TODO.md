@@ -7,7 +7,7 @@
 
 ## UI/UX
 - Add zone visualization and stack/clash animations.
-- Add tooltips for keywords/status effects from data.
+- Add tooltips for keywords/status effects from data (including keyword tier and status Mode/Turn End lines).
 - Add discard/deck inspection and clearer card lifecycle indicators.
 
 ## Multiplayer

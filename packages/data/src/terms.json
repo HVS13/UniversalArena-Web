@@ -166,7 +166,7 @@
       "section": "Combat",
       "id": "term-priority",
       "name": "Priority",
-      "definition": "The right to act next during Combat. Priority passes after each play or pass."
+      "definition": "The right to act next during Combat or the Movement Round. Priority passes after each play, swap, or pass."
     },
     {
       "section": "Combat",

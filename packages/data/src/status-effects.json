@@ -92,7 +92,7 @@
       "rules": [
         {
           "timing": "Effect",
-          "text": "You cannot be moved or swapped by any effect, including Push, Pull, Swap, and the Movement Round."
+          "text": "You cannot be moved or swapped by any effect, including Push, Pull, Swap, and the Movement Round. If a move or swap would include you, that movement fails; costs are still paid and other effects still resolve."
         },
         {
           "timing": "Turn End",
@@ -260,7 +260,7 @@
       "id": "status-wound",
       "name": "Wound",
       "type": "Negative",
-      "stackMax": 10,
+      "stackMax": 999,
       "rules": [
         {
           "timing": "Effect",
@@ -276,7 +276,7 @@
       "id": "status-wither",
       "name": "Wither",
       "type": "Negative",
-      "stackMax": 10,
+      "stackMax": 999,
       "rules": [
         {
           "timing": "Effect",
@@ -409,7 +409,7 @@
       "id": "status-regen",
       "name": "Regen",
       "type": "Positive",
-      "potencyMax": 10,
+      "potencyMax": 999,
       "countMax": 99,
       "rules": [
         {
@@ -422,7 +422,7 @@
       "id": "status-renewal",
       "name": "Renewal",
       "type": "Positive",
-      "potencyMax": 10,
+      "potencyMax": 999,
       "countMax": 99,
       "rules": [
         {

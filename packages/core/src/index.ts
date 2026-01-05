@@ -872,6 +872,11 @@ const buildStartingZones = (
   const player = state.players[playerId];
   const character = getCharacterById(characters, player.characterId);
   if (!character) return;
+  const transformTargets = new Set(
+    character.cards.flatMap((card) =>
+      card.transforms?.map((transform) => transform.cardSlot) ?? []
+    )
+  );
   player.deck = [];
   player.hand = [];
   player.discard = [];
@@ -880,6 +885,7 @@ const buildStartingZones = (
 
   character.cards.forEach((card) => {
     if (isUltimateCard(card)) return;
+    if (transformTargets.has(card.slot)) return;
     const instance = createCardInstance(state, card.slot);
     const lifecycle = getLifecycleKeywords(card.effect, card.effects);
     if (lifecycle.innate) {
@@ -3067,16 +3073,19 @@ const resolveCardTransforms = (
   const sourceCharacter = getCharacterById(characters, source.characterId);
   const targetCharacter = getCharacterById(characters, target.characterId);
   const snapshot = snapshotStatuses(state);
+  let resolved: Card | null = null;
 
   for (const transform of card.transforms) {
     if (!isConditionMet(transform.condition, snapshot, sourceId, targetId, sourceCharacter, targetCharacter)) {
       continue;
     }
     const replacement = findCard(characters, source.characterId, transform.cardSlot);
-    if (replacement) return replacement;
+    if (replacement) {
+      resolved = replacement;
+    }
   }
 
-  return card;
+  return resolved ?? card;
 };
 
 const zonesAreEmpty = (state: MatchState) =>

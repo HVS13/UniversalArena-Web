@@ -8,3 +8,6 @@ Canonical skill index for Codex. Update this list whenever you add, rename, or r
 | ua-content-authoring | Create or update MkDocs content and navigation for rules/reference pages. | skills/ua-content-authoring/SKILL.md |
 | ua-game-client | Modify the web game client or core rules in this repo. | skills/ua-game-client/SKILL.md |
 | ua-relay-server | Maintain the relay server in `server/`. | skills/ua-relay-server/SKILL.md |
+
+## Notes
+- Use `ua-game-client` for client/core changes; log behavioral fixes in `CODEX_HISTORY.md`.

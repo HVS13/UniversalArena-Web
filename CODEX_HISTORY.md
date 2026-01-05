@@ -41,3 +41,6 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-05: Hardened the harness to pull required cards from the deck when not in hand.
 - 2026-01-05: Removed text parsing for restriction enforcement; only structured `restrictions` are honored.
 - 2026-01-05: Updated README/TODO/AGENTS/skills notes to reflect structured-only restrictions and remaining text parsing scope.
+- 2026-01-05: Excluded transform-target cards from deck/hand population so alternates only appear via transforms, tightened UI affordability gating for ultimates, and added a front-page last-updated stamp with doc updates.
+- 2026-01-05: Removed the in-client last-updated stamp and updated the docs front-page timestamp.
+- 2026-01-05: Transform resolution now uses the last matching transform in the list (priority by ordering).

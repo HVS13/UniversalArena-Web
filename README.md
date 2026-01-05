@@ -61,6 +61,12 @@ cmd /c pnpm --filter @ua/client build
 - Multiplayer is not implemented yet.
 - Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines in docs (not yet surfaced in UI).
 
+## Gameplay notes
+
+- Hand display is always the active player's hand (hot-seat flow).
+- Transformable cards resolve to alternates at play time; transform targets are excluded from deck/hand population.
+- Ultimates require the full base cost; variable X cannot bypass Ultimate meter requirements.
+
 ## What's next
 
 See `TODO.md` for the planned roadmap.

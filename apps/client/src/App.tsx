@@ -351,22 +351,21 @@ const App = () => {
       Boolean(isAfterUse) && matchState.afterUseWindow?.lastUsedBy === playerId;
     const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
     const max = cost.variable ? getMaxX(player, cost, cardInstance, followUpAdjustment) : 0;
+    const baseAffordable = canAffordWithAdjustments(
+      player,
+      cost,
+      0,
+      cardInstance,
+      followUpAdjustment
+    );
     const choices = getCardChoices(card);
     const needsModal =
       zones.length > 1 || cost.variable || choices.length > 0 || Boolean(xRange);
-    if (
-      cost.variable &&
-      max <= 0 &&
-      !canAffordWithAdjustments(player, cost, 0, cardInstance, followUpAdjustment)
-    ) {
+    if (cost.variable && !baseAffordable) {
       setMessage("Insufficient resources.");
       return;
     }
-    if (
-      !cost.variable &&
-      xRange &&
-      !canAffordWithAdjustments(player, cost, 0, cardInstance, followUpAdjustment)
-    ) {
+    if (!cost.variable && xRange && !baseAffordable) {
       setMessage("Insufficient resources.");
       return;
     }
@@ -688,11 +687,10 @@ const App = () => {
                   0,
                   instance
                 );
-                const maxX = isVariable ? getMaxX(activePlayer, cost, instance) : 0;
                 const canAct =
                   matchState.activePlayerId === activePlayer.id ||
                   canReactAfterUse(matchState, activePlayer.id, card);
-                const disabled = !canAct || (!baseAffordable && maxX === 0);
+                const disabled = !canAct || !baseAffordable;
                 const adjustment =
                   getEnergyCostAdjustment(activePlayer) + (instance.costAdjustment ?? 0);
                 return (
@@ -736,11 +734,10 @@ const App = () => {
                     const cost = parseCost(card.cost);
                     const isVariable = Boolean(cost.variable);
                     const baseAffordable = canAffordWithAdjustments(activePlayer, cost, 0);
-                    const maxX = isVariable ? getMaxX(activePlayer, cost) : 0;
                     const canAct =
                       matchState.activePlayerId === activePlayer.id ||
                       canReactAfterUse(matchState, activePlayer.id, card);
-                    const disabled = !canAct || (!baseAffordable && maxX === 0);
+                    const disabled = !canAct || !baseAffordable;
                     return (
                       <button
                         key={card.slot}
@@ -805,11 +802,8 @@ const App = () => {
                   instance,
                   followUpAdjustment
                 );
-                const maxX = isVariable
-                  ? getMaxX(player, cost, instance, followUpAdjustment)
-                  : 0;
                 const canReact = canReactAfterUse(matchState, playerId, card);
-                const disabled = !canReact || (!baseAffordable && maxX === 0);
+                const disabled = !canReact || !baseAffordable;
                 const adjustment =
                   getEnergyCostAdjustment(player) +
                   (instance.costAdjustment ?? 0) +

@@ -24,3 +24,10 @@ Quality checks
 
 Response style
 - Tell it like it is; no sugar-coating. Be skeptical, practical, and direct.
+
+Historical context
+- Hand display shows the active player's hand (hot-seat flow); add UI labeling if this causes confusion.
+- Transform-target cards are excluded from deck/hand population; alternates only appear via transforms at play time.
+- UI disables cards unless base energy/ultimate costs are affordable (variable X no longer bypasses).
+- Update the docs front-page "Last updated" stamp when shipping user-visible changes.
+- Transform priority uses the last matching entry in a card's `transforms` list.

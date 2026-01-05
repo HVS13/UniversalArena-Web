@@ -513,6 +513,18 @@
             "You may spend X Stolen Blood (0-10). If you do, deal 6 times X bonus damage and inflict X Bleed.",
             "After Use: Set this character's The World: Time Stop Count to 0."
           ],
+          "restrictions": [
+            {
+              "kind": "require",
+              "subject": "self",
+              "mode": "all",
+              "statuses": [
+                {
+                  "name": "The World: Time Stop"
+                }
+              ]
+            }
+          ],
           "effects": [
             {
               "timing": "on_use",
@@ -1290,6 +1302,18 @@
             "Deal Power damage.",
             "You may spend up to 6 Reiatsu. If you do, deal 4 times Reiatsu spent bonus damage."
           ],
+          "restrictions": [
+            {
+              "kind": "require",
+              "subject": "self",
+              "mode": "all",
+              "statuses": [
+                {
+                  "name": "Bankai: Tensa Zangetsu"
+                }
+              ]
+            }
+          ],
           "effects": [
             {
               "timing": "on_use",
@@ -1409,6 +1433,10 @@
               "amount": {
                 "kind": "power"
               }
+            },
+            {
+              "timing": "on_use",
+              "type": "reload_equipped"
             }
           ]
         },
@@ -1431,6 +1459,28 @@
             "This card's Multihit Count starts at 3.",
             "Set X to this card's remaining Multihit Count (before resolving this card). Spend Handgun Ammo up to X. Spend as many as possible.",
             "Deal Power / X damage once per Ammo spent."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Handgun Ammo",
+              "amount": {
+                "kind": "x"
+              },
+              "allowPartial": true
+            },
+            {
+              "timing": "on_use",
+              "type": "deal_damage_per_spent",
+              "status": "Handgun Ammo",
+              "amount": {
+                "kind": "power_div",
+                "divisor": {
+                  "kind": "x"
+                }
+              }
+            }
           ]
         },
         {
@@ -1566,6 +1616,48 @@
             "Switch to Equip: Chicago Typewriter.",
             "If you choose the same weapon, Reload instead.",
             "Innate. Retain."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "choose",
+              "options": [
+                {
+                  "label": "Switch to Equip: Handgun.",
+                  "effects": [
+                    {
+                      "timing": "on_use",
+                      "type": "switch_equip",
+                      "status": "Equip: Handgun"
+                    }
+                  ]
+                },
+                {
+                  "label": "Switch to Equip: Riot Gun.",
+                  "effects": [
+                    {
+                      "timing": "on_use",
+                      "type": "switch_equip",
+                      "status": "Equip: Riot Gun"
+                    }
+                  ]
+                },
+                {
+                  "label": "Switch to Equip: Chicago Typewriter.",
+                  "effects": [
+                    {
+                      "timing": "on_use",
+                      "type": "switch_equip",
+                      "status": "Equip: Chicago Typewriter"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "timing": "on_use",
+              "type": "retain"
+            }
           ]
         },
         {
@@ -1864,6 +1956,19 @@
             "Can only be used if the target has 6 Stolen Information.",
             "Inflict 3 Death by Death Note. Then set the target's Stolen Information Value to 0."
           ],
+          "restrictions": [
+            {
+              "kind": "require",
+              "subject": "target",
+              "mode": "all",
+              "statuses": [
+                {
+                  "name": "Stolen Information",
+                  "min": 6
+                }
+              ]
+            }
+          ],
           "effects": [
             {
               "timing": "on_use",
@@ -1872,6 +1977,22 @@
               "amount": {
                 "kind": "flat",
                 "value": 3
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stolen Information",
+                "min": 6
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "set_status",
+              "status": "Stolen Information",
+              "stat": "stack",
+              "target": "target",
+              "amount": {
+                "kind": "flat",
+                "value": 0
               },
               "condition": {
                 "kind": "target_has_status",
@@ -1896,10 +2017,72 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
+            "Can only be used if the target has 6 Stolen Information or Death by Death Note.",
             "Choose 1 enemy with 6 Stolen Information or Death by Death Note.",
             "If the target has 6 Stolen Information, inflict 3 Death by Death Note and set its Stolen Information Value to 0.",
             "Reduce the target's Death by Death Note Value by 1.",
             "Reduce by 1 additional per 10 Ultimate Meter spent (max 2; cannot reduce below 1)."
+          ],
+          "restrictions": [
+            {
+              "kind": "require",
+              "subject": "target",
+              "mode": "any",
+              "statuses": [
+                {
+                  "name": "Stolen Information",
+                  "min": 6
+                },
+                {
+                  "name": "Death by Death Note"
+                }
+              ]
+            }
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Death by Death Note",
+              "amount": {
+                "kind": "flat",
+                "value": 3
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stolen Information",
+                "min": 6
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "set_status",
+              "status": "Stolen Information",
+              "stat": "stack",
+              "target": "target",
+              "amount": {
+                "kind": "flat",
+                "value": 0
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stolen Information",
+                "min": 6
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "reduce_status",
+              "status": "Death by Death Note",
+              "stat": "value",
+              "target": "target",
+              "amount": {
+                "kind": "x_plus",
+                "value": 1
+              },
+              "maxAmount": 3,
+              "minValue": 1
+            }
           ]
         }
       ]
@@ -2225,6 +2408,21 @@
             "Gain 1 Gear 3rd.",
             "Retain."
           ],
+          "restrictions": [
+            {
+              "kind": "forbid",
+              "subject": "self",
+              "mode": "any",
+              "statuses": [
+                {
+                  "name": "Gear 2nd"
+                },
+                {
+                  "name": "Gear 3rd"
+                }
+              ]
+            }
+          ],
           "effects": [
             {
               "timing": "on_use",
@@ -2287,6 +2485,18 @@
             "Can only be used if this character has Gear 2nd.",
             "Deal Power / (X + 1) damage (X + 1) times. Inflict X Frail. Gain X Weak and +X Weak Count. Gain X Vulnerable and +X Vulnerable Count.",
             "If this character has Gear 3rd: This Ultimate becomes Gomu Gomu no Gigant Rifle."
+          ],
+          "restrictions": [
+            {
+              "kind": "require",
+              "subject": "self",
+              "mode": "all",
+              "statuses": [
+                {
+                  "name": "Gear 2nd"
+                }
+              ]
+            }
           ],
           "effects": [
             {
@@ -2401,6 +2611,18 @@
             "Can only be used if this character has Gear 3rd.",
             "Deal Power damage.",
             "If this character has Gear 2nd: This Ultimate becomes Gomu Gomu no Jet Gatling."
+          ],
+          "restrictions": [
+            {
+              "kind": "require",
+              "subject": "self",
+              "mode": "all",
+              "statuses": [
+                {
+                  "name": "Gear 3rd"
+                }
+              ]
+            }
           ],
           "effects": [
             {
@@ -2823,6 +3045,18 @@
             "Deal Power damage.",
             "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count. Inflict 1 Slow and +1 Slow Count.",
             "After Use: Reduce Kyuubi Chakra Count by 2."
+          ],
+          "restrictions": [
+            {
+              "kind": "require",
+              "subject": "self",
+              "mode": "all",
+              "statuses": [
+                {
+                  "name": "One-Tail Cloak"
+                }
+              ]
+            }
           ],
           "effects": [
             {
@@ -3862,6 +4096,18 @@
           "speed": "Normal",
           "effect": [
             "Set State Value to 10."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "set_status",
+              "status": "State",
+              "stat": "value",
+              "amount": {
+                "kind": "flat",
+                "value": 10
+              }
+            }
           ]
         },
         {
@@ -3878,6 +4124,18 @@
           "speed": "Fast",
           "effect": [
             "Set State Value to 30."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "set_status",
+              "status": "State",
+              "stat": "value",
+              "amount": {
+                "kind": "flat",
+                "value": 30
+              }
+            }
           ]
         },
         {

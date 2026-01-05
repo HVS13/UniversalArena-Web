@@ -30,3 +30,14 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-03: Added status-state handling, conditional effect/transforms, multihit support, and updated the UI status display while syncing Goku's structured effects.
 - 2026-01-03: Updated AGENTS/README/TODO to capture the status-state model, structured effect extensions, and current roadmap.
 - 2026-01-04: Added card instances with hand/deck/discard/exhaust zones, draw-to-hand start, spend/draw/create/reload/switch text handling, Stagnate cost adjustments, follow-up cost modifiers, and updated the client UI to play from hand with deck/discard counts and X/choice prompts.
+- 2026-01-05: Reordered TODO priorities to focus on rules completeness, then UI polish, then multiplayer.
+- 2026-01-05: Added set-status structured effects support in the core/types to model State-setting and Death Note resets.
+- 2026-01-05: Added structured spend, per-spend damage, reload, and switch-equipment effects in core/data to cover Leon's missing cards.
+- 2026-01-05: Added reduce-status effects with caps/floors and structured Light's Death Note: Judgment with variable Ultimate spend.
+- 2026-01-05: Enforced Death Note: Judgment target requirements via data export (use restriction line).
+- 2026-01-05: Added structured card restrictions support in data/core and wired Judgment's requirement into structured data.
+- 2026-01-05: Added structured restrictions to remaining gated cards and synced exported data.
+- 2026-01-05: Added harness coverage for structured restrictions (block invalid plays, allow valid plays).
+- 2026-01-05: Hardened the harness to pull required cards from the deck when not in hand.
+- 2026-01-05: Removed text parsing for restriction enforcement; only structured `restrictions` are honored.
+- 2026-01-05: Updated README/TODO/AGENTS/skills notes to reflect structured-only restrictions and remaining text parsing scope.

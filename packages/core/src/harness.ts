@@ -18,6 +18,12 @@ const testCharacters = (): Character[] => [
     gameplan: "Test harness character.",
     art: "test-attacker.png",
     innates: [],
+    statusEffects: [
+      {
+        name: "Test Buff",
+        lines: ["Type: Unique.", "Max Stack: 1.", "Turn End: Reduce Stack by 1."],
+      },
+    ],
     cards: [
       {
         slot: "1",
@@ -71,6 +77,43 @@ const testCharacters = (): Character[] => [
         effect: ["Assist Attack.", "Deal Power damage."],
         effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
       },
+      {
+        slot: "5",
+        name: "Prep",
+        cost: "0 Energy",
+        power: "-",
+        types: ["Technique", "Special"],
+        target: "Self",
+        speed: "Fast",
+        effect: ["Innate.", "Gain 1 Test Buff."],
+        effects: [
+          {
+            timing: "on_use",
+            type: "gain_status",
+            status: "Test Buff",
+            amount: { kind: "flat", value: 1 },
+          },
+        ],
+      },
+      {
+        slot: "6",
+        name: "Locked Strike",
+        cost: "1 Energy",
+        power: "10-10",
+        types: ["Technique", "Attack", "Physical"],
+        target: "1 Enemy",
+        speed: "Normal",
+        effect: ["Innate.", "Deal Power damage."],
+        restrictions: [
+          {
+            kind: "require",
+            subject: "self",
+            mode: "all",
+            statuses: [{ name: "Test Buff", min: 1 }],
+          },
+        ],
+        effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+      },
     ],
   },
   {
@@ -117,13 +160,29 @@ const getCardInstanceId = (
   cardSlot: string
 ) => state.players[playerId].hand.find((card) => card.cardSlot === cardSlot)?.id;
 
+const ensureCardInHand = (
+  state: ReturnType<typeof createMatchState>,
+  playerId: "p1" | "p2",
+  cardSlot: string
+) => {
+  const player = state.players[playerId];
+  const inHand = player.hand.find((card) => card.cardSlot === cardSlot);
+  if (inHand) return inHand.id;
+  const deckIndex = player.deck.findIndex((card) => card.cardSlot === cardSlot);
+  if (deckIndex === -1) return null;
+  const [moved] = player.deck.splice(deckIndex, 1);
+  if (!moved) return null;
+  player.hand.push(moved);
+  return moved.id;
+};
+
 const playFromHand = (
   state: ReturnType<typeof createMatchState>,
   playerId: "p1" | "p2",
   cardSlot: string,
   zone: "fast" | "normal" | "slow"
 ) => {
-  const cardInstanceId = getCardInstanceId(state, playerId, cardSlot);
+  const cardInstanceId = ensureCardInHand(state, playerId, cardSlot);
   if (!cardInstanceId) {
     throw new Error(`Missing card instance for ${playerId} slot ${cardSlot}.`);
   }
@@ -196,6 +255,38 @@ const runMitigationTest = (characters: Character[]): HarnessResult[] => {
   ];
 };
 
+const runRestrictionTest = (characters: Character[]): HarnessResult[] => {
+  let state = createMatchState(characters, [
+    { id: "p1", name: "Attacker", characterId: "test-attacker" },
+    { id: "p2", name: "Defender", characterId: "test-defender" },
+  ]);
+
+  const blocked = applyAction(state, playFromHand(state, "p1", "6", "normal"), characters);
+  if (!blocked.error) {
+    return [
+      { label: "Restrictions block invalid plays", ok: false, details: "Play was not blocked." },
+      { label: "Restrictions allow valid plays", ok: false, details: "Blocked state invalid." },
+    ];
+  }
+
+  state = applyOrThrow(state, playFromHand(state, "p1", "5", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+  const allowed = applyAction(state, playFromHand(state, "p1", "6", "normal"), characters);
+  if (allowed.error) {
+    return [
+      { label: "Restrictions block invalid plays", ok: true },
+      { label: "Restrictions allow valid plays", ok: false, details: allowed.error },
+    ];
+  }
+
+  return [
+    { label: "Restrictions block invalid plays", ok: true },
+    { label: "Restrictions allow valid plays", ok: true },
+  ];
+};
+
 export const runHarness = () => {
   const results: HarnessResult[] = [];
   const originalRandom = Math.random;
@@ -206,6 +297,7 @@ export const runHarness = () => {
     results.push(runEvadeTest(characters));
     results.push(runFollowUpTest(characters));
     results.push(...runMitigationTest(characters));
+    results.push(...runRestrictionTest(characters));
   } finally {
     Math.random = originalRandom;
   }

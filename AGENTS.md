@@ -11,8 +11,9 @@ Project rules
 - Client UI lives in `apps/client/src/`; core rules live in `packages/core/src/`.
 - Character art assets live in `apps/client/public/assets/characters`.
 - Prefer deterministic, testable rules logic in `packages/core` over UI-side effects.
-- Structured effects include conditions, transforms, and multihit hits; status state is tracked as potency/count/stack/value in core.
-- Core now enforces timing windows and status caps/expiry/trigger hooks (cost/speed/power/damage modifiers) plus hand/deck play and spend/draw/creation handling. Legacy text parsing remains for unmodeled mechanics (set-value effects, unique triggers, etc.).
+- Structured effects include conditions, transforms, multihit hits, and set/reduce/spend handling; status state is tracked as potency/count/stack/value in core.
+- Restriction enforcement is structured-only; text parsing no longer gates card use. Keep `restrictions` in exported data for any gating text.
+- Core now enforces timing windows and status caps/expiry/trigger hooks (cost/speed/power/damage modifiers) plus hand/deck play and spend/draw/creation handling. Legacy text parsing remains for unmodeled mechanics (optional spend, bonus damage, draw/create, unique triggers).
 
 Data workflow
 - Export command (run from docs repo):  

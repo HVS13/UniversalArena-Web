@@ -64,6 +64,8 @@ export type EffectTiming =
 
 export type StatusValueStat = "potency" | "count" | "stack" | "value";
 
+export type EffectTarget = "self" | "target";
+
 export type EffectCondition =
   | { kind: "self_has_status"; status: string; min?: number }
   | { kind: "self_missing_status"; status: string }
@@ -101,6 +103,19 @@ export type EffectOption = {
   effects: Effect[];
 };
 
+export type UseRestrictionStatus = {
+  name: string;
+  min?: number;
+};
+
+export type UseRestriction = {
+  kind: "require" | "forbid";
+  subject: "self" | "target";
+  mode: "any" | "all";
+  statuses: UseRestrictionStatus[];
+  raw?: string;
+};
+
 export type Effect =
   | (EffectBase & { type: "deal_damage"; amount: EffectAmount; hits?: EffectScalar })
   | (EffectBase & { type: "gain_shield"; amount: EffectAmount })
@@ -118,6 +133,33 @@ export type Effect =
       amount: EffectAmount;
       stat?: StatusValueStat;
     })
+  | (EffectBase & {
+      type: "set_status";
+      status: string;
+      amount: EffectAmount;
+      stat?: StatusValueStat;
+      target?: EffectTarget;
+    })
+  | (EffectBase & {
+      type: "reduce_status";
+      status: string;
+      amount: EffectAmount;
+      stat?: StatusValueStat;
+      target?: EffectTarget;
+      minValue?: number;
+      maxAmount?: number;
+    })
+  | (EffectBase & {
+      type: "spend_status";
+      status: string;
+      amount: EffectAmount;
+      allowPartial?: boolean;
+      gateAll?: boolean;
+      gateDamage?: boolean;
+    })
+  | (EffectBase & { type: "deal_damage_per_spent"; status: string; amount: EffectAmount })
+  | (EffectBase & { type: "reload_equipped" })
+  | (EffectBase & { type: "switch_equip"; status: string })
   | (EffectBase & { type: "choose"; options: EffectOption[] })
   | (EffectBase & { type: "retain" });
 
@@ -131,6 +173,7 @@ export type Card = {
   speed: string;
   effect: string[];
   effects?: Effect[];
+  restrictions?: UseRestriction[];
   transforms?: CardTransform[];
 };
 

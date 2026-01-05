@@ -1,7 +1,12 @@
 # TODO
 
+## Priority order
+1. Rules completeness (structured effects coverage, trigger audit, regression tests).
+2. UI polish (tooltips, zone clarity, lifecycle indicators).
+3. Multiplayer (relay server + client sync).
+
 ## Core rules
-- Extend structured effect coverage for spend/draw/creation/set-value mechanics, then remove legacy text parsing once coverage is high.
+- Extend structured effect coverage for remaining optional spend/bonus damage/draw/create mechanics, then remove legacy text parsing once coverage is high.
 - Audit remaining status/keyword triggers (deck reshuffle rules if needed, unique per-card triggers) and add them to core.
 - Add regression tests for timing windows, status expiry, cost/speed modifiers, mitigation stacking, and hand/deck spend flows.
 

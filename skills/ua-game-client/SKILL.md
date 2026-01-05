@@ -20,6 +20,8 @@ This repo hosts the React client and rules engine. Rules text and canonical data
 ## Notes
 
 - Prefer deterministic, testable changes in `packages/core` over UI-side effects.
+- Restriction enforcement is structured-only; keep `restrictions` in data and do not rely on effect text gating.
+- Structured effects include set/reduce/spend and equipment switching; text parsing remains for optional spend, bonus damage, draw/create, and unique triggers.
 - Keyword data includes an optional Core/Advanced tier; status entries include Mode and explicit Turn End lines in docs.
 
 ## References

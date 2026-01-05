@@ -429,6 +429,74 @@ const applyStatusDelta = (
   }
 };
 
+const setStatusValue = (
+  target: MatchPlayer,
+  status: string,
+  amount: number,
+  stat: StatusValueStat | undefined,
+  targetCharacter?: Character | null
+) => {
+  if (!status || Number.isNaN(amount)) return null;
+  const definition = getStatusDefinition(status, targetCharacter);
+  const state = getStatusState(target, status);
+  const wasActive = isStatusActive(state, definition);
+  const statKey = stat ?? getStatusPrimaryStat(definition);
+  const max =
+    statKey === "potency"
+      ? definition.potencyMax
+      : statKey === "count"
+        ? definition.countMax
+        : statKey === "stack"
+          ? definition.stackMax
+          : definition.valueMax;
+
+  const clamped = clampValue(amount, max);
+  state[statKey] = clamped;
+
+  if (definition.mode === "potency_count" && statKey === "potency" && amount > 0 && state.count === 0) {
+    state.count = clampValue(1, definition.countMax);
+  }
+
+  if (!wasActive && isStatusActive(state, definition) && amount > 0) {
+    handleStatusOnGain(target, status, targetCharacter);
+  }
+  return clamped;
+};
+
+const reduceStatusValue = (
+  target: MatchPlayer,
+  status: string,
+  amount: number,
+  stat: StatusValueStat | undefined,
+  options: { minValue?: number; maxAmount?: number } = {},
+  targetCharacter?: Character | null
+) => {
+  if (!status || Number.isNaN(amount)) return null;
+  const definition = getStatusDefinition(status, targetCharacter);
+  const state = getStatusState(target, status);
+  const statKey = stat ?? getStatusPrimaryStat(definition);
+  const current = state[statKey];
+  if (current <= 0) return null;
+  let reduction = amount;
+  if (options.maxAmount !== undefined) {
+    reduction = Math.min(reduction, options.maxAmount);
+  }
+  if (reduction <= 0) return null;
+  const floor = options.minValue ?? 0;
+  const reduced = Math.max(floor, current - reduction);
+  const nextValue = Math.min(current, reduced);
+  const max =
+    statKey === "potency"
+      ? definition.potencyMax
+      : statKey === "count"
+        ? definition.countMax
+        : statKey === "stack"
+          ? definition.stackMax
+          : definition.valueMax;
+  state[statKey] = clampValue(nextValue, max);
+  return state[statKey];
+};
+
 const spendStatus = (
   state: MatchState,
   playerId: PlayerId,
@@ -1150,6 +1218,7 @@ type SpendContext = {
   skipAll: boolean;
   skipDamage: boolean;
   ammoSpent: number;
+  spentResources: Record<string, number>;
 };
 
 const getAvailableSpend = (
@@ -1196,9 +1265,9 @@ type KeywordFlags = {
 type UseRestriction = {
   kind: "require" | "forbid";
   subject: "self" | "target";
-  statuses: { name: string; min: number }[];
+  statuses: { name: string; min?: number }[];
   mode: "any" | "all";
-  raw: string;
+  raw?: string;
 };
 
 const timingLabelMap: Record<string, Effect["timing"]> = {
@@ -1319,6 +1388,42 @@ const getTextChoiceOptions = (lines: string[]) => {
   return options;
 };
 
+const forEachStructuredEffect = (
+  effects: Effect[] | undefined,
+  timing: Effect["timing"],
+  choiceIndex: number | undefined,
+  handler: (effect: Effect) => void
+) => {
+  if (!effects) return;
+  effects.forEach((effect) => {
+    if (effect.timing !== timing) return;
+    if (effect.type === "choose") {
+      if (choiceIndex === undefined) return;
+      const choice = effect.options[choiceIndex];
+      if (choice?.effects) {
+        forEachStructuredEffect(choice.effects, timing, choiceIndex, handler);
+      }
+      return;
+    }
+    handler(effect);
+  });
+};
+
+const hasStructuredEffectType = (
+  effects: Effect[] | undefined,
+  timing: Effect["timing"],
+  choiceIndex: number | undefined,
+  type: Effect["type"]
+) => {
+  let found = false;
+  forEachStructuredEffect(effects, timing, choiceIndex, (effect) => {
+    if (effect.type === type) {
+      found = true;
+    }
+  });
+  return found;
+};
+
 const getXRangeFromText = (lines: string[]) => {
   for (const line of lines) {
     const match = line.match(/Choose X\s*\((\d+)\s*-\s*(\d+)\)/i);
@@ -1348,38 +1453,17 @@ const getFixedXFromText = (lines: string[]) => {
   return Number.isNaN(value) ? null : value;
 };
 
-const parseUseRestrictionLine = (line: string): UseRestriction | null => {
-  const trimmed = line.trim();
-  const match = trimmed.match(
-    /^(Can only be used if|Cannot be used if)\s+(this character|the target)\s+has\s+(.+)$/i
+const formatRestrictionRaw = (
+  restriction: UseRestriction,
+  statuses: { name: string; min: number }[]
+) => {
+  const subject = restriction.subject === "target" ? "the target" : "this character";
+  const joiner = restriction.mode === "any" ? " or " : " and ";
+  const parts = statuses.map((status) =>
+    status.min > 1 ? `${status.min}+ ${status.name}` : status.name
   );
-  if (!match) return null;
-
-  const kind = match[1].toLowerCase().startsWith("cannot") ? "forbid" : "require";
-  const subject = match[2].toLowerCase().includes("target") ? "target" : "self";
-  let rest = match[3].trim().replace(/\.$/, "");
-  const hasOr = /\s+or\s+/i.test(rest);
-  const separator = hasOr ? /\s+or\s+/i : /\s+and\s+/i;
-  const mode: UseRestriction["mode"] = hasOr ? "any" : "all";
-
-  const statuses = rest
-    .split(separator)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .map((part) => {
-      const statusMatch = part.match(/^(\d+)\s*\+?\s+(.+)$/);
-      if (statusMatch) {
-        return { name: statusMatch[2].trim(), min: Number(statusMatch[1]) };
-      }
-      return { name: part.replace(/\.$/, "").trim(), min: 1 };
-    });
-
-  if (!statuses.length) return null;
-  return { kind, subject, statuses, mode, raw: trimmed };
+  return `${subject} has ${parts.join(joiner)}`;
 };
-
-const getUseRestrictions = (lines: string[]) =>
-  lines.map((line) => parseUseRestrictionLine(line)).filter(Boolean) as UseRestriction[];
 
 const normalizeTag = (value: string) => value.trim().toLowerCase();
 
@@ -2037,28 +2121,32 @@ const getUseRestrictionError = (
   targetId: PlayerId,
   characters: Character[]
 ) => {
-  const restrictions = getUseRestrictions(card.effect);
+  const restrictions = card.restrictions ?? [];
   if (!restrictions.length) return null;
   const snapshot = snapshotStatuses(state);
   const sourceCharacter = getCharacterById(characters, state.players[sourceId].characterId);
   const targetCharacter = getCharacterById(characters, state.players[targetId].characterId);
 
   for (const restriction of restrictions) {
+    const statuses = restriction.statuses
+      .map((status) => ({ name: status.name, min: status.min ?? 1 }))
+      .filter((status) => status.name);
     const subjectId = restriction.subject === "target" ? targetId : sourceId;
     const subjectCharacter = restriction.subject === "target" ? targetCharacter : sourceCharacter;
     const meets = restriction.mode === "all"
-      ? restriction.statuses.every((status) =>
+      ? statuses.every((status) =>
           isStatusRequirementMet(snapshot, subjectId, status.name, status.min, subjectCharacter)
         )
-      : restriction.statuses.some((status) =>
+      : statuses.some((status) =>
           isStatusRequirementMet(snapshot, subjectId, status.name, status.min, subjectCharacter)
         );
+    const raw = restriction.raw ?? formatRestrictionRaw(restriction, statuses);
 
     if (restriction.kind === "require" && !meets) {
-      return `Card requirement not met: ${restriction.raw}`;
+      return `Card requirement not met: ${raw}`;
     }
     if (restriction.kind === "forbid" && meets) {
-      return `Card restriction blocks use: ${restriction.raw}`;
+      return `Card restriction blocks use: ${raw}`;
     }
   }
 
@@ -2149,6 +2237,60 @@ const resolveStructuredEffectList = (
         }
         break;
       }
+      case "set_status": {
+        const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
+        const recipient = effect.target === "target" ? target : source;
+        const recipientCharacter = effect.target === "target" ? targetCharacter : sourceCharacter;
+        const applied = setStatusValue(recipient, effect.status, amount, effect.stat, recipientCharacter);
+        if (applied === null) break;
+        addLog(state, `${recipient.name} sets ${effect.status} to ${applied}.`);
+        break;
+      }
+      case "reduce_status": {
+        const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
+        const recipient = effect.target === "target" ? target : source;
+        const recipientCharacter = effect.target === "target" ? targetCharacter : sourceCharacter;
+        const applied = reduceStatusValue(
+          recipient,
+          effect.status,
+          amount,
+          effect.stat,
+          { minValue: effect.minValue, maxAmount: effect.maxAmount },
+          recipientCharacter
+        );
+        if (applied === null) break;
+        addLog(state, `${recipient.name} reduces ${effect.status} to ${applied}.`);
+        break;
+      }
+      case "spend_status": {
+        break;
+      }
+      case "deal_damage_per_spent": {
+        if (spendContext.skipDamage) break;
+        const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
+        const spentByStatus = spendContext.spentResources[effect.status] ?? 0;
+        const spent =
+          spentByStatus > 0 ? spentByStatus : /ammo/i.test(effect.status) ? spendContext.ammoSpent : 0;
+        const total = amount * spent;
+        if (total <= 0) break;
+        const applied = applyDamage(
+          target,
+          total,
+          entry.types,
+          targetCharacter,
+          entry.mitigationText
+        );
+        addLog(state, `${state.players[entry.playedBy].name} deals ${applied} damage to ${target.name}.`);
+        break;
+      }
+      case "reload_equipped": {
+        reloadEquippedWeapon(state, entry.playedBy, characters);
+        break;
+      }
+      case "switch_equip": {
+        switchEquipment(state, entry.playedBy, effect.status, characters);
+        break;
+      }
       case "choose": {
         if (entry.choiceIndex === undefined) break;
         const choice = effect.options[entry.choiceIndex];
@@ -2223,7 +2365,84 @@ const resolveSpendContext = (
   const sourceCharacter = getCharacterById(characters, source.characterId);
   const targetCharacter = getCharacterById(characters, target.characterId);
   const segments = getTimedTextSegments(entry.effectText);
-  const context: SpendContext = { skipAll: false, skipDamage: false, ammoSpent: 0 };
+  const context: SpendContext = {
+    skipAll: false,
+    skipDamage: false,
+    ammoSpent: 0,
+    spentResources: {},
+  };
+
+  const recordSpend = (resource: string, spent: number) => {
+    if (spent <= 0) return;
+    context.spentResources[resource] = (context.spentResources[resource] ?? 0) + spent;
+    if (!options?.preview) {
+      if (!entry.spentResources) entry.spentResources = {};
+      entry.spentResources[resource] = (entry.spentResources[resource] ?? 0) + spent;
+    }
+    if (/ammo/i.test(resource)) {
+      context.ammoSpent += spent;
+    }
+  };
+
+  const resolveSpendAmount = (amount: EffectAmount) => {
+    if (amount.kind === "flat") return amount.value;
+    if (amount.kind === "x") return entry.xValue;
+    if (amount.kind === "x_plus") return entry.xValue + amount.value;
+    if (amount.kind === "x_minus") return Math.max(entry.xValue - amount.value, 0);
+    if (amount.kind === "x_times") return entry.xValue * amount.value;
+    return 0;
+  };
+
+  const hasStructuredSpend = hasStructuredEffectType(
+    entry.effects,
+    timing,
+    entry.choiceIndex,
+    "spend_status"
+  );
+  if (hasStructuredSpend && entry.effects) {
+    const snapshot = snapshotStatuses(state);
+    forEachStructuredEffect(entry.effects, timing, entry.choiceIndex, (effect) => {
+      if (effect.type !== "spend_status") return;
+      if (
+        !isConditionMet(
+          effect.condition,
+          snapshot,
+          entry.playedBy,
+          entry.targetId,
+          sourceCharacter,
+          targetCharacter
+        )
+      ) {
+        return;
+      }
+      const amount = resolveSpendAmount(effect.amount);
+      if (amount <= 0) return;
+      const allowPartial = Boolean(effect.allowPartial);
+      const available = getAvailableSpend(
+        source,
+        effect.status,
+        amount,
+        sourceCharacter,
+        allowPartial
+      );
+      const spent = options?.preview
+        ? available
+        : spendStatus(
+            state,
+            entry.playedBy,
+            effect.status,
+            amount,
+            sourceCharacter,
+            { allowPartial, label: effect.status }
+          );
+      if (!allowPartial && spent < amount) {
+        if (effect.gateAll) context.skipAll = true;
+        if (effect.gateDamage) context.skipDamage = true;
+      }
+      recordSpend(effect.status, spent);
+    });
+    return context;
+  }
 
   segments.forEach((segment) => {
     if (segment.timing !== timing) return;
@@ -2290,16 +2509,7 @@ const resolveSpendContext = (
       if (instruction.gateDamage) context.skipDamage = true;
     }
 
-    if (spent > 0) {
-      if (!options?.preview) {
-        if (!entry.spentResources) entry.spentResources = {};
-        entry.spentResources[instruction.resource] =
-          (entry.spentResources[instruction.resource] ?? 0) + spent;
-      }
-      if (/ammo/i.test(instruction.resource)) {
-        context.ammoSpent += spent;
-      }
-    }
+    recordSpend(instruction.resource, spent);
   });
 
   return context;
@@ -2320,6 +2530,18 @@ const resolveTextMetaEffects = (
     entry.choiceIndex !== undefined && options[entry.choiceIndex]
       ? normalizeText(options[entry.choiceIndex]).toLowerCase()
       : null;
+  const hasReloadEffect = hasStructuredEffectType(
+    entry.effects,
+    timing,
+    entry.choiceIndex,
+    "reload_equipped"
+  );
+  const hasSwitchEquipEffect = hasStructuredEffectType(
+    entry.effects,
+    timing,
+    entry.choiceIndex,
+    "switch_equip"
+  );
 
   segments.forEach((segment) => {
     if (segment.timing !== timing) return;
@@ -2340,11 +2562,11 @@ const resolveTextMetaEffects = (
       drawCards(state, entry.playedBy, drawCount);
     }
 
-    if (isReloadLine(line)) {
+    if (!hasReloadEffect && isReloadLine(line)) {
       reloadEquippedWeapon(state, entry.playedBy, characters);
     }
 
-    const switchEquip = parseEquipSwitchLine(line);
+    const switchEquip = hasSwitchEquipEffect ? null : parseEquipSwitchLine(line);
     if (switchEquip) {
       switchEquipment(state, entry.playedBy, switchEquip, characters);
     }
@@ -2516,16 +2738,31 @@ const estimateDamageForTiming = (
     const targetCharacter = getCharacterById(characters, target.characterId);
     let total = 0;
 
-    entry.effects.forEach((effect) => {
-      if (effect.timing !== timing) return;
-      if (effect.type !== "deal_damage") return;
-      if (!isConditionMet(effect.condition, snapshot, entry.playedBy, entry.targetId, sourceCharacter, targetCharacter)) {
+    forEachStructuredEffect(entry.effects, timing, entry.choiceIndex, (effect) => {
+      if (effect.type !== "deal_damage" && effect.type !== "deal_damage_per_spent") return;
+      if (
+        !isConditionMet(
+          effect.condition,
+          snapshot,
+          entry.playedBy,
+          entry.targetId,
+          sourceCharacter,
+          targetCharacter
+        )
+      ) {
         return;
       }
       const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
-      const hits =
-        effect.hits === undefined ? 1 : resolveEffectScalar(effect.hits, entry.xValue);
-      total += amount * hits;
+      if (effect.type === "deal_damage") {
+        const hits =
+          effect.hits === undefined ? 1 : resolveEffectScalar(effect.hits, entry.xValue);
+        total += amount * hits;
+        return;
+      }
+      const spentByStatus = spendContext.spentResources[effect.status] ?? 0;
+      const spent =
+        spentByStatus > 0 ? spentByStatus : /ammo/i.test(effect.status) ? spendContext.ammoSpent : 0;
+      total += amount * spent;
     });
 
     return total;

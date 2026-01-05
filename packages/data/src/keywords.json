@@ -4,144 +4,168 @@
       "id": "keyword-ethereal",
       "name": "Ethereal",
       "category": "Card Lifecycle",
+      "tier": "Advanced",
       "description": "If this card is in hand at the end of the turn, it is Exhausted."
     },
     {
       "id": "keyword-exhaust",
       "name": "Exhaust",
       "category": "Card Lifecycle",
+      "tier": "Advanced",
       "description": "When this card is played, remove this card from play for the rest of the game."
     },
     {
       "id": "keyword-innate",
       "name": "Innate",
       "category": "Card Lifecycle",
+      "tier": "Advanced",
       "description": "Start the game with this card in the opening hand."
     },
     {
       "id": "keyword-retain",
       "name": "Retain",
       "category": "Card Lifecycle",
+      "tier": "Advanced",
       "description": "Keep the card in hand at the end of the turn instead of discarding it."
     },
     {
       "id": "keyword-prepare",
       "name": "Prepare X",
       "category": "Cost Modifiers",
+      "tier": "Advanced",
       "description": "Each turn, increase or reduce the Energy cost of this card by X until the card is used."
     },
     {
       "id": "keyword-evade",
       "name": "Evade",
       "category": "Combat",
+      "tier": "Core",
       "description": "After Clash: If a Defense card's Shield reduces the Attack's Power damage to 0, that Attack is not a hit. Reuse this card."
     },
     {
       "id": "keyword-counter",
       "name": "Counter",
       "category": "Combat",
+      "tier": "Core",
       "description": "After Clash: If this Defense reduces the Attack's Power damage to 0, you may play any card targeting the attacker. This follows the same timing and play rules as Follow-Up and Assist Attack."
     },
     {
       "id": "keyword-reuse",
       "name": "Reuse",
       "category": "Combat",
+      "tier": "Core",
       "description": "After this card finishes a clash, do not discard it. Keep it in the current zone so it can be paired again during the same zone resolution."
     },
     {
       "id": "keyword-follow-up",
       "name": "Follow-Up",
       "category": "Combat",
+      "tier": "Core",
       "description": "After Use: This card can be played after any other card from the same character."
     },
     {
       "id": "keyword-assist-attack",
       "name": "Assist Attack",
       "category": "Combat",
+      "tier": "Core",
       "description": "After Use: This card can be played after any other card used by a different character."
     },
     {
       "id": "keyword-resist",
       "name": "Resist X",
       "category": "Damage Mitigation",
+      "tier": "Core",
       "description": "When damage would be dealt to HP, reduce that damage by X after Shield and Barrier are applied. X can be a flat value (example: Resist 5), a percentage (example: Resist 20%), or both (example: Resist 5/20%). If both are listed, calculate both and use the higher reduction. If damage types or attack tags are listed, Resist applies only to those; if multiple are listed, apply once when any match. Damage cannot go below 0."
     },
     {
       "id": "keyword-immune",
       "name": "Immune (Damage Type)",
       "category": "Damage Mitigation",
+      "tier": "Core",
       "description": "Damage of the specified type becomes 0 before percent modifiers, Shield, Barrier, and HP. The attack still counts as a hit unless another effect says otherwise."
     },
     {
       "id": "keyword-weakness",
       "name": "Weakness X",
       "category": "Damage Mitigation",
+      "tier": "Core",
       "description": "When damage would be dealt to HP, increase that damage by X after Shield and Barrier are applied. X can be a flat value (example: Weakness 5), a percentage (example: Weakness 20%), or both (example: Weakness 5/20%). If both are listed, calculate both and use the higher increase. If damage types or attack tags are listed, Weakness applies only to those; if multiple are listed, apply once when any match."
     },
     {
       "id": "keyword-absorb",
       "name": "Absorb X",
       "category": "Damage Mitigation",
+      "tier": "Core",
       "description": "When damage would be dealt to HP, reduce that damage by X after Shield and Barrier are applied, then heal for the amount reduced. X can be a flat value (example: Absorb 5), a percentage (example: Absorb 20%), or both (example: Absorb 5/20%). If both are listed, calculate both and use the higher reduction. If damage types or attack tags are listed, Absorb applies only to those; if multiple are listed, apply once when any match. Damage cannot go below 0."
     },
     {
       "id": "keyword-cleanse",
       "name": "Cleanse",
       "category": "Status Control",
+      "tier": "Core",
       "description": "Remove or reduce negative status effects. Cleanse [Status]: remove that status entirely. Cleanse X [Status]: reduce that status's Potency/Value/Stack by X. Cleanse All: remove all negative statuses. Cleanse All X: reduce all negative statuses' Potency/Value/Stack by X. Cleanse does not affect Count and does not affect Unique statuses. If a status uses Potency + Count, reduce Potency; if Potency reaches 0, remove the status."
     },
     {
       "id": "keyword-dispel",
       "name": "Dispel",
       "category": "Status Control",
+      "tier": "Core",
       "description": "Remove or reduce positive status effects. Dispel [Status]: remove that status entirely. Dispel X [Status]: reduce that status's Potency/Value/Stack by X. Dispel All: remove all positive statuses. Dispel All X: reduce all positive statuses' Potency/Value/Stack by X. Dispel does not affect Count and does not affect Unique statuses. If a status uses Potency + Count, reduce Potency; if Potency reaches 0, remove the status."
     },
     {
       "id": "keyword-purge",
       "name": "Purge",
       "category": "Status Control",
+      "tier": "Core",
       "description": "Remove or reduce positive or negative status effects. Purge [Status]: remove that status entirely. Purge X [Status]: reduce that status's Potency/Value/Stack by X. Purge All: remove all positive and negative statuses. Purge All X: reduce all positive and negative statuses' Potency/Value/Stack by X. Purge does not affect Count and does not affect Unique statuses. If a status uses Potency + Count, reduce Potency; if Potency reaches 0, remove the status."
     },
     {
       "id": "keyword-push",
       "name": "Push X",
       "category": "Positioning",
+      "tier": "Core",
       "description": "Move the target X positions away from the source along the target's team line, swapping with any character passed. If the target is at the edge, remaining movement does nothing."
     },
     {
       "id": "keyword-pull",
       "name": "Pull X",
       "category": "Positioning",
+      "tier": "Core",
       "description": "Move the target X positions toward the source's column along the target's team line, swapping with any character passed. If the target is already in the closest position, remaining movement does nothing."
     },
     {
       "id": "keyword-swap",
       "name": "Swap",
       "category": "Positioning",
+      "tier": "Core",
       "description": "Exchange the positions of two characters on the same team line."
     },
     {
       "id": "keyword-scry",
       "name": "Scry X",
       "category": "Deck Manipulation",
+      "tier": "Advanced",
       "description": "Look at the top X cards of your draw pile. Put any number into the discard pile, then put the rest back in any order."
     },
     {
       "id": "keyword-search",
       "name": "Search",
       "category": "Deck Manipulation",
+      "tier": "Advanced",
       "description": "Search your draw pile for a card that matches the listed criteria or name, reveal it, put it into your hand, then shuffle."
     },
     {
       "id": "keyword-seek",
       "name": "Seek X",
       "category": "Deck Manipulation",
+      "tier": "Advanced",
       "description": "Seek X (criteria, Y): Look at the top X cards of your draw pile. You may reveal and take up to Y cards that match the listed criteria or name, put them into your hand, then discard the rest."
     },
     {
       "id": "keyword-bounce",
       "name": "Bounce X",
       "category": "Targeting",
+      "tier": "Advanced",
       "description": "A random adjacent character to the main target will also take the effect. Repeat X times. Each bounce chooses a random adjacent character; the same character can be chosen more than once unless the effect says otherwise."
     }
   ]

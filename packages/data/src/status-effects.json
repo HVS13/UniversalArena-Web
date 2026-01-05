@@ -203,6 +203,10 @@
         {
           "timing": "On Gain",
           "text": "Increase the Energy cost of a random card in hand by 1 until that card is used. Repeat Value times. Expires."
+        },
+        {
+          "timing": "Turn End",
+          "text": "No change (expires on gain)."
         }
       ]
     },

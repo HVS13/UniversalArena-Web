@@ -12,6 +12,7 @@ export type Keyword = {
   id: string;
   name: string;
   category: string;
+  tier?: "Core" | "Advanced";
   description: string;
 };
 

@@ -3,6 +3,7 @@
 This repo is the Universal Arena web game monorepo (React client + core engine + data package).
 
 Project rules
+- Skills manifest lives in `SKILLS.md`.
 - Keep source-of-truth data in the docs repo (`C:\Git\UniversalArena\docs\data`), then export into `packages/data`.
 - Do not hand-edit `packages/data/src/characters.json`; re-run the exporter instead.
 - Client UI lives in `apps/client/src/`; core rules live in `packages/core/src/`.

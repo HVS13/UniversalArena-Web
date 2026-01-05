@@ -277,6 +277,12 @@
       "definition": "Characters are opposed if they are in the same column on opposing team lines."
     },
     {
+      "section": "Targeting",
+      "id": "term-redirect",
+      "name": "Redirect",
+      "definition": "A keyword that changes the primary target of a single-target effect. Redirect can apply even if the effect has Splash or Bounce; resolve those from the new target. See FAQ: faq.md#faq-redirect-splash."
+    },
+    {
       "section": "Area",
       "id": "term-aoe",
       "name": "AoE",

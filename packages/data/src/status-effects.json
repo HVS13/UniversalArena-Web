@@ -436,14 +436,14 @@
       ]
     },
     {
-      "id": "status-redirect",
-      "name": "Redirect",
+      "id": "status-cover",
+      "name": "Cover",
       "type": "Positive",
       "valueMax": 99,
       "rules": [
         {
           "timing": "Before Use",
-          "text": "When a single-target Attack targets an ally, change the target to this character if able and reduce Value by 1. Redirect (Adjacent) only applies to adjacent allies; Redirect (All) applies to any ally. Only one Redirect can apply per card use; if multiple apply, the defending player chooses. Redirect does not affect AoE, Splash, Bounce, or random targeting."
+          "text": "When a single-target Attack targets an ally, change the target to this character if able and reduce Value by 1. Cover (Adjacent) only applies to adjacent allies; Cover (All) applies to any ally. Only one Cover can apply per card use; if multiple apply, the defending player chooses. Cover can redirect single-target Attacks even if they have Splash or Bounce; resolve Splash/Bounce from the new target. Cover does not affect AoE or random targeting."
         },
         {
           "timing": "Turn End",

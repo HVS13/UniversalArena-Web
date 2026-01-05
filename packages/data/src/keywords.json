@@ -162,6 +162,13 @@
       "description": "Seek X (criteria, Y): Look at the top X cards of your draw pile. You may reveal and take up to Y cards that match the listed criteria or name, put them into your hand, then discard the rest."
     },
     {
+      "id": "keyword-redirect",
+      "name": "Redirect (Target)",
+      "category": "Targeting",
+      "tier": "Advanced",
+      "description": "Change the target of a single-target card or effect to the listed target if legal. Redirect can point to self, an ally, an enemy, or another specified character. Redirect can apply even if the effect has Splash or Bounce; resolve Splash/Bounce from the new target. Redirect does not affect AoE or random targeting. Only one Redirect can apply per card use; if multiple apply, the defending player chooses. The effect that grants Redirect specifies the timing."
+    },
+    {
       "id": "keyword-bounce",
       "name": "Bounce X",
       "category": "Targeting",

@@ -4,7 +4,7 @@
       "id": "status-bleed",
       "name": "Bleed",
       "type": "Negative",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -21,7 +21,7 @@
       "id": "status-burn",
       "name": "Burn",
       "type": "Negative",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -35,10 +35,26 @@
       ]
     },
     {
+      "id": "status-disarm",
+      "name": "Disarm",
+      "type": "Negative",
+      "stackMax": 10,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "You cannot play Physical cards."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Stack by 1."
+        }
+      ]
+    },
+    {
       "id": "status-frail",
       "name": "Frail",
       "type": "Negative",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -47,7 +63,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
         }
       ]
     },
@@ -55,7 +71,7 @@
       "id": "status-poison",
       "name": "Poison",
       "type": "Negative",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -69,10 +85,58 @@
       ]
     },
     {
+      "id": "status-root",
+      "name": "Root",
+      "type": "Negative",
+      "stackMax": 10,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "You cannot be moved or swapped by any effect, including Push, Pull, Swap, and the Movement Round."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Stack by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-seal",
+      "name": "Seal",
+      "type": "Negative",
+      "stackMax": 10,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "You cannot play Special cards."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Stack by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-silence",
+      "name": "Silence",
+      "type": "Negative",
+      "stackMax": 10,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "You cannot play Magical cards."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Stack by 1."
+        }
+      ]
+    },
+    {
       "id": "status-slow",
       "name": "Slow",
       "type": "Negative",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -81,7 +145,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
         }
       ]
     },
@@ -98,10 +162,26 @@
       ]
     },
     {
+      "id": "status-stagger",
+      "name": "Stagger",
+      "type": "Negative",
+      "stackMax": 10,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "The next time you would play a Defense card, it is Cancelled before Use. Reduce Stack by 1."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Stack by 1."
+        }
+      ]
+    },
+    {
       "id": "status-strain",
       "name": "Strain",
       "type": "Negative",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -110,7 +190,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
         }
       ]
     },
@@ -121,7 +201,7 @@
       "valueMax": 10,
       "rules": [
         {
-          "timing": "Instant",
+          "timing": "On Gain",
           "text": "Increase the Energy cost of a random card in hand by 1 until that card is used. Repeat Value times. Expires."
         }
       ]
@@ -146,7 +226,7 @@
       "id": "status-weak",
       "name": "Weak",
       "type": "Negative",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -155,7 +235,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
         }
       ]
     },
@@ -163,7 +243,7 @@
       "id": "status-vulnerable",
       "name": "Vulnerable",
       "type": "Negative",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -172,7 +252,39 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-wound",
+      "name": "Wound",
+      "type": "Negative",
+      "stackMax": 10,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "When you would heal HP, reduce that healing by Stack. Healing cannot go below 0."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Stack by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-wither",
+      "name": "Wither",
+      "type": "Negative",
+      "stackMax": 10,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "When you would heal HP, reduce that healing by Stack% of the healing amount. Healing cannot go below 0."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Stack by 1."
         }
       ]
     },
@@ -180,7 +292,7 @@
       "id": "status-dexterity",
       "name": "Dexterity",
       "type": "Positive",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -189,7 +301,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
         }
       ]
     },
@@ -197,7 +309,7 @@
       "id": "status-focus",
       "name": "Focus",
       "type": "Positive",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -206,7 +318,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
         }
       ]
     },
@@ -214,7 +326,7 @@
       "id": "status-fortified",
       "name": "Fortified",
       "type": "Positive",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -223,7 +335,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
         }
       ]
     },
@@ -231,7 +343,7 @@
       "id": "status-haste",
       "name": "Haste",
       "type": "Positive",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -240,7 +352,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
         }
       ]
     },
@@ -248,7 +360,7 @@
       "id": "status-strength",
       "name": "Strength",
       "type": "Positive",
-      "potencyMax": 999,
+      "potencyMax": 10,
       "countMax": 99,
       "rules": [
         {
@@ -257,7 +369,114 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Reduce Count by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-barrier",
+      "name": "Barrier",
+      "type": "Positive",
+      "valueMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Damage is applied to Shield first, then Barrier, then HP. Reduce Value by the damage it absorbs."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Value by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-invulnerable",
+      "name": "Invulnerable",
+      "type": "Positive",
+      "valueMax": 99,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "All damage becomes 0 before Shield, Barrier, and HP. Attacks against you still count as hits."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Value by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-regen",
+      "name": "Regen",
+      "type": "Positive",
+      "potencyMax": 10,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Turn End",
+          "text": "Heal HP equal to Potency. Then reduce Count by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-renewal",
+      "name": "Renewal",
+      "type": "Positive",
+      "potencyMax": 10,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "Turn End",
+          "text": "Heal HP equal to Potency% of max HP. Then reduce Count by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-redirect",
+      "name": "Redirect",
+      "type": "Positive",
+      "valueMax": 99,
+      "rules": [
+        {
+          "timing": "Before Use",
+          "text": "When a single-target Attack targets an ally, change the target to this character if able and reduce Value by 1. Redirect (Adjacent) only applies to adjacent allies; Redirect (All) applies to any ally. Only one Redirect can apply per card use; if multiple apply, the defending player chooses. Redirect does not affect AoE, Splash, Bounce, or random targeting."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Expires."
+        }
+      ]
+    },
+    {
+      "id": "status-taunt",
+      "name": "Taunt",
+      "type": "Positive",
+      "stackMax": 10,
+      "rules": [
+        {
+          "timing": "Effect",
+          "text": "Enemies must choose this character as the target for any single-target enemy effect if able. This does not affect AoE, Splash, Bounce, or random targeting. If multiple enemies have Taunt, choose among them."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Stack by 1."
+        }
+      ]
+    },
+    {
+      "id": "status-thorns",
+      "name": "Thorns",
+      "type": "Positive",
+      "potencyMax": 10,
+      "countMax": 99,
+      "rules": [
+        {
+          "timing": "On Hit",
+          "text": "When you are hit by an Attack, deal Potency damage to the attacker."
+        },
+        {
+          "timing": "Turn End",
+          "text": "Reduce Count by 1."
         }
       ]
     }

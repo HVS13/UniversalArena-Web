@@ -85,6 +85,12 @@
       "description": "A card that affects the main target and its adjacent neighbors."
     },
     {
+      "id": "card-type-bounce",
+      "name": "Bounce",
+      "category": "Area",
+      "description": "A card that affects the main target and a random adjacent character. Use Bounce X to repeat the random adjacent effect."
+    },
+    {
       "id": "card-type-slash",
       "name": "Slash",
       "category": "Attack Tag",

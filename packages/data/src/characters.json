@@ -76,6 +76,37 @@
             "Deal Power damage.",
             "On Hit: If the target has Stun, gain 1 Stolen Blood.",
             "If this character has The World: Time Stop: This card becomes Strike: Muda Barrage."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "gain_status",
+              "status": "Stolen Blood",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stun"
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "The World: Time Stop"
+              },
+              "cardSlot": "1-2"
+            }
           ]
         },
         {
@@ -98,6 +129,39 @@
             "Deal Power / 4 damage 4 times.",
             "On Hit: Inflict 1 Bleed.",
             "Once per use, if the target has Stun: Gain 2 Stolen Blood."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power_div",
+                "divisor": 4
+              },
+              "hits": 4
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Bleed",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Stolen Blood",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stun"
+              }
+            }
           ]
         },
         {
@@ -117,6 +181,24 @@
             "Gain Power Shield.",
             "Evade.",
             "If this character has The World: Time Stop: This card becomes Defend: The World."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power"
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "The World: Time Stop"
+              },
+              "cardSlot": "2-2"
+            }
           ]
         },
         {
@@ -139,6 +221,38 @@
             "Follow-Up.",
             "Retain.",
             "After Use: Gain 1 Haste and +1 Haste Count."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "retain"
+            },
+            {
+              "timing": "after_use",
+              "type": "gain_status",
+              "status": "Haste",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "after_use",
+              "type": "gain_status",
+              "status": "Haste",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -163,6 +277,64 @@
             "Gain 4 Stolen Blood.",
             "On Hit: Inflict 2 Weak and +2 Weak Count.",
             "On Hit: If the target has Stun, gain 2 Stolen Blood."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "heal",
+              "amount": {
+                "kind": "power_div",
+                "divisor": 2
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Stolen Blood",
+              "amount": {
+                "kind": "flat",
+                "value": 4
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Weak",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Weak",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "gain_status",
+              "status": "Stolen Blood",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stun"
+              }
+            }
           ]
         },
         {
@@ -186,6 +358,35 @@
             "Deal Power / 6 damage 6 times.",
             "On Hit: Inflict 1 Bleed.",
             "If this character has The World: Time Stop: This card becomes Throwing Knives: Time Stop."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power_div",
+                "divisor": 6
+              },
+              "hits": 6
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Bleed",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "The World: Time Stop"
+              },
+              "cardSlot": "4-2"
+            }
           ]
         },
         {
@@ -209,6 +410,26 @@
             "Deal Power / 10 damage 10 times.",
             "On Hit: Inflict 1 Bleed.",
             "Once per use, if the target has Stun: Deal 10 bonus damage."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power_div",
+                "divisor": 10
+              },
+              "hits": 10
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Bleed",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -233,6 +454,40 @@
             "Inflict 1 Stun on All Enemies.",
             "Until the end of this Combat Round, enemies cannot play cards. (Cards already played still resolve.)",
             "Retain."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "The World: Time Stop",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "The World: Time Stop",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Stun",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "retain"
+            }
           ]
         },
         {
@@ -257,6 +512,32 @@
             "On Hit: Inflict 1 Stun.",
             "You may spend X Stolen Blood (0-10). If you do, deal 6 times X bonus damage and inflict X Bleed.",
             "After Use: Set this character's The World: Time Stop Count to 0."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "The World: Time Stop"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Stun",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "The World: Time Stop"
+              }
+            }
           ]
         }
       ]
@@ -612,6 +893,40 @@
             "Deal Power damage. On Hit: Gain 1 Reiatsu.",
             "If this character has Hollow Interference: This card becomes Strike: White.",
             "Otherwise, if this character has Bankai: Tensa Zangetsu: This card becomes Strike: Tensa Zangetsu."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "gain_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Hollow Interference"
+              },
+              "cardSlot": "1-3"
+            },
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Bankai: Tensa Zangetsu"
+              },
+              "cardSlot": "1-2"
+            }
           ]
         },
         {
@@ -630,6 +945,24 @@
           "speed": "Fast",
           "effect": [
             "Deal Power damage. On Hit: Gain 1 Reiatsu."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "gain_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -650,6 +983,43 @@
             "Follow-Up.",
             "Deal Power damage. On Hit: Gain 2 Reiatsu.",
             "After Use: Gain 1 Vulnerable and +1 Vulnerable Count."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "gain_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            },
+            {
+              "timing": "after_use",
+              "type": "gain_status",
+              "status": "Vulnerable",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "after_use",
+              "type": "gain_status",
+              "status": "Vulnerable",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -668,6 +1038,42 @@
           "effect": [
             "Gain Power Shield.",
             "If this character has Bankai: Tensa Zangetsu: Gain 1 Haste and +1 Haste Count."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Haste",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Bankai: Tensa Zangetsu"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Haste",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Bankai: Tensa Zangetsu"
+              }
+            }
           ]
         },
         {
@@ -689,6 +1095,19 @@
             "Evade.",
             "Follow-Up.",
             "Retain."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "retain"
+            }
           ]
         },
         {
@@ -709,6 +1128,33 @@
             "Deal Power damage. On Hit: Gain 1 Reiatsu.",
             "You may spend X Reiatsu (0-3). If you do, deal 4 times X bonus damage.",
             "If this character has Bankai: Tensa Zangetsu: This card becomes Getsuga Tensho: Tensa Zangetsu."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "gain_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Bankai: Tensa Zangetsu"
+              },
+              "cardSlot": "4-2"
+            }
           ]
         },
         {
@@ -728,6 +1174,24 @@
           "effect": [
             "Deal Power damage. On Hit: Gain 1 Reiatsu.",
             "You may spend X Reiatsu (0-4). If you do, deal 5 times X bonus damage."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "gain_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -749,6 +1213,62 @@
             "If this character has Bankai: Tensa Zangetsu, gain +2 Bankai: Tensa Zangetsu Count instead.",
             "Gain 2 Reiatsu.",
             "Retain."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Bankai: Tensa Zangetsu",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "self_missing_status",
+                "status": "Bankai: Tensa Zangetsu"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Bankai: Tensa Zangetsu",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 4
+              },
+              "condition": {
+                "kind": "self_missing_status",
+                "status": "Bankai: Tensa Zangetsu"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Bankai: Tensa Zangetsu",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Bankai: Tensa Zangetsu"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "retain"
+            }
           ]
         },
         {
@@ -769,6 +1289,19 @@
             "Can only be used if this character has Bankai: Tensa Zangetsu.",
             "Deal Power damage.",
             "You may spend up to 6 Reiatsu. If you do, deal 4 times Reiatsu spent bonus damage."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Bankai: Tensa Zangetsu"
+              }
+            }
           ]
         }
       ]
@@ -832,6 +1365,24 @@
           "speed": "Normal",
           "effect": [
             "Deal Power damage. Inflict 1 Bleed."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Bleed",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -850,6 +1401,15 @@
           "effect": [
             "Gain Power Shield. Reload currently Equipped Weapon.",
             "Evade."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power"
+              }
+            }
           ]
         },
         {
@@ -893,6 +1453,17 @@
             "Spend 1 Shotgun Ammo to deal damage.",
             "Deal Power / 3 damage 3 times.",
             "On Follow-Up: -1 Energy Cost."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power_div",
+                "divisor": 3
+              },
+              "hits": 3
+            }
           ]
         },
         {
@@ -912,6 +1483,23 @@
           "speed": "Normal",
           "effect": [
             "Deal Power / (X + 4) damage (X + 4) times."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power_div",
+                "divisor": {
+                  "kind": "x_plus",
+                  "value": 4
+                }
+              },
+              "hits": {
+                "kind": "x_plus",
+                "value": 4
+              }
+            }
           ]
         },
         {
@@ -932,6 +1520,31 @@
             "Follow-Up.",
             "Deal Power damage.",
             "On Follow-Up: Deal Power damage. Inflict 1 Stun instead."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Stun",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -974,6 +1587,24 @@
             "Spend 1 Rocket Launcher to deal damage.",
             "Deal Power damage.",
             "If this character doesn't have Rocket Launcher, this Ultimate becomes Purchase Rocket Launcher."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_missing_status",
+                "status": "Rocket Launcher"
+              },
+              "cardSlot": "ultimate-2"
+            }
           ]
         },
         {
@@ -990,6 +1621,17 @@
           "speed": "Normal",
           "effect": [
             "Gain 1 Rocket Launcher."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Rocket Launcher",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         }
       ]
@@ -1051,6 +1693,53 @@
           "effect": [
             "Deal Power damage. On Hit: Inflict 1 Stolen Information.",
             "On Hit: If the target has 3+ Stolen Information, inflict 1 Slow and +1 Slow Count."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Stolen Information",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Slow",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stolen Information",
+                "min": 3
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Slow",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stolen Information",
+                "min": 3
+              }
+            }
           ]
         },
         {
@@ -1069,6 +1758,15 @@
           "effect": [
             "Gain Power Shield.",
             "Evade."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power"
+              }
+            }
           ]
         },
         {
@@ -1087,6 +1785,21 @@
           "speed": "Fast",
           "effect": [
             "Inflict 2 Stolen Information. Retain."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Stolen Information",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "retain"
+            }
           ]
         },
         {
@@ -1106,6 +1819,31 @@
           "effect": [
             "Inflict 2 Stagnate.",
             "If the target has 3+ Stolen Information, also inflict 1 Slow."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Stagnate",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Slow",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stolen Information",
+                "min": 3
+              }
+            }
           ]
         },
         {
@@ -1125,6 +1863,22 @@
           "effect": [
             "Can only be used if the target has 6 Stolen Information.",
             "Inflict 3 Death by Death Note. Then set the target's Stolen Information Value to 0."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Death by Death Note",
+              "amount": {
+                "kind": "flat",
+                "value": 3
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stolen Information",
+                "min": 6
+              }
+            }
           ]
         },
         {
@@ -1749,6 +2503,28 @@
           "effect": [
             "Deal Power damage.",
             "On Hit: If this character has Kyuubi Chakra, gain 1 Shadow Clones."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "gain_status",
+              "status": "Shadow Clones",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Kyuubi Chakra"
+              }
+            }
           ]
         },
         {
@@ -1767,6 +2543,15 @@
           "effect": [
             "Gain Power Shield.",
             "If this character has 1+ Shadow Clones: You may spend 1 Shadow Clones. If you do, this card gains Evade."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power"
+              }
+            }
           ]
         },
         {
@@ -1785,6 +2570,17 @@
             "Gain 2 Shadow Clones.",
             "Create 2 Shadow Clone: Strike in hand.",
             "Innate."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Shadow Clones",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            }
           ]
         },
         {
@@ -1807,6 +2603,32 @@
             "Spend X Shadow Clones.",
             "Deal Power / (X + 2) damage (X + 2) times.",
             "On Hit: If X is 3, inflict 1 Stun."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power_div",
+                "divisor": {
+                  "kind": "x_plus",
+                  "value": 2
+                }
+              },
+              "hits": {
+                "kind": "x_plus",
+                "value": 2
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Stun",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -1826,6 +2648,25 @@
           "effect": [
             "Deal Power damage.",
             "If this character has 2+ Shadow Clones: This card becomes Rasengan: Clone Assist."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Shadow Clones",
+                "min": 2
+              },
+              "cardSlot": "5-2"
+            }
           ]
         },
         {
@@ -1847,6 +2688,49 @@
             "Follow-Up.",
             "Deal Power damage.",
             "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Shadow Clones",
+                "min": 2
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Vulnerable",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Shadow Clones",
+                "min": 2
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Vulnerable",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Shadow Clones",
+                "min": 2
+              }
+            }
           ]
         },
         {
@@ -1869,6 +2753,52 @@
             "Deal Power damage. Inflict 1 Slow and +1 Slow Count.",
             "Gain 2 Summoned: Gamabunta.",
             "If this character has One-Tail Cloak: This Ultimate becomes One-Tail Rasengan."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Slow",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Slow",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "Summoned: Gamabunta",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "One-Tail Cloak"
+              },
+              "cardSlot": "ultimate-2"
+            }
           ]
         },
         {
@@ -1893,6 +2823,73 @@
             "Deal Power damage.",
             "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count. Inflict 1 Slow and +1 Slow Count.",
             "After Use: Reduce Kyuubi Chakra Count by 2."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "One-Tail Cloak"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Vulnerable",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "One-Tail Cloak"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Vulnerable",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "One-Tail Cloak"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Slow",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "One-Tail Cloak"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Slow",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "One-Tail Cloak"
+              }
+            }
           ]
         }
       ],
@@ -1914,6 +2911,15 @@
           "effect": [
             "Deal Power damage.",
             "Exhaust. Ethereal."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            }
           ]
         },
         {
@@ -1936,6 +2942,24 @@
             "Deal Power damage.",
             "On Hit: Inflict 1 Slow.",
             "Exhaust. Ethereal."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Slow",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         }
       ]
@@ -2029,6 +3053,23 @@
           "effect": [
             "Gain Power Shield. Gain 1 Ultimate Meter.",
             "Evade."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_ultimate",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -2049,6 +3090,30 @@
           "speed": "Normal",
           "effect": [
             "Deal Power / 2 damage 2 times. On Hit: Spend 1 Diminutive Sound to inflict 2 Spectro Frazzle."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power_div",
+                "divisor": 2
+              },
+              "hits": 2
+            },
+            {
+              "timing": "on_hit",
+              "type": "inflict_status",
+              "status": "Spectro Frazzle",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Diminutive Sound"
+              }
+            }
           ]
         },
         {
@@ -2233,6 +3298,33 @@
           "effect": [
             "Gain 1 State.",
             "If this character has State: Normal or State: Serious, this card becomes Strike."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Normal"
+              },
+              "cardSlot": "1-2"
+            },
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Serious"
+              },
+              "cardSlot": "1-2"
+            }
           ]
         },
         {
@@ -2251,6 +3343,24 @@
           "speed": "Normal",
           "effect": [
             "Deal Power damage. Gain 1 State."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -2267,6 +3377,33 @@
           "effect": [
             "Gain 1 State.",
             "If this character has State: Normal or State: Serious, this card becomes Defend."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Normal"
+              },
+              "cardSlot": "2-2"
+            },
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Serious"
+              },
+              "cardSlot": "2-2"
+            }
           ]
         },
         {
@@ -2285,6 +3422,24 @@
           "effect": [
             "Gain Power Shield. Gain 1 State.",
             "Evade."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -2301,6 +3456,33 @@
           "effect": [
             "Gain 1 State.",
             "If this character has State: Normal or State: Serious, this card becomes Normal Punch."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Normal"
+              },
+              "cardSlot": "3-2"
+            },
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Serious"
+              },
+              "cardSlot": "3-2"
+            }
           ]
         },
         {
@@ -2320,6 +3502,33 @@
           "effect": [
             "Deal Power damage. Gain 1 State.",
             "If this character has State: Serious, this card becomes Serious Punch."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Serious"
+              },
+              "cardSlot": "3-3"
+            }
           ]
         },
         {
@@ -2339,6 +3548,24 @@
           "speed": "Fast",
           "effect": [
             "Deal Power damage. Gain 1 State."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -2355,6 +3582,33 @@
           "effect": [
             "Gain 1 State.",
             "If this character has State: Normal or State: Serious, this card becomes Normal Punch."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Normal"
+              },
+              "cardSlot": "4-2"
+            },
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Serious"
+              },
+              "cardSlot": "4-2"
+            }
           ]
         },
         {
@@ -2374,6 +3628,33 @@
           "effect": [
             "Deal Power damage. Gain 1 State.",
             "If this character has State: Serious, this card becomes Serious Headbutt."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Serious"
+              },
+              "cardSlot": "4-3"
+            }
           ]
         },
         {
@@ -2393,6 +3674,33 @@
           "speed": "Fast",
           "effect": [
             "Deal Power damage. Inflict 1 Stun. Gain 1 State."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Stun",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -2409,6 +3717,33 @@
           "effect": [
             "Gain 1 State.",
             "If this character has State: Normal or State: Serious, this card becomes Consecutive Normal Punch."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Normal"
+              },
+              "cardSlot": "5-2"
+            },
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Serious"
+              },
+              "cardSlot": "5-2"
+            }
           ]
         },
         {
@@ -2429,6 +3764,40 @@
           "effect": [
             "Deal Power / (X + 1) damage (X + 1) times. Gain X State.",
             "If this character has State: Serious, this card becomes Serious Consecutive Side Hops."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power_div",
+                "divisor": {
+                  "kind": "x_plus",
+                  "value": 1
+                }
+              },
+              "hits": {
+                "kind": "x_plus",
+                "value": 1
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "x"
+              }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "State: Serious"
+              },
+              "cardSlot": "5-3"
+            }
           ]
         },
         {
@@ -2450,6 +3819,33 @@
           "effect": [
             "Deal Power / 2 damage. Gain Power / 2 Shield. Gain 1 State.",
             "Evade."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power_div",
+                "divisor": 2
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_shield",
+              "amount": {
+                "kind": "power_div",
+                "divisor": 2
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status",
+              "status": "State",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         },
         {
@@ -2502,6 +3898,24 @@
           "speed": "Fast",
           "effect": [
             "Deal Power damage. Inflict 1 Stun."
+          ],
+          "effects": [
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "inflict_status",
+              "status": "Stun",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              }
+            }
           ]
         }
       ]

@@ -43,6 +43,12 @@
       "definition": "Determines who takes the first action at Combat Start each turn."
     },
     {
+      "section": "Turn Structure",
+      "id": "term-movement-round",
+      "name": "Movement Round",
+      "definition": "A phase after Turn Start where players alternate priority to spend 1 Energy to swap two adjacent allied characters or pass. Movement swaps are not card plays and do not grant Ultimate Meter. The round ends when both players pass consecutively. Rooted characters cannot be moved or swapped. See FAQ: faq.md#faq-movement-round."
+    },
+    {
       "section": "Rules",
       "id": "term-rule-priority",
       "name": "Rule Priority",
@@ -53,6 +59,24 @@
       "id": "term-on-gain",
       "name": "On Gain",
       "definition": "A status effect timing label that resolves immediately when the status is gained, even mid-turn. See FAQ: faq.md#faq-on-gain."
+    },
+    {
+      "section": "Rules",
+      "id": "term-on-hit",
+      "name": "On Hit",
+      "definition": "A timing label that resolves when an Attack is a hit, even if it deals 0 damage. See FAQ: faq.md#faq-hit-vs-damage."
+    },
+    {
+      "section": "Rules",
+      "id": "term-on-damage",
+      "name": "On Damage",
+      "definition": "A timing label that resolves when damage is actually dealt after mitigation, whether to Shield, Barrier, or HP. Damage must be greater than 0. See FAQ: faq.md#faq-hit-vs-damage."
+    },
+    {
+      "section": "Rules",
+      "id": "term-on-hp-damage",
+      "name": "On HP Damage",
+      "definition": "A timing label that resolves when HP is reduced by damage after mitigation. See FAQ: faq.md#faq-hit-vs-damage."
     },
     {
       "section": "Card Flow",
@@ -152,6 +176,24 @@
     },
     {
       "section": "Combat",
+      "id": "term-damage",
+      "name": "Damage",
+      "definition": "Damage reduces Shield, Barrier, or HP. Effects that say \"Lose HP\" are not damage."
+    },
+    {
+      "section": "Combat",
+      "id": "term-healing",
+      "name": "Healing",
+      "definition": "Effects that restore HP. Healing is reduced by Wound and Wither before it is gained. See FAQ: faq.md#faq-healing-reduction."
+    },
+    {
+      "section": "Combat",
+      "id": "term-damage-resolution",
+      "name": "Damage Resolution",
+      "definition": "Apply damage in this order: roll Power and apply Power modifiers, apply Immune, apply percent damage modifiers (Fortified/Vulnerable), apply Shield, apply Barrier, apply flat HP modifiers (Resist/Weakness/Absorb), then deal remaining damage to HP. See FAQ: faq.md#faq-damage-resolution."
+    },
+    {
+      "section": "Combat",
       "id": "term-damage-types",
       "name": "Damage Types & Attack Tags",
       "definition": "Cards can list multiple Damage Types (Physical, Magical, Mental, Electric) and Attack Tags (Slash, Pierce, Blunt, Multihit). A card counts as all listed types and tags for matching. If a single modifier lists multiple types or tags, it applies once when any match; separate modifiers stack."
@@ -166,7 +208,7 @@
       "section": "Combat",
       "id": "term-power",
       "name": "Power",
-      "definition": "The min-max value shown on a card. It is usually +/- floor(Base Power x 0.20) for Melee and +/- floor(Base Power x 0.25) for Ranged."
+      "definition": "The min-max value shown on a card. It is usually +/- floor(Base Power x 0.20) for Melee and +/- floor(Base Power x 0.25) for Ranged. Power cannot be reduced below 0."
     },
     {
       "section": "Combat",
@@ -185,6 +227,12 @@
       "id": "term-shield",
       "name": "Shield",
       "definition": "Temporary protection that soaks damage before HP. At Turn End, remove all Shield."
+    },
+    {
+      "section": "Defense",
+      "id": "term-barrier",
+      "name": "Barrier",
+      "definition": "A persistent damage buffer from the Barrier status effect that absorbs damage after Shield and before HP."
     },
     {
       "section": "Targeting",
@@ -220,7 +268,13 @@
       "section": "Targeting",
       "id": "term-adjacent",
       "name": "Adjacent",
-      "definition": "Characters are arranged left to right in a single row. Adjacent means the immediate left or right neighbor of the target."
+      "definition": "Each team has its own line arranged left to right. Adjacent means the immediate left or right neighbor of the target on the same team line."
+    },
+    {
+      "section": "Targeting",
+      "id": "term-opposed",
+      "name": "Opposed",
+      "definition": "Characters are opposed if they are in the same column on opposing team lines."
     },
     {
       "section": "Area",
@@ -232,7 +286,7 @@
       "section": "Area",
       "id": "term-bounce",
       "name": "Bounce",
-      "definition": "A random adjacent character to the main target will also take the effect."
+      "definition": "A card with the Bounce area tag affects the main target and a random adjacent character."
     },
     {
       "section": "Area",

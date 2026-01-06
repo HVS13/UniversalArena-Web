@@ -429,6 +429,18 @@
                 "kind": "flat",
                 "value": 1
               }
+            },
+            {
+              "timing": "on_use",
+              "type": "deal_damage",
+              "amount": {
+                "kind": "flat",
+                "value": 10
+              },
+              "condition": {
+                "kind": "target_has_status",
+                "status": "Stun"
+              }
             }
           ]
         },
@@ -473,6 +485,26 @@
               "amount": {
                 "kind": "flat",
                 "value": 2
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Stolen Blood",
+              "amount": {
+                "kind": "x"
+              },
+              "allowPartial": true
+            },
+            {
+              "timing": "on_use",
+              "type": "gain_status_per_spent",
+              "status": "The World: Time Stop",
+              "stat": "count",
+              "resource": "Stolen Blood",
+              "amount": {
+                "kind": "flat",
+                "value": 1
               }
             },
             {
@@ -548,6 +580,34 @@
               "condition": {
                 "kind": "self_has_status",
                 "status": "The World: Time Stop"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Stolen Blood",
+              "amount": {
+                "kind": "x"
+              },
+              "allowPartial": true
+            },
+            {
+              "timing": "on_use",
+              "type": "deal_damage_per_spent",
+              "status": "Stolen Blood",
+              "amount": {
+                "kind": "flat",
+                "value": 6
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "inflict_status_per_spent",
+              "status": "Bleed",
+              "resource": "Stolen Blood",
+              "amount": {
+                "kind": "flat",
+                "value": 1
               }
             }
           ]
@@ -922,6 +982,24 @@
                 "kind": "flat",
                 "value": 1
               }
+            },
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "x"
+              },
+              "allowPartial": true
+            },
+            {
+              "timing": "on_use",
+              "type": "deal_damage_per_spent",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 4
+              }
             }
           ],
           "transforms": [
@@ -973,6 +1051,24 @@
               "amount": {
                 "kind": "flat",
                 "value": 1
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "x"
+              },
+              "allowPartial": true
+            },
+            {
+              "timing": "on_use",
+              "type": "deal_damage_per_spent",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 5
               }
             }
           ]
@@ -1324,6 +1420,24 @@
               "condition": {
                 "kind": "self_has_status",
                 "status": "Bankai: Tensa Zangetsu"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "x"
+              },
+              "allowPartial": true
+            },
+            {
+              "timing": "on_use",
+              "type": "deal_damage_per_spent",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 4
               }
             }
           ]
@@ -2773,6 +2887,26 @@
               "amount": {
                 "kind": "power"
               }
+            },
+            {
+              "timing": "before_clash",
+              "type": "spend_status",
+              "status": "Shadow Clones",
+              "amount": {
+                "kind": "x"
+              },
+              "allowPartial": true,
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Shadow Clones"
+              }
+            },
+            {
+              "timing": "before_clash",
+              "type": "grant_keyword",
+              "keyword": "Evade",
+              "resource": "Shadow Clones",
+              "minSpent": 1
             }
           ]
         },
@@ -2799,6 +2933,15 @@
               "type": "gain_status",
               "status": "Shadow Clones",
               "amount": {
+                "kind": "flat",
+                "value": 2
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "create_card",
+              "cardName": "Shadow Clone: Strike",
+              "count": {
                 "kind": "flat",
                 "value": 2
               }

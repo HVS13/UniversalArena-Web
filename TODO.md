@@ -11,7 +11,7 @@
 - DONE: initial golden tests for fast interrupt chain and cancelled vs always (includes attack tie).
 - DONE: defined a positional model (columns/line) and adjacency/opposed helpers for future mechanics.
 - DONE: expanded golden tests for timing windows, status expiry, cost/speed modifiers, mitigation stacking, and hand/deck spend flows.
-- Extend structured effect coverage for remaining optional spend/bonus damage/draw/create mechanics, then remove legacy text parsing once coverage is high.
+- DONE: structured effect coverage for optional spend/bonus damage/draw/create mechanics (legacy parsing still needed for unique triggers).
 - DONE: Turn End triggers for Barrier, Invulnerable, Regen, Renewal, Thorns, Disarm, Root, Seal, Silence, Stagger, Taunt, Wound, Wither, and Cover/Stun expiry.
 - DONE: Thorns on-hit damage and Wound/Wither healing reduction across all healing (including Regen/Renewal).
 - Audit remaining status/keyword effects (deck reshuffle if needed).

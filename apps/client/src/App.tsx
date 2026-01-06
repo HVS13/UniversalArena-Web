@@ -192,6 +192,28 @@ const getXRangeFromText = (card: Card) => {
         return { min, max };
       }
     }
+    const spendMatch = line.match(/You may spend X\s*[^()]*\((\d+)\s*-\s*(\d+)\)/i);
+    if (spendMatch) {
+      const min = Number(spendMatch[1]);
+      const max = Number(spendMatch[2]);
+      if (!Number.isNaN(min) && !Number.isNaN(max)) {
+        return { min, max };
+      }
+    }
+    const spendUpToMatch = line.match(/You may spend up to\s+(\d+)/i);
+    if (spendUpToMatch) {
+      const max = Number(spendUpToMatch[1]);
+      if (!Number.isNaN(max)) {
+        return { min: 0, max };
+      }
+    }
+    const spendFixedMatch = line.match(/You may spend\s+(\d+)\b/i);
+    if (spendFixedMatch) {
+      const max = Number(spendFixedMatch[1]);
+      if (!Number.isNaN(max)) {
+        return { min: 0, max };
+      }
+    }
   }
   return null;
 };

@@ -134,6 +134,20 @@ export type Effect =
       stat?: StatusValueStat;
     })
   | (EffectBase & {
+      type: "gain_status_per_spent";
+      status: string;
+      resource: string;
+      amount: EffectAmount;
+      stat?: StatusValueStat;
+    })
+  | (EffectBase & {
+      type: "inflict_status_per_spent";
+      status: string;
+      resource: string;
+      amount: EffectAmount;
+      stat?: StatusValueStat;
+    })
+  | (EffectBase & {
       type: "set_status";
       status: string;
       amount: EffectAmount;
@@ -158,9 +172,17 @@ export type Effect =
       gateDamage?: boolean;
     })
   | (EffectBase & { type: "deal_damage_per_spent"; status: string; amount: EffectAmount })
+  | (EffectBase & { type: "draw_cards"; amount: EffectAmount; target?: EffectTarget })
+  | (EffectBase & {
+      type: "create_card";
+      cardName: string;
+      count: EffectAmount;
+      target?: EffectTarget;
+    })
   | (EffectBase & { type: "reload_equipped" })
   | (EffectBase & { type: "switch_equip"; status: string })
   | (EffectBase & { type: "choose"; options: EffectOption[] })
+  | (EffectBase & { type: "grant_keyword"; keyword: string; resource?: string; minSpent?: number })
   | (EffectBase & { type: "retain" });
 
 export type Card = {

@@ -32,6 +32,13 @@ export type CardInstance = {
   costAdjustment: number;
 };
 
+type EntryKeywords = {
+  evade?: boolean;
+  reuse?: boolean;
+  followUp?: boolean;
+  assistAttack?: boolean;
+};
+
 export type MatchPlayer = {
   id: PlayerId;
   name: string;
@@ -55,6 +62,7 @@ export type StackEntry = {
   powerText: string;
   effectText: string[];
   effects?: Effect[];
+  grantedKeywords?: EntryKeywords;
   types: string[];
   speed: string;
   playedBy: PlayerId;
@@ -1471,6 +1479,33 @@ const getKeywordFlags = (lines: string[]): KeywordFlags => {
   return flags;
 };
 
+const keywordFlagMap: Record<string, keyof KeywordFlags> = {
+  evade: "evade",
+  reuse: "reuse",
+  "follow-up": "followUp",
+  "follow up": "followUp",
+  "assist attack": "assistAttack",
+};
+
+const grantEntryKeyword = (entry: StackEntry, keyword: string) => {
+  const normalized = keyword.trim().toLowerCase();
+  const flag = keywordFlagMap[normalized];
+  if (!flag) return;
+  if (!entry.grantedKeywords) entry.grantedKeywords = {};
+  entry.grantedKeywords[flag] = true;
+};
+
+const getEntryKeywordFlags = (entry: StackEntry): KeywordFlags => {
+  const base = getKeywordFlags(entry.effectText);
+  const extra = entry.grantedKeywords;
+  return {
+    evade: base.evade || Boolean(extra?.evade),
+    reuse: base.reuse || Boolean(extra?.reuse),
+    followUp: base.followUp || Boolean(extra?.followUp),
+    assistAttack: base.assistAttack || Boolean(extra?.assistAttack),
+  };
+};
+
 type LifecycleKeywords = {
   exhaust: boolean;
   ethereal: boolean;
@@ -1568,6 +1603,28 @@ const getXRangeFromText = (lines: string[]) => {
       const max = Number(match[2]);
       if (!Number.isNaN(min) && !Number.isNaN(max)) {
         return { min, max };
+      }
+    }
+    const spendMatch = line.match(/You may spend X\s*[^()]*\((\d+)\s*-\s*(\d+)\)/i);
+    if (spendMatch) {
+      const min = Number(spendMatch[1]);
+      const max = Number(spendMatch[2]);
+      if (!Number.isNaN(min) && !Number.isNaN(max)) {
+        return { min, max };
+      }
+    }
+    const spendUpToMatch = line.match(/You may spend up to\s+(\d+)/i);
+    if (spendUpToMatch) {
+      const max = Number(spendUpToMatch[1]);
+      if (!Number.isNaN(max)) {
+        return { min: 0, max };
+      }
+    }
+    const spendFixedMatch = line.match(/You may spend\s+(\d+)\b/i);
+    if (spendFixedMatch) {
+      const max = Number(spendFixedMatch[1]);
+      if (!Number.isNaN(max)) {
+        return { min: 0, max };
       }
     }
   }
@@ -2474,6 +2531,38 @@ const resolveStructuredEffectList = (
         }
         break;
       }
+      case "gain_status_per_spent": {
+        const perSpend = resolveEffectAmount(effect.amount, power, entry.xValue);
+        if (perSpend <= 0) break;
+        const spentByStatus = spendContext.spentResources[effect.resource] ?? 0;
+        const spent =
+          spentByStatus > 0
+            ? spentByStatus
+            : /ammo/i.test(effect.resource)
+              ? spendContext.ammoSpent
+              : 0;
+        const total = perSpend * spent;
+        if (total <= 0) break;
+        applyStatusDelta(source, effect.status, total, effect.stat, sourceCharacter);
+        addLog(state, `${source.name} gains ${total} ${effect.status}.`);
+        break;
+      }
+      case "inflict_status_per_spent": {
+        const perSpend = resolveEffectAmount(effect.amount, power, entry.xValue);
+        if (perSpend <= 0) break;
+        const spentByStatus = spendContext.spentResources[effect.resource] ?? 0;
+        const spent =
+          spentByStatus > 0
+            ? spentByStatus
+            : /ammo/i.test(effect.resource)
+              ? spendContext.ammoSpent
+              : 0;
+        const total = perSpend * spent;
+        if (total <= 0) break;
+        applyStatusDelta(target, effect.status, total, effect.stat, targetCharacter);
+        addLog(state, `${target.name} gains ${total} ${effect.status}.`);
+        break;
+      }
       case "set_status": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         const recipient = effect.target === "target" ? target : source;
@@ -2520,6 +2609,22 @@ const resolveStructuredEffectList = (
         addLog(state, `${state.players[entry.playedBy].name} deals ${applied} damage to ${target.name}.`);
         break;
       }
+      case "draw_cards": {
+        const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
+        const count = Math.floor(amount);
+        if (count <= 0) break;
+        const recipientId = effect.target === "target" ? entry.targetId : entry.playedBy;
+        drawCards(state, recipientId, count);
+        break;
+      }
+      case "create_card": {
+        const amount = resolveEffectAmount(effect.count, power, entry.xValue);
+        const count = Math.floor(amount);
+        if (count <= 0) break;
+        const recipientId = effect.target === "target" ? entry.targetId : entry.playedBy;
+        createCardsInHand(state, recipientId, effect.cardName, count, characters);
+        break;
+      }
       case "reload_equipped": {
         reloadEquippedWeapon(state, entry.playedBy, characters);
         break;
@@ -2547,6 +2652,21 @@ const resolveStructuredEffectList = (
           targetCharacter,
           spendContext
         );
+        break;
+      }
+      case "grant_keyword": {
+        if (effect.resource) {
+          const spentByStatus = spendContext.spentResources[effect.resource] ?? 0;
+          const spent =
+            spentByStatus > 0
+              ? spentByStatus
+              : /ammo/i.test(effect.resource)
+                ? spendContext.ammoSpent
+                : 0;
+          const minSpent = effect.minSpent ?? 1;
+          if (spent < minSpent) break;
+        }
+        grantEntryKeyword(entry, effect.keyword);
         break;
       }
       case "retain":
@@ -2779,6 +2899,18 @@ const resolveTextMetaEffects = (
     entry.choiceIndex,
     "switch_equip"
   );
+  const hasDrawEffect = hasStructuredEffectType(
+    entry.effects,
+    timing,
+    entry.choiceIndex,
+    "draw_cards"
+  );
+  const hasCreateEffect = hasStructuredEffectType(
+    entry.effects,
+    timing,
+    entry.choiceIndex,
+    "create_card"
+  );
 
   segments.forEach((segment) => {
     if (segment.timing !== timing) return;
@@ -2789,12 +2921,12 @@ const resolveTextMetaEffects = (
       return;
     }
 
-    const create = parseCreateFromLine(line);
+    const create = hasCreateEffect ? null : parseCreateFromLine(line);
     if (create) {
       createCardsInHand(state, entry.playedBy, create.cardName, create.count, characters);
     }
 
-    const drawCount = parseDrawFromLine(line);
+    const drawCount = hasDrawEffect ? null : parseDrawFromLine(line);
     if (drawCount && drawCount > 0) {
       drawCards(state, entry.playedBy, drawCount);
     }
@@ -3224,8 +3356,8 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
       const defenseCancelled = Boolean(defense.cancelledBeforeUse);
       const defenseKeywords = defenseCancelled
         ? { evade: false, reuse: false, followUp: false, assistAttack: false }
-        : getKeywordFlags(defense.effectText);
-      const attackKeywords = getKeywordFlags(attack.effectText);
+        : getEntryKeywordFlags(defense);
+      const attackKeywords = getEntryKeywordFlags(attack);
       let attackIsHit = true;
       let defenseReuse = false;
 
@@ -3281,8 +3413,8 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
       resolveUse(state, right, false, characters, { powerOverride: rightPower });
       resolveUse(state, left, false, characters, { powerOverride: leftPower });
 
-      const rightReuse = !right.cancelledBeforeUse && getKeywordFlags(right.effectText).reuse;
-      const leftReuse = !left.cancelledBeforeUse && getKeywordFlags(left.effectText).reuse;
+      const rightReuse = !right.cancelledBeforeUse && getEntryKeywordFlags(right).reuse;
+      const leftReuse = !left.cancelledBeforeUse && getEntryKeywordFlags(left).reuse;
       const removeLeft = !leftReuse;
       const removeRight = !rightReuse;
 

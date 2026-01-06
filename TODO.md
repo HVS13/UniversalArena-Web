@@ -32,7 +32,8 @@
 
 ## Tooling
 - DONE: golden test runner for core engine (seeded replay + transcript snapshot).
-- Add CI step to run `pnpm golden` on PRs.
+- DONE: Add CI step to run `pnpm golden` on PRs.
+- Verify the golden CI by opening a PR that touches `packages/core` or `packages/data`.
 
 ## Docs/data pipeline
 - Tracked in `C:\Git\UniversalArena\TODO.md` (template enforcement, power budgets, schema validation).

@@ -59,3 +59,4 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-06: Added zone stack visualization with clash previews and entry animations in the client.
 - 2026-01-06: Added keyword and status tooltips in the client UI (keyword tier, status Mode, and Turn End details).
 - 2026-01-06: Added structured support for optional spend and bonus damage, plus per-spend status and draw/create effects, and enabled spend-driven keyword grants (Evade) in core/data.
+- 2026-01-06: Added a CI workflow to run `pnpm golden` on pull requests that touch core/data files.

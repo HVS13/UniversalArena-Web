@@ -56,6 +56,8 @@ cd C:\Git\UniversalArena-Web
 cmd /c pnpm golden
 ```
 
+CI runs `pnpm golden` on pull requests that touch core/data files.
+
 ## Step 5 - Build (optional)
 
 ```powershell

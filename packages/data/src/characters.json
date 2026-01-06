@@ -518,6 +518,12 @@
             },
             {
               "timing": "on_use",
+              "type": "block_play",
+              "target": "opponent",
+              "duration": "combat_round"
+            },
+            {
+              "timing": "on_use",
               "type": "retain"
             }
           ]

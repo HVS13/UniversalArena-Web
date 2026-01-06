@@ -64,3 +64,4 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-06: Implemented automatic draw pile reshuffle when drawing from an empty deck, added reshuffle logging, and covered it with a golden test.
 - 2026-01-06: Added pile inspection modals for deck/discard/exhaust and labeled the active hand in the client UI.
 - 2026-01-06: Added lifecycle tags in the rail/stack and event log (Played/Used/Cancelled) for clearer resolution status.
+- 2026-01-06: Added combat-round play locks (`block_play` effect), enforced "cannot play cards" in core, and covered it with a golden test.

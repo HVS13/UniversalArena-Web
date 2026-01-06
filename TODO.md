@@ -16,6 +16,7 @@
 - DONE: Thorns on-hit damage and Wound/Wither healing reduction across all healing (including Regen/Renewal).
 - DONE: Audit remaining status/keyword effects; no current cards use unimplemented keywords and no deck reshuffle rule is defined in docs.
 - DONE: regression test ensures transform-target cards are not dealt into the deck/hand.
+- DONE: Enforced combat-round "cannot play cards" via structured `block_play` + golden test.
 
 ## UI/UX
 - DONE: Active Zone banner with "why can't I play here" tooltip.

@@ -64,7 +64,7 @@ export type EffectTiming =
 
 export type StatusValueStat = "potency" | "count" | "stack" | "value";
 
-export type EffectTarget = "self" | "target";
+export type EffectTarget = "self" | "target" | "opponent";
 
 export type EffectCondition =
   | { kind: "self_has_status"; status: string; min?: number }
@@ -178,6 +178,11 @@ export type Effect =
       cardName: string;
       count: EffectAmount;
       target?: EffectTarget;
+    })
+  | (EffectBase & {
+      type: "block_play";
+      target?: EffectTarget;
+      duration: "combat_round";
     })
   | (EffectBase & { type: "reload_equipped" })
   | (EffectBase & { type: "switch_equip"; status: string })

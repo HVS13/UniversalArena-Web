@@ -8,6 +8,7 @@ import type {
   EffectAmount,
   EffectCondition,
   EffectScalar,
+  EffectTarget,
   StatusEffectDefinition,
   StatusValueStat,
 } from "@ua/data";
@@ -97,6 +98,7 @@ export type MatchState = {
   lineSize: number;
   positions: Record<PlayerId, number>;
   players: Record<PlayerId, MatchPlayer>;
+  playLocks: Record<PlayerId, { source: string; duration: "combat_round" }[]>;
   log: string[];
   winnerId?: PlayerId;
   pendingTurnStartGains: Record<PlayerId, PendingStatusGain[]>;
@@ -185,6 +187,31 @@ const recordTranscriptEntry = (
 };
 
 const getOpponentId = (playerId: PlayerId) => (playerId === "p1" ? "p2" : "p1");
+
+const resolveEffectTargetId = (
+  target: EffectTarget | undefined,
+  entry: StackEntry
+) => {
+  if (target === "target") return entry.targetId;
+  if (target === "opponent") return getOpponentId(entry.playedBy);
+  return entry.playedBy;
+};
+
+const hasCombatRoundLock = (state: MatchState, playerId: PlayerId) =>
+  state.playLocks[playerId].some((lock) => lock.duration === "combat_round");
+
+const addCombatRoundLock = (state: MatchState, playerId: PlayerId, source: string) => {
+  state.playLocks[playerId].push({ source, duration: "combat_round" });
+  addLog(state, `${state.players[playerId].name} cannot play cards this combat round.`);
+};
+
+const clearCombatRoundLocks = (state: MatchState) => {
+  (["p1", "p2"] as PlayerId[]).forEach((playerId) => {
+    state.playLocks[playerId] = state.playLocks[playerId].filter(
+      (lock) => lock.duration !== "combat_round"
+    );
+  });
+};
 
 const baseHandSize = 5;
 const defaultLineSize = 3;
@@ -2311,6 +2338,7 @@ const advanceTurn = (state: MatchState, characters: Character[]) => {
     state.activePlayerId = state.initiativePlayerId;
     state.pausedZones = [];
     state.activeZone = null;
+    clearCombatRoundLocks(state);
 
     Object.values(state.zones).forEach((zone) => {
       zone.cards = [];
@@ -2578,8 +2606,9 @@ const resolveStructuredEffectList = (
       }
       case "set_status": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
-        const recipient = effect.target === "target" ? target : source;
-        const recipientCharacter = effect.target === "target" ? targetCharacter : sourceCharacter;
+        const recipientId = resolveEffectTargetId(effect.target, entry);
+        const recipient = state.players[recipientId];
+        const recipientCharacter = getCharacterById(characters, recipient.characterId);
         const applied = setStatusValue(recipient, effect.status, amount, effect.stat, recipientCharacter);
         if (applied === null) break;
         addLog(state, `${recipient.name} sets ${effect.status} to ${applied}.`);
@@ -2587,8 +2616,9 @@ const resolveStructuredEffectList = (
       }
       case "reduce_status": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
-        const recipient = effect.target === "target" ? target : source;
-        const recipientCharacter = effect.target === "target" ? targetCharacter : sourceCharacter;
+        const recipientId = resolveEffectTargetId(effect.target, entry);
+        const recipient = state.players[recipientId];
+        const recipientCharacter = getCharacterById(characters, recipient.characterId);
         const applied = reduceStatusValue(
           recipient,
           effect.status,
@@ -2626,7 +2656,7 @@ const resolveStructuredEffectList = (
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         const count = Math.floor(amount);
         if (count <= 0) break;
-        const recipientId = effect.target === "target" ? entry.targetId : entry.playedBy;
+        const recipientId = resolveEffectTargetId(effect.target, entry);
         drawCards(state, recipientId, count);
         break;
       }
@@ -2634,8 +2664,14 @@ const resolveStructuredEffectList = (
         const amount = resolveEffectAmount(effect.count, power, entry.xValue);
         const count = Math.floor(amount);
         if (count <= 0) break;
-        const recipientId = effect.target === "target" ? entry.targetId : entry.playedBy;
+        const recipientId = resolveEffectTargetId(effect.target, entry);
         createCardsInHand(state, recipientId, effect.cardName, count, characters);
+        break;
+      }
+      case "block_play": {
+        if (effect.duration !== "combat_round") break;
+        const recipientId = resolveEffectTargetId(effect.target, entry);
+        addCombatRoundLock(state, recipientId, entry.cardName);
         break;
       }
       case "reload_equipped": {
@@ -3578,6 +3614,7 @@ export const createMatchState = (
         resourceMax: {},
       },
     },
+    playLocks: { p1: [], p2: [] },
     log: [],
     pendingTurnStartGains: { p1: [], p2: [] },
     turnFlags: {
@@ -3647,6 +3684,9 @@ export const applyAction = (
     }
 
     if (!card) return finalize("Card not found.");
+    if (hasCombatRoundLock(next, action.playerId)) {
+      return finalize("Cannot play cards this combat round.");
+    }
     if (!action.cardInstanceId && !isUltimateCard(card)) {
       return finalize("Card must be played from hand.");
     }
@@ -3862,6 +3902,7 @@ export const applyAction = (
         next.activeZone = null;
         next.activePlayerId = next.initiativePlayerId;
         addLog(next, "Combat Round ends.");
+        clearCombatRoundLocks(next);
       }
     } else {
       next.activePlayerId = getOpponentId(action.playerId);

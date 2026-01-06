@@ -432,6 +432,122 @@ const runCancelledAlwaysTest = (): GoldenResult => {
   }
 };
 
+const runCannotPlayTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Target", characterId: "locker-b" },
+    { id: "p2" as const, name: "Locker", characterId: "locker-a" },
+  ];
+  const characters: Character[] = [
+    {
+      id: "locker-a",
+      name: "Lock Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Cannot play cards coverage.",
+      art: "lock-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Time Lock",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Fast",
+          effect: ["Innate.", "Enemies cannot play cards this Combat Round."],
+          effects: [
+            {
+              timing: "on_use",
+              type: "block_play",
+              target: "opponent",
+              duration: "combat_round",
+            },
+          ],
+        },
+        {
+          slot: "2",
+          name: "Normal Strike",
+          cost: "0 Energy",
+          power: "10-10",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Innate.", "Deal Power damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+        },
+      ],
+    },
+    {
+      id: "locker-b",
+      name: "Lock Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Cannot play cards coverage.",
+      art: "lock-bravo.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Normal Strike",
+          cost: "0 Energy",
+          power: "10-10",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Innate.", "Deal Power damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+        },
+        {
+          slot: "2",
+          name: "Backup Strike",
+          cost: "0 Energy",
+          power: "10-10",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Innate.", "Deal Power damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+        },
+      ],
+    },
+  ];
+
+  let state = createSeededState(characters, players);
+  state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
+  state = applyOrThrow(state, playFromHand(state, "p2", "1", "fast"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+
+  const blockedAttempt = applyAction(
+    state,
+    playFromHand(state, "p1", "2", "normal"),
+    characters
+  );
+
+  const snapshot = {
+    error: blockedAttempt.error ?? null,
+    activeZone: blockedAttempt.state.activeZone,
+    p1Locks: blockedAttempt.state.playLocks.p1.length,
+  };
+  const expected = {
+    error: "Cannot play cards this combat round.",
+    activeZone: "normal",
+    p1Locks: 1,
+  };
+
+  try {
+    assertSnapshot("Cannot play snapshot", snapshot, expected);
+    return { label: "Cannot play cards blocks plays during combat", ok: true };
+  } catch (error) {
+    return { label: "Cannot play cards blocks plays during combat", ok: false, details: String(error) };
+  }
+};
+
 const runTimingWindowsTest = (): GoldenResult => {
   const players = [
     { id: "p1" as const, name: "Timer", characterId: "timing-a" },
@@ -1969,6 +2085,7 @@ const runTransformTargetExclusionTest = (): GoldenResult => {
 export const runGoldenTests = () => [
   runInterruptChainTest(),
   runCancelledAlwaysTest(),
+  runCannotPlayTest(),
   runTimingWindowsTest(),
   runStatusExpiryTest(),
   runCostSpeedModifierTest(),

@@ -44,3 +44,17 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-05: Excluded transform-target cards from deck/hand population so alternates only appear via transforms, tightened UI affordability gating for ultimates, and added a front-page last-updated stamp with doc updates.
 - 2026-01-05: Removed the in-client last-updated stamp and updated the docs front-page timestamp.
 - 2026-01-05: Transform resolution now uses the last matching transform in the list (priority by ordering).
+- 2026-01-06: Added seeded RNG, deterministic replay, and transcript support in the core engine.
+- 2026-01-06: Added a golden test runner (`pnpm golden`) and expanded coverage for timing windows, status expiry, cost/speed modifiers, mitigation stacking, and spend/hand flows.
+- 2026-01-06: Applied Turn End decay for Barrier/Invulnerable/Regen/Renewal/Thorns and stack statuses (Disarm/Root/Seal/Silence/Stagger/Taunt/Wound/Wither), added Thorns on-hit damage, enforced Wound/Wither healing reduction via a shared core helper, and reorganized AGENTS/SKILLS/TODO to separate repo-owned tasks.
+- 2026-01-06: Added golden tests for healing reduction (Wound/Wither + Regen/Renewal), Thorns on-hit damage, and Turn End decay for newly added statuses.
+- 2026-01-06: Implemented Invulnerable and Barrier damage handling across core damage application (shield/barrier absorption and invulnerable zeroing).
+- 2026-01-06: Enforced Disarm/Silence/Seal play gating and Stagger defense cancellation in core resolution.
+- 2026-01-06: Added Taunt targeting enforcement for single-target enemy cards (excluding random/AoE/Splash/Bounce).
+- 2026-01-06: Added a golden test to ensure transform-target cards are excluded from deck and hand population.
+- 2026-01-06: Added a positional model (line size + per-player position) and adjacency/opposed helpers in core to unblock future adjacency mechanics.
+- 2026-01-06: Implemented Cover redirect consumption for single-target enemy attacks and added Root movement/swap guard helpers for future movement logic.
+- 2026-01-06: Added an Active Zone banner, resolution rail, and nested event log UI for explainability in the client.
+- 2026-01-06: Added rule tooltips for card flow and timing labels in the client UI.
+- 2026-01-06: Added zone stack visualization with clash previews and entry animations in the client.
+- 2026-01-06: Added keyword and status tooltips in the client UI (keyword tier, status Mode, and Turn End details).

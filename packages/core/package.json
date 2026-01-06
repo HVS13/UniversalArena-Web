@@ -5,10 +5,16 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
+  "scripts": {
+    "golden": "tsx src/golden.ts"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
   "dependencies": {
     "@ua/data": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.8.1"
   }
 }

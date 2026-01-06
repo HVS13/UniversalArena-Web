@@ -1,4 +1,6 @@
 import { statusEffects } from "@ua/data";
+import { createRngState, nextFloat, nextInt } from "./rng.ts";
+import type { RngState } from "./rng.ts";
 import type {
   Card,
   Character,
@@ -57,10 +59,12 @@ export type StackEntry = {
   speed: string;
   playedBy: PlayerId;
   targetId: PlayerId;
+  targetText?: string;
   xValue: number;
   choiceIndex?: number;
   rolledPower?: number;
   mitigationText?: string[];
+  cancelledBeforeUse?: boolean;
   cardInstanceId?: string;
   cardInstance?: CardInstance;
   spentResources?: Record<string, number>;
@@ -82,12 +86,16 @@ export type MatchState = {
   activeZone: ZoneName | null;
   pausedZones: ZoneName[];
   zones: Record<ZoneName, ZoneState>;
+  lineSize: number;
+  positions: Record<PlayerId, number>;
   players: Record<PlayerId, MatchPlayer>;
   log: string[];
   winnerId?: PlayerId;
   pendingTurnStartGains: Record<PlayerId, PendingStatusGain[]>;
   turnFlags: Record<PlayerId, TurnFlags>;
   nextCardInstanceId: number;
+  rng: RngState;
+  transcript?: MatchTranscript;
   afterUseWindow?: {
     lastUsedBy: PlayerId;
     lastUsedCharacterId: string;
@@ -111,6 +119,23 @@ export type Action =
   | { type: "end_turn"; playerId: PlayerId }
   | { type: "clear_log"; playerId: PlayerId };
 
+export type MatchOptions = {
+  seed?: number;
+  enableTranscript?: boolean;
+};
+
+export type TranscriptEntry = {
+  action: Action;
+  error?: string;
+};
+
+export type MatchTranscript = {
+  version: 1;
+  seed: number;
+  players: { id: PlayerId; name: string; characterId: string }[];
+  actions: TranscriptEntry[];
+};
+
 export type CostVariable = {
   type: "energy" | "ultimate";
   multiplier: number;
@@ -125,9 +150,37 @@ export type CostBreakdown = {
 
 const cloneState = (state: MatchState) => JSON.parse(JSON.stringify(state)) as MatchState;
 
+const cloneAction = (action: Action): Action => ({ ...action });
+
+export const createMatchTranscript = (
+  seed: number,
+  players: { id: PlayerId; name: string; characterId: string }[]
+): MatchTranscript => ({
+  version: 1,
+  seed,
+  players: players.map((player) => ({ ...player })),
+  actions: [],
+});
+
+export const exportTranscript = (state: MatchState): MatchTranscript | null =>
+  state.transcript ? (JSON.parse(JSON.stringify(state.transcript)) as MatchTranscript) : null;
+
+const recordTranscriptEntry = (
+  state: MatchState,
+  action: Action,
+  error?: string
+) => {
+  if (!state.transcript) return;
+  const entry: TranscriptEntry = { action: cloneAction(action) };
+  if (error) entry.error = error;
+  state.transcript.actions.push(entry);
+};
+
 const getOpponentId = (playerId: PlayerId) => (playerId === "p1" ? "p2" : "p1");
 
 const baseHandSize = 5;
+const defaultLineSize = 3;
+const defaultPosition = Math.floor(defaultLineSize / 2);
 
 const createCardInstance = (state: MatchState, cardSlot: string): CardInstance => {
   const id = `ci-${state.nextCardInstanceId}`;
@@ -135,9 +188,9 @@ const createCardInstance = (state: MatchState, cardSlot: string): CardInstance =
   return { id, cardSlot, costAdjustment: 0 };
 };
 
-const shuffle = <T>(items: T[]) => {
+const shuffle = <T>(items: T[], rng: RngState) => {
   for (let index = items.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
+    const swapIndex = Math.floor(nextFloat(rng) * (index + 1));
     [items[index], items[swapIndex]] = [items[swapIndex], items[index]];
   }
   return items;
@@ -374,6 +427,57 @@ const isStatusActive = (state: StatusState, definition: StatusDefinition) => {
 
 const clampValue = (value: number, max?: number) =>
   max !== undefined ? Math.max(0, Math.min(value, max)) : Math.max(0, value);
+
+const isValidPosition = (position: number, lineSize: number) =>
+  Number.isInteger(position) && position >= 0 && position < lineSize;
+
+const getAdjacentPositions = (position: number, lineSize: number) =>
+  [position - 1, position + 1].filter((candidate) => isValidPosition(candidate, lineSize));
+
+const areAdjacent = (left: number, right: number) => Math.abs(left - right) === 1;
+
+const areOpposed = (left: number, right: number) => left === right;
+
+const canMovePlayer = (state: MatchState, playerId: PlayerId, characters: Character[]) => {
+  const player = state.players[playerId];
+  const character = getCharacterById(characters, player.characterId);
+  return !getActiveStatusState(player, "Root", character);
+};
+
+const tryMovePlayer = (
+  state: MatchState,
+  playerId: PlayerId,
+  nextPosition: number,
+  characters: Character[]
+) => {
+  if (!isValidPosition(nextPosition, state.lineSize)) return false;
+  if (!canMovePlayer(state, playerId, characters)) {
+    addLog(state, `${state.players[playerId].name} is rooted and cannot move.`);
+    return false;
+  }
+  state.positions[playerId] = nextPosition;
+  return true;
+};
+
+const trySwapPlayers = (
+  state: MatchState,
+  firstId: PlayerId,
+  secondId: PlayerId,
+  characters: Character[]
+) => {
+  if (!canMovePlayer(state, firstId, characters) || !canMovePlayer(state, secondId, characters)) {
+    addLog(state, "A rooted character cannot be moved or swapped.");
+    return false;
+  }
+  const firstPos = state.positions[firstId];
+  const secondPos = state.positions[secondId];
+  if (!isValidPosition(firstPos, state.lineSize) || !isValidPosition(secondPos, state.lineSize)) {
+    return false;
+  }
+  state.positions[firstId] = secondPos;
+  state.positions[secondId] = firstPos;
+  return true;
+};
 
 const applyStatusDelta = (
   target: MatchPlayer,
@@ -688,9 +792,10 @@ const getDamageTakenMultiplier = (player: MatchPlayer, character: Character | nu
   return Math.max(0, 1 + 0.1 * vulnerable - 0.1 * fortified);
 };
 
-const rollBetween = (min: number, max: number) => {
+const rollBetween = (min: number, max: number, rng?: RngState) => {
   if (max <= min) return min;
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  const roll = rng ? nextFloat(rng) : Math.random();
+  return Math.floor(roll * (max - min + 1)) + min;
 };
 
 export const parseCost = (text: string): CostBreakdown => {
@@ -765,7 +870,7 @@ export const canAfford = (player: MatchPlayer, cost: CostBreakdown, xValue = 0) 
   return player.energy >= totals.energy && player.ultimate >= totals.ultimate;
 };
 
-export const rollPower = (powerText: string, xValue = 0) => {
+export const rollPower = (powerText: string, xValue = 0, rng?: RngState) => {
   const cleaned = powerText.trim();
   if (!cleaned || cleaned === "-") return 0;
 
@@ -785,12 +890,37 @@ export const rollPower = (powerText: string, xValue = 0) => {
     max += Number(scale[2]) * xValue;
   }
 
-  return rollBetween(min, max);
+  return rollBetween(min, max, rng);
 };
 
-const pickTargetId = (card: Card, sourceId: PlayerId) => {
+const canTauntOverrideTarget = (card: Card) => {
   const target = card.target.toLowerCase();
-  if (target.includes("enemy")) return getOpponentId(sourceId);
+  if (!target.includes("enemy")) return false;
+  if (target.includes("all")) return false;
+  if (target.includes("random")) return false;
+  const typeSet = new Set(card.types.map(normalizeTag));
+  if (typeSet.has("splash") || typeSet.has("bounce") || typeSet.has("area")) return false;
+  return true;
+};
+
+const pickTargetId = (
+  card: Card,
+  sourceId: PlayerId,
+  state: MatchState,
+  characters: Character[]
+) => {
+  const target = card.target.toLowerCase();
+  if (target.includes("enemy")) {
+    const opponentId = getOpponentId(sourceId);
+    if (canTauntOverrideTarget(card)) {
+      const opponent = state.players[opponentId];
+      const opponentCharacter = getCharacterById(characters, opponent.characterId);
+      if (getActiveStatusState(opponent, "Taunt", opponentCharacter)) {
+        return opponentId;
+      }
+    }
+    return opponentId;
+  }
   if (target.includes("self") || target.includes("ally")) return sourceId;
   return getOpponentId(sourceId);
 };
@@ -895,7 +1025,7 @@ const buildStartingZones = (
     }
   });
 
-  shuffle(player.deck);
+  shuffle(player.deck, state.rng);
 };
 
 const applyStartingStatuses = (
@@ -1029,7 +1159,7 @@ const applyStagnate = (
   const player = state.players[targetId];
   for (let i = 0; i < amount; i += 1) {
     if (!player.hand.length) break;
-    const index = Math.floor(Math.random() * player.hand.length);
+    const index = nextInt(state.rng, 0, player.hand.length - 1);
     const instance = player.hand[index];
     if (!instance) continue;
     instance.costAdjustment += 1;
@@ -1638,16 +1768,55 @@ const applyStatusDamage = (
 ) => {
   if (amount <= 0) return;
   const target = state.players[targetId];
+  const invulnerable = getStatusStatValue(target, "Invulnerable", "value", character);
+  if (invulnerable > 0) return;
   const multiplier = getDamageTakenMultiplier(target, character);
   const adjusted = Math.max(0, Math.floor(amount * multiplier));
   if (adjusted <= 0) return;
-  target.hp = Math.max(target.hp - adjusted, 0);
-  addLog(state, `${target.name} takes ${adjusted} damage from ${label}.`);
+  let remaining = adjusted;
+  const shieldAbsorbed = Math.min(target.shield, remaining);
+  target.shield -= shieldAbsorbed;
+  remaining -= shieldAbsorbed;
+  if (remaining > 0) {
+    const barrier = getActiveStatusState(target, "Barrier", character);
+    if (barrier && barrier.value > 0) {
+      const barrierAbsorbed = Math.min(barrier.value, remaining);
+      barrier.value -= barrierAbsorbed;
+      remaining -= barrierAbsorbed;
+    }
+  }
+  if (remaining <= 0) return;
+  target.hp = Math.max(target.hp - remaining, 0);
+  addLog(state, `${target.name} takes ${remaining} damage from ${label}.`);
   if (target.hp <= 0) {
     state.winnerId = getOpponentId(targetId);
     state.phase = "finished";
     addLog(state, `${state.players[state.winnerId].name} wins the match.`);
   }
+};
+
+const applyHealing = (
+  state: MatchState,
+  targetId: PlayerId,
+  amount: number,
+  character: Character | null,
+  label?: string
+) => {
+  if (amount <= 0) return 0;
+  const target = state.players[targetId];
+  const wither = getStatusStatValue(target, "Wither", "stack", character);
+  const wound = getStatusStatValue(target, "Wound", "stack", character);
+  const percentReduction = wither > 0 ? Math.floor((amount * wither) / 100) : 0;
+  const adjusted = Math.max(0, amount - percentReduction - wound);
+  if (adjusted <= 0) return 0;
+  target.hp = Math.min(target.hp + adjusted, 100);
+  addLog(
+    state,
+    label
+      ? `${target.name} heals ${adjusted} HP from ${label}.`
+      : `${target.name} heals ${adjusted} HP.`
+  );
+  return adjusted;
 };
 
 const applyDamage = (
@@ -1664,10 +1833,22 @@ const applyDamage = (
   if (rules.some((rule) => rule.kind === "immune" && matchesAnyCondition(normalizedTypes, rule.tags))) {
     return 0;
   }
+  if (getStatusStatValue(target, "Invulnerable", "value", targetCharacter) > 0) {
+    return 0;
+  }
 
   const absorbed = Math.min(target.shield, damage);
   target.shield -= absorbed;
   let remaining = damage - absorbed;
+  let barrierAbsorbed = 0;
+  if (remaining > 0) {
+    const barrier = getActiveStatusState(target, "Barrier", targetCharacter);
+    if (barrier && barrier.value > 0) {
+      barrierAbsorbed = Math.min(barrier.value, remaining);
+      barrier.value -= barrierAbsorbed;
+      remaining -= barrierAbsorbed;
+    }
+  }
   if (remaining > 0) {
     const multiplier = getDamageTakenMultiplier(target, targetCharacter);
     remaining = Math.max(0, Math.floor(remaining * multiplier));
@@ -1710,7 +1891,7 @@ const applyDamage = (
     target.hp = Math.min(target.hp + absorbResult.reduced, 100);
   }
 
-  return absorbed + remaining;
+  return absorbed + barrierAbsorbed + remaining;
 };
 
 const addLog = (state: MatchState, entry: string) => {
@@ -1889,35 +2070,57 @@ const applyTurnEndEffects = (state: MatchState, playerId: PlayerId, characters: 
     applyStatusDamage(state, playerId, statusState.potency, "Poison", character);
     statusState.count = Math.floor(statusState.count / 2);
   });
-  updateStatus("Frail", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Frail", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
   });
-  updateStatus("Slow", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Slow", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
   });
-  updateStatus("Strain", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Strain", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
   });
-  updateStatus("Weak", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Weak", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
   });
-  updateStatus("Vulnerable", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Vulnerable", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
   });
-  updateStatus("Dexterity", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Dexterity", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
   });
-  updateStatus("Focus", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Focus", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
   });
-  updateStatus("Fortified", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Fortified", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
   });
-  updateStatus("Haste", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Haste", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
   });
-  updateStatus("Strength", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
+  updateStatus("Strength", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
+  });
+  updateStatus("Regen", (statusState, definition) => {
+    if (statusState.potency > 0) {
+      applyHealing(state, playerId, statusState.potency, character, "Regen");
+    }
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
+  });
+  updateStatus("Renewal", (statusState, definition) => {
+    if (statusState.potency > 0) {
+      const amount = Math.floor((100 * statusState.potency) / 100);
+      applyHealing(state, playerId, amount, character, "Renewal");
+    }
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
+  });
+  updateStatus("Thorns", (statusState, definition) => {
+    statusState.count = clampValue(statusState.count - 1, definition.countMax);
+  });
+  updateStatus("Barrier", (statusState, definition) => {
+    statusState.value = clampValue(statusState.value - 1, definition.valueMax);
+  });
+  updateStatus("Invulnerable", (statusState, definition) => {
+    statusState.value = clampValue(statusState.value - 1, definition.valueMax);
   });
 
   updateStatus("Spectro Frazzle", (statusState, definition) => {
@@ -1935,6 +2138,30 @@ const applyTurnEndEffects = (state: MatchState, playerId: PlayerId, characters: 
     statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
   });
   updateStatus("Deflate", (statusState, definition) => {
+    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+  });
+  updateStatus("Disarm", (statusState, definition) => {
+    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+  });
+  updateStatus("Root", (statusState, definition) => {
+    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+  });
+  updateStatus("Seal", (statusState, definition) => {
+    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+  });
+  updateStatus("Silence", (statusState, definition) => {
+    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+  });
+  updateStatus("Stagger", (statusState, definition) => {
+    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+  });
+  updateStatus("Taunt", (statusState, definition) => {
+    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+  });
+  updateStatus("Wither", (statusState, definition) => {
+    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+  });
+  updateStatus("Wound", (statusState, definition) => {
     statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
   });
 
@@ -1965,6 +2192,12 @@ const applyTurnEndEffects = (state: MatchState, playerId: PlayerId, characters: 
     }
   });
 
+  updateStatus("Cover", () => {
+    expireStatus(player, "Cover");
+  });
+  updateStatus("Stun", () => {
+    expireStatus(player, "Stun");
+  });
   updateStatus("Gear 2nd", () => {
     expireStatus(player, "Gear 2nd");
   });
@@ -2209,9 +2442,7 @@ const resolveStructuredEffectList = (
       case "heal": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         if (amount <= 0) break;
-        const source = state.players[entry.playedBy];
-        source.hp = Math.min(source.hp + amount, 100);
-        addLog(state, `${source.name} heals ${amount} HP.`);
+        applyHealing(state, entry.playedBy, amount, sourceCharacter);
         break;
       }
       case "gain_ultimate": {
@@ -2663,9 +2894,7 @@ const resolveTextEffectsForTiming = (
 
     const heal = parseHealFromLine(line, power, entry.xValue);
     if (heal !== null && heal > 0) {
-      const source = state.players[entry.playedBy];
-      source.hp = Math.min(source.hp + heal, 100);
-      addLog(state, `${source.name} heals ${heal} HP.`);
+      applyHealing(state, entry.playedBy, heal, sourceCharacter);
     }
 
     const ultimate = parseUltimateFromLine(line, power);
@@ -2802,14 +3031,51 @@ const resolveUse = (
   if (!source || !target) return;
 
   const power =
-    options?.powerOverride ?? entry.rolledPower ?? rollPower(entry.powerText, entry.xValue);
-  const cancelled = options?.cancelled ?? false;
+    options?.powerOverride ??
+    entry.rolledPower ??
+    rollPower(entry.powerText, entry.xValue, state.rng);
+  let cancelled = options?.cancelled ?? false;
+
+  if (!cancelled && getActionType(entry.types) === "defense") {
+    const sourceCharacter = getCharacterById(characters, source.characterId);
+    const stagger = getActiveStatusState(source, "Stagger", sourceCharacter);
+    if (stagger) {
+      applyStatusStatDelta(source, "Stagger", -1, "stack", sourceCharacter);
+      entry.cancelledBeforeUse = true;
+      cancelled = true;
+      addLog(state, `${source.name}'s ${entry.cardName} is cancelled by Stagger.`);
+    }
+  }
 
   if (!cancelled) {
+    if (getActionType(entry.types) === "attack") {
+      const targetText = entry.targetText?.toLowerCase() ?? "";
+      if (
+        targetText.includes("enemy") &&
+        !targetText.includes("all") &&
+        !targetText.includes("random") &&
+        entry.targetId !== entry.playedBy
+      ) {
+        const targetCharacter = getCharacterById(characters, target.characterId);
+        const cover = getActiveStatusState(target, "Cover", targetCharacter);
+        if (cover && cover.value > 0) {
+          applyStatusStatDelta(target, "Cover", -1, "value", targetCharacter);
+          addLog(state, `${target.name} uses Cover to redirect the attack.`);
+        }
+      }
+    }
     resolveEffectsForTiming(state, entry, power, "before_use", isHit, characters);
     resolveEffectsForTiming(state, entry, power, "on_use", isHit, characters);
     if (isHit) {
       resolveEffectsForTiming(state, entry, power, "on_hit", true, characters);
+      if (getActionType(entry.types) === "attack") {
+        const targetCharacter = getCharacterById(characters, target.characterId);
+        const thorns = getActiveStatusState(target, "Thorns", targetCharacter);
+        if (thorns && thorns.potency > 0) {
+          const sourceCharacter = getCharacterById(characters, source.characterId);
+          applyStatusDamage(state, source.id, thorns.potency, "Thorns", sourceCharacter);
+        }
+      }
     }
     resolveEffectsForTiming(state, entry, power, "after_use", isHit, characters);
   }
@@ -2847,7 +3113,7 @@ const getModifiedEntryPower = (
   actionType: ActionType,
   characters: Character[]
 ) => {
-  const base = entry.rolledPower ?? rollPower(entry.powerText, entry.xValue);
+  const base = entry.rolledPower ?? rollPower(entry.powerText, entry.xValue, state.rng);
   if (entry.rolledPower === undefined) {
     entry.rolledPower = base;
   }
@@ -2955,7 +3221,10 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
 
       resolveUse(state, defense, false, characters, { powerOverride: defensePower });
 
-      const defenseKeywords = getKeywordFlags(defense.effectText);
+      const defenseCancelled = Boolean(defense.cancelledBeforeUse);
+      const defenseKeywords = defenseCancelled
+        ? { evade: false, reuse: false, followUp: false, assistAttack: false }
+        : getKeywordFlags(defense.effectText);
       const attackKeywords = getKeywordFlags(attack.effectText);
       let attackIsHit = true;
       let defenseReuse = false;
@@ -2976,11 +3245,11 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
         }
       }
 
-      attack.mitigationText = defense.effectText;
+      attack.mitigationText = defenseCancelled ? undefined : defense.effectText;
       resolveUse(state, attack, attackIsHit, characters, { powerOverride: attackPower });
       attack.mitigationText = undefined;
 
-      const keepDefense = defenseReuse || defenseKeywords.reuse;
+      const keepDefense = !defenseCancelled && (defenseReuse || defenseKeywords.reuse);
       const keepAttack = attackKeywords.reuse;
       const removeLeft = left === defense ? !keepDefense : !keepAttack;
       const removeRight = right === defense ? !keepDefense : !keepAttack;
@@ -3012,8 +3281,8 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
       resolveUse(state, right, false, characters, { powerOverride: rightPower });
       resolveUse(state, left, false, characters, { powerOverride: leftPower });
 
-      const rightReuse = getKeywordFlags(right.effectText).reuse;
-      const leftReuse = getKeywordFlags(left.effectText).reuse;
+      const rightReuse = !right.cancelledBeforeUse && getKeywordFlags(right.effectText).reuse;
+      const leftReuse = !left.cancelledBeforeUse && getKeywordFlags(left.effectText).reuse;
       const removeLeft = !leftReuse;
       const removeRight = !rightReuse;
 
@@ -3098,7 +3367,8 @@ const nextOccupiedZone = (state: MatchState) => {
 
 export const createMatchState = (
   characters: Character[],
-  players: { id: PlayerId; name: string; characterId: string }[]
+  players: { id: PlayerId; name: string; characterId: string }[],
+  options: MatchOptions = {}
 ): MatchState => {
   const [first, second] = players;
   if (!first || !second) {
@@ -3109,6 +3379,11 @@ export const createMatchState = (
   if (!rosterIds.has(first.characterId) || !rosterIds.has(second.characterId)) {
     throw new Error("Character selection is invalid.");
   }
+
+  const rng = createRngState(options.seed);
+  const transcript = options.enableTranscript
+    ? createMatchTranscript(rng.seed, players)
+    : undefined;
 
   const state: MatchState = {
     turn: 1,
@@ -3123,6 +3398,8 @@ export const createMatchState = (
       normal: { zone: "normal", cards: [], passCount: 0 },
       slow: { zone: "slow", cards: [], passCount: 0 },
     },
+    lineSize: defaultLineSize,
+    positions: { p1: defaultPosition, p2: defaultPosition },
     players: {
       p1: {
         id: "p1",
@@ -3162,6 +3439,8 @@ export const createMatchState = (
       p2: { bankaiHitUsed: false, kyuubiCloneUsed: false, gamabuntaUsed: false },
     },
     nextCardInstanceId: 1,
+    rng,
+    transcript,
   };
 
   buildStartingZones(state, "p1", characters);
@@ -3186,13 +3465,18 @@ export const applyAction = (
   const next = cloneState(state);
   next.actionId = (next.actionId ?? 0) + 1;
 
+  const finalize = (error?: string) => {
+    recordTranscriptEntry(next, action, error);
+    return error ? { state: next, error } : { state: next };
+  };
+
   if (action.type === "clear_log") {
     next.log = [];
-    return { state: next };
+    return finalize();
   }
 
   if (action.type !== "play_card" && action.playerId !== next.activePlayerId) {
-    return { state: next, error: "Not your turn." };
+    return finalize("Not your turn.");
   }
 
   if (action.type === "play_card") {
@@ -3207,21 +3491,21 @@ export const applyAction = (
         (instance) => instance.id === action.cardInstanceId
       );
       if (cardInstanceIndex === -1) {
-        return { state: next, error: "Card not in hand." };
+        return finalize("Card not in hand.");
       }
       cardInstance = player.hand[cardInstanceIndex] ?? null;
-      if (!cardInstance) return { state: next, error: "Card not found." };
+      if (!cardInstance) return finalize("Card not found.");
       card = findCard(characters, player.characterId, cardInstance.cardSlot);
     } else if (action.cardSlot) {
       card = findCard(characters, player.characterId, action.cardSlot);
     }
 
-    if (!card) return { state: next, error: "Card not found." };
+    if (!card) return finalize("Card not found.");
     if (!action.cardInstanceId && !isUltimateCard(card)) {
-      return { state: next, error: "Card must be played from hand." };
+      return finalize("Card must be played from hand.");
     }
 
-    const initialTargetId = pickTargetId(card, action.playerId);
+    const initialTargetId = pickTargetId(card, action.playerId, next, characters);
     const resolvedCard = resolveCardTransforms(
       card,
       next,
@@ -3234,11 +3518,26 @@ export const applyAction = (
       action.playerId !== next.activePlayerId &&
       canPlayAfterUse(next, action.playerId, resolvedCard, characters);
     if (action.playerId !== next.activePlayerId && !outOfTurnAllowed) {
-      return { state: next, error: "Not your turn." };
+      return finalize("Not your turn.");
     }
 
     if (getActiveStatusState(player, "Deflate", sourceCharacter)) {
-      return { state: next, error: "This character is Deflated and cannot play cards." };
+      return finalize("This character is Deflated and cannot play cards.");
+    }
+
+    const typeSet = new Set(resolvedCard.types.map(normalizeTag));
+    const actionType = getActionType(resolvedCard.types);
+    if (getActiveStatusState(player, "Disarm", sourceCharacter) && typeSet.has("physical")) {
+      return finalize("Disarm prevents playing Physical cards.");
+    }
+    if (getActiveStatusState(player, "Silence", sourceCharacter) && typeSet.has("magical")) {
+      return finalize("Silence prevents playing Magical cards.");
+    }
+    if (
+      getActiveStatusState(player, "Seal", sourceCharacter) &&
+      (actionType === "special" || typeSet.has("special"))
+    ) {
+      return finalize("Seal prevents playing Special cards.");
     }
 
     const choiceEffects =
@@ -3246,20 +3545,20 @@ export const applyAction = (
     const textChoices = choiceEffects.length ? [] : getTextChoiceOptions(resolvedCard.effect);
     if (choiceEffects.length) {
       if (action.choiceIndex === undefined || !Number.isInteger(action.choiceIndex)) {
-        return { state: next, error: "Choice required." };
+        return finalize("Choice required.");
       }
       const invalidChoice = choiceEffects.some(
         (effect) => action.choiceIndex < 0 || action.choiceIndex >= effect.options.length
       );
       if (invalidChoice) {
-        return { state: next, error: "Invalid choice." };
+        return finalize("Invalid choice.");
       }
     } else if (textChoices.length) {
       if (action.choiceIndex === undefined || !Number.isInteger(action.choiceIndex)) {
-        return { state: next, error: "Choice required." };
+        return finalize("Choice required.");
       }
       if (action.choiceIndex < 0 || action.choiceIndex >= textChoices.length) {
-        return { state: next, error: "Invalid choice." };
+        return finalize("Invalid choice.");
       }
     }
 
@@ -3267,13 +3566,13 @@ export const applyAction = (
     const fixedX = getFixedXFromText(resolvedCard.effect);
     if (xRange) {
       if (action.xValue === undefined || !Number.isInteger(action.xValue)) {
-        return { state: next, error: "X value required." };
+        return finalize("X value required.");
       }
       if (action.xValue < xRange.min || action.xValue > xRange.max) {
-        return { state: next, error: "X value out of range." };
+        return finalize("X value out of range.");
       }
     } else if (action.xValue !== undefined && action.xValue < 0) {
-      return { state: next, error: "X value out of range." };
+      return finalize("X value out of range.");
     }
 
     let xValue = action.xValue ?? 0;
@@ -3283,7 +3582,7 @@ export const applyAction = (
       xValue = action.xValue ?? 0;
     }
 
-    const targetId = pickTargetId(resolvedCard, action.playerId);
+    const targetId = pickTargetId(resolvedCard, action.playerId, next, characters);
     const restrictionError = getUseRestrictionError(
       resolvedCard,
       next,
@@ -3292,15 +3591,15 @@ export const applyAction = (
       characters
     );
     if (restrictionError) {
-      return { state: next, error: restrictionError };
+      return finalize(restrictionError);
     }
 
     const cost = parseCost(resolvedCard.cost);
     if (cost.variable && action.xValue === undefined && fixedX === null) {
-      return { state: next, error: "X value required." };
+      return finalize("X value required.");
     }
     if (cost.variable && action.xValue !== undefined && !Number.isInteger(action.xValue)) {
-      return { state: next, error: "X value must be an integer." };
+      return finalize("X value must be an integer.");
     }
     const isAfterUse =
       next.afterUseWindow && next.afterUseWindow.validForAction === next.actionId;
@@ -3318,18 +3617,18 @@ export const applyAction = (
       followUpAdjustment
     );
     if (player.energy < adjustedTotals.energy || player.ultimate < adjustedTotals.ultimate) {
-      return { state: next, error: "Insufficient resources." };
+      return finalize("Insufficient resources.");
     }
 
     const effectiveSpeed = getEffectiveSpeed(resolvedCard.speed, player, sourceCharacter);
     const legalZones = getLegalZonesForSpeed(effectiveSpeed);
     if (!legalZones.includes(action.zone)) {
-      return { state: next, error: "Illegal zone for card speed." };
+      return finalize("Illegal zone for card speed.");
     }
 
     if (next.activeZone) {
       if (action.zone !== next.activeZone && !isZoneFaster(action.zone, next.activeZone)) {
-        return { state: next, error: "Cannot play in a slower zone than the active zone." };
+        return finalize("Cannot play in a slower zone than the active zone.");
       }
     }
 
@@ -3367,6 +3666,7 @@ export const applyAction = (
       speed: effectiveSpeed,
       playedBy: action.playerId,
       targetId,
+      targetText: resolvedCard.target,
       xValue,
       choiceIndex: action.choiceIndex,
       cardInstanceId: cardInstance?.id,
@@ -3380,7 +3680,7 @@ export const applyAction = (
     addLog(next, `${player.name} plays ${resolvedCard.name} in the ${zoneLabel(action.zone)} Zone.`);
     applyCardPlayedStatusRules(next, entry, adjustedTotals.energy, characters);
     if (next.phase === "finished") {
-      return { state: next };
+      return finalize();
     }
     const playPower = getModifiedEntryPower(
       next,
@@ -3390,12 +3690,12 @@ export const applyAction = (
     );
     resolveEffectsForTiming(next, entry, playPower, "on_play", false, characters);
     next.activePlayerId = getOpponentId(action.playerId);
-    return { state: next };
+    return finalize();
   }
 
   if (action.type === "pass") {
     if (!next.activeZone) {
-      return { state: next, error: "No active zone to pass." };
+      return finalize("No active zone to pass.");
     }
 
     const zone = next.zones[next.activeZone];
@@ -3421,25 +3721,53 @@ export const applyAction = (
       next.activePlayerId = getOpponentId(action.playerId);
     }
 
-    return { state: next };
+    return finalize();
   }
 
   if (action.type === "end_turn") {
     if (action.playerId !== next.initiativePlayerId) {
-      return { state: next, error: "Only the initiative player can end the turn." };
+      return finalize("Only the initiative player can end the turn.");
     }
     if (next.activeZone || !zonesAreEmpty(next)) {
-      return { state: next, error: "Cannot end the turn during combat." };
+      return finalize("Cannot end the turn during combat.");
     }
 
     applyTurnEndEffects(next, "p1", characters);
     applyTurnEndEffects(next, "p2", characters);
     if (next.phase === "finished") {
-      return { state: next };
+      return finalize();
     }
     advanceTurn(next, characters);
-    return { state: next };
+    return finalize();
   }
 
-  return { state: next };
+  return finalize();
+};
+
+export const replayTranscript = (
+  characters: Character[],
+  transcript: MatchTranscript
+): { state: MatchState; error?: string; actionIndex?: number } => {
+  let state = createMatchState(characters, transcript.players, {
+    seed: transcript.seed,
+  });
+
+  for (let index = 0; index < transcript.actions.length; index += 1) {
+    const entry = transcript.actions[index];
+    const result = applyAction(state, entry.action, characters);
+    const expectedError = Boolean(entry.error);
+    const actualError = Boolean(result.error);
+    if (expectedError !== actualError) {
+      return {
+        state: result.state,
+        error: `Transcript mismatch at action ${index + 1}: expected ${
+          entry.error ? `error (${entry.error})` : "no error"
+        }, got ${result.error ? `error (${result.error})` : "no error"}.`,
+        actionIndex: index,
+      };
+    }
+    state = result.state;
+  }
+
+  return { state };
 };

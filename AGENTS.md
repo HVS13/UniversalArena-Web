@@ -11,6 +11,8 @@ Project rules
 - Client UI lives in `apps/client/src/`; core rules live in `packages/core/src/`.
 - Character art assets live in `apps/client/public/assets/characters`.
 - Prefer deterministic, testable rules logic in `packages/core` over UI-side effects.
+- Track core/UI tasks in this repo's `TODO.md`; track docs/data pipeline tasks in `C:\Git\UniversalArena\TODO.md`.
+- Core supports deterministic replay + transcripts; golden tests live in `packages/core/src/golden.ts` and run via `pnpm golden`.
 - Structured effects include conditions, transforms, multihit hits, and set/reduce/spend handling; status state is tracked as potency/count/stack/value in core.
 - Restriction enforcement is structured-only; text parsing no longer gates card use. Keep `restrictions` in exported data for any gating text.
 - Core now enforces timing windows and status caps/expiry/trigger hooks (cost/speed/power/damage modifiers) plus hand/deck play and spend/draw/creation handling. Legacy text parsing remains for unmodeled mechanics (optional spend, bonus damage, draw/create, unique triggers).
@@ -21,13 +23,17 @@ Data workflow
 
 Quality checks
 - `pnpm --filter @ua/client build` before release.
+- Run `pnpm golden` after core changes that affect rules.
 
 Response style
 - Tell it like it is; no sugar-coating. Be skeptical, practical, and direct.
 
 Historical context
+- Seeded RNG lives in `packages/core/src/rng.ts`; keep import paths stable for `tsx` test runs.
+- Golden tests are the regression guardrail; update snapshots only when rules intentionally change.
 - Hand display shows the active player's hand (hot-seat flow); add UI labeling if this causes confusion.
 - Transform-target cards are excluded from deck/hand population; alternates only appear via transforms at play time.
 - UI disables cards unless base energy/ultimate costs are affordable (variable X no longer bypasses).
 - Update the docs front-page "Last updated" stamp when shipping user-visible changes.
 - Transform priority uses the last matching entry in a card's `transforms` list.
+- Apply all healing through the core helper so Wound (flat) and Wither (percent) reductions always apply.

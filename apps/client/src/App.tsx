@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { characters as roster } from "@ua/data";
-import type { Card, Character } from "@ua/data";
+import { characters as roster, keywords, statusEffects } from "@ua/data";
+import type { Card, Character, Keyword, StatusEffectDefinition } from "@ua/data";
 import {
   applyAction,
   createMatchState,
@@ -289,9 +289,119 @@ const getCardChoices = (card: Card) => {
   }));
 };
 
+type LogEntry = {
+  summary: string;
+  details?: string[];
+};
+
+type LogGroup = {
+  title: string;
+  entries: LogEntry[];
+};
+
+const parseLogEntry = (line: string): LogEntry => {
+  const dealMatch = line.match(/^(.+?) deals (\d+) damage to (.+?)\.$/);
+  if (dealMatch) {
+    const [, source, amount, target] = dealMatch;
+    return { summary: `${source} deals ${amount} damage`, details: [`Target: ${target}`] };
+  }
+  const takeMatch = line.match(/^(.+?) takes (\d+) damage from (.+?)\.$/);
+  if (takeMatch) {
+    const [, target, amount, source] = takeMatch;
+    return { summary: `${target} takes ${amount} damage`, details: [`Source: ${source}`] };
+  }
+  const healMatch = line.match(/^(.+?) heals (\d+) HP(?: from (.+?))?\.$/);
+  if (healMatch) {
+    const [, target, amount, source] = healMatch;
+    const details = source ? [`Source: ${source}`] : undefined;
+    return { summary: `${target} heals ${amount} HP`, details };
+  }
+  const shieldMatch = line.match(/^(.+?) gains (\d+) shield\.$/);
+  if (shieldMatch) {
+    const [, target, amount] = shieldMatch;
+    return { summary: `${target} gains ${amount} shield` };
+  }
+  const playMatch = line.match(/^(.+?) plays (.+?) in the (.+?) Zone\.$/);
+  if (playMatch) {
+    const [, player, cardName, zoneName] = playMatch;
+    return { summary: `${player} plays ${cardName}`, details: [`Zone: ${zoneName}`] };
+  }
+  return { summary: line };
+};
+
+const groupLogEntries = (entries: string[]): LogGroup[] => {
+  if (entries.length === 0) return [];
+  const groups: LogGroup[] = [];
+  let current: LogGroup = { title: "Timeline", entries: [] };
+
+  entries.forEach((line) => {
+    const turnMatch = line.match(/^Turn\s+\d+\s+begins\./);
+    if (turnMatch) {
+      if (current.entries.length > 0) {
+        groups.push(current);
+      }
+      current = { title: line, entries: [] };
+      return;
+    }
+    current.entries.push(parseLogEntry(line));
+  });
+
+  if (current.entries.length > 0) {
+    groups.push(current);
+  }
+  return groups;
+};
+
+const normalizeKey = (value: string) => value.trim().toLowerCase();
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+type KeywordMatcher = {
+  keyword: Keyword;
+  regex: RegExp;
+};
+
+const buildKeywordMatchers = (list: Keyword[]): KeywordMatcher[] =>
+  [...list]
+    .sort((a, b) => b.name.length - a.name.length)
+    .map((keyword) => ({
+      keyword,
+      regex: new RegExp(`\\b${escapeRegex(keyword.name)}\\b`, "i"),
+    }));
+
+const findKeywordMatch = (line: string, matchers: KeywordMatcher[]) =>
+  matchers.find((matcher) => matcher.regex.test(line));
+
+const getStatusMode = (status: StatusEffectDefinition) => {
+  if (status.potencyMax !== undefined || status.countMax !== undefined) return "P/C";
+  if (status.stackMax !== undefined) return "S";
+  if (status.valueMax !== undefined) return "V";
+  return "None";
+};
+
+const getStatusTurnEnd = (status: StatusEffectDefinition) => {
+  const turnEndRules = status.rules
+    .filter((rule) => rule.timing.trim().toLowerCase() === "turn end")
+    .map((rule) => rule.text.trim())
+    .filter(Boolean);
+  if (!turnEndRules.length) return "No change";
+  return turnEndRules.join(" / ");
+};
+
 
 const App = () => {
   const rosterSorted = useMemo(() => sortRoster(roster), []);
+  const keywordMatchers = useMemo(() => buildKeywordMatchers(keywords), [keywords]);
+  const statusDetails = useMemo(() => {
+    const map = new Map<string, { mode: string; turnEnd: string }>();
+    statusEffects.forEach((status) => {
+      map.set(normalizeKey(status.name), {
+        mode: getStatusMode(status),
+        turnEnd: getStatusTurnEnd(status),
+      });
+    });
+    return map;
+  }, [statusEffects]);
   const [stage, setStage] = useState<Stage>("setup");
   const [names, setNames] = useState({ p1: "Player 1", p2: "Player 2" });
   const [selection, setSelection] = useState<SelectionState>(defaultSelection);
@@ -534,6 +644,65 @@ const App = () => {
   const activeUltimates = activeCharacter
     ? activeCharacter.cards.filter((card) => isUltimateCard(card))
     : [];
+  const cardFlowTip =
+    "Played: placed in a legal zone after paying cost and choosing legal targets.\n" +
+    "Used: the card's effects apply (default timing is On Use).\n" +
+    "Cancelled: skips Before Use, On Use, On Hit, After Use; Always still applies.\n" +
+    "Negated: skips all effects, including Always.";
+  const timingTip =
+    "On Hit: an Attack is a hit, even if it deals 0 damage.\n" +
+    "On Damage: damage is actually dealt after mitigation (Shield, Barrier, or HP), >0.\n" +
+    "On HP Damage: HP is reduced by damage after mitigation.";
+  const zoneOrder: ZoneName[] = ["fast", "normal", "slow"];
+  const zoneRail = zoneOrder.map((zone) => {
+    const data = matchState.zones[zone];
+    const cards = data.cards;
+    const nextCard = cards[cards.length - 1];
+    const leftCard = cards[cards.length - 2];
+    const nextPair =
+      cards.length === 0
+        ? null
+        : cards.length === 1
+          ? `Next: ${nextCard?.cardName ?? "Card"}`
+          : `Next: ${nextCard?.cardName ?? "Card"} vs ${leftCard?.cardName ?? "Card"}`;
+    return {
+      zone,
+      cards,
+      nextPair,
+      isActive: matchState.activeZone === zone,
+      isPaused: matchState.pausedZones.includes(zone),
+    };
+  });
+  const zoneStacks = zoneOrder.map((zone) => {
+    const data = matchState.zones[zone];
+    const cards = data.cards;
+    const top = cards[cards.length - 1];
+    const next = cards[cards.length - 2];
+    return {
+      zone,
+      cards: [...cards].reverse(),
+      clash: cards.length >= 2 ? { left: next, right: top } : null,
+      isActive: matchState.activeZone === zone,
+      isPaused: matchState.pausedZones.includes(zone),
+    };
+  });
+  const zoneRuleHint = matchState.activeZone
+    ? "Cards may be played in the active zone or any faster zone allowed by their speed. Slower zones are locked until the active zone resolves."
+    : "No active zone yet. Cards can be played in any zone allowed by their speed.";
+  const logGroups = groupLogEntries(matchState.log);
+  const renderEffectLine = (line: string, key: string) => {
+    const match = findKeywordMatch(line, keywordMatchers);
+    if (!match) return <p key={key}>{line}</p>;
+    const tier = match.keyword.tier ?? "Unspecified";
+    const tip = `${match.keyword.name}\nTier: ${tier}\n${match.keyword.description}`;
+    return (
+      <p key={key}>
+        <span className="ua-tooltip ua-keyword" data-tip={tip}>
+          {line}
+        </span>
+      </p>
+    );
+  };
 
   return (
     <div className="ua-shell">
@@ -553,6 +722,97 @@ const App = () => {
       </header>
 
       {message && <div className="ua-toast">{message}</div>}
+
+      <section className="ua-panel ua-panel--wide ua-zone-banner">
+        <div>
+          <p className="ua-zone-banner__title">Active Zone: {activeZoneLabel}</p>
+          <p className="ua-zone-banner__meta">
+            Paused Zones: {pausedZonesLabel} | Resolves right-to-left
+          </p>
+        </div>
+        <button className="ua-button ua-button--ghost ua-zone-banner__rule" title={zoneRuleHint}>
+          Why can&apos;t I play here?
+        </button>
+      </section>
+
+      <section className="ua-panel ua-panel--wide">
+        <div className="ua-panel__header">
+          <h2>Resolution Rail</h2>
+          <span className="ua-pill">Right-to-left</span>
+        </div>
+        <div className="ua-rail">
+          {zoneRail.map((zone) => (
+            <div
+              key={zone.zone}
+              className={`ua-rail__item ${zone.isActive ? "is-active" : ""} ${
+                zone.isPaused ? "is-paused" : ""
+              }`}
+            >
+              <div className="ua-rail__label">{zoneLabel(zone.zone)}</div>
+              <div className="ua-rail__meta">
+                <span>{zone.cards.length} card(s)</span>
+                {zone.isActive && <span className="ua-rail__tag">Active</span>}
+                {!zone.isActive && zone.isPaused && <span className="ua-rail__tag">Paused</span>}
+              </div>
+              {zone.nextPair && <div className="ua-rail__next">{zone.nextPair}</div>}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="ua-panel ua-panel--wide">
+        <div className="ua-panel__header">
+          <h2>Zone Stack</h2>
+          <span className="ua-pill">Top resolves first</span>
+        </div>
+        <div className="ua-stack-grid">
+          {zoneStacks.map((zone) => (
+            <div
+              key={zone.zone}
+              className={`ua-stack-zone ${zone.isActive ? "is-active" : ""} ${
+                zone.isPaused ? "is-paused" : ""
+              }`}
+            >
+              <div className="ua-stack-zone__header">
+                <span className="ua-stack-zone__title">{zoneLabel(zone.zone)}</span>
+                <span className="ua-stack-zone__count">{zone.cards.length} card(s)</span>
+              </div>
+              {zone.clash && (
+                <div className={`ua-clash-preview ${zone.isActive ? "is-active" : ""}`}>
+                  <span>{zone.clash.right?.cardName}</span>
+                  <span className="ua-clash-preview__vs">vs</span>
+                  <span>{zone.clash.left?.cardName}</span>
+                </div>
+              )}
+              <div className="ua-stack-list">
+                {zone.cards.length === 0 && <p className="ua-empty">No cards queued.</p>}
+                {zone.cards.map((entry, index) => {
+                  const source = matchState.players[entry.playedBy];
+                  const target = matchState.players[entry.targetId];
+                  return (
+                    <div
+                      key={entry.id}
+                      className={`ua-stack-card ${index === 0 ? "is-top" : ""}`}
+                      style={{ animationDelay: `${index * 0.03}s` }}
+                    >
+                      <div className="ua-stack-card__title">
+                        <span>{entry.cardName}</span>
+                        {index === 0 && <span className="ua-stack-card__tag">Top</span>}
+                      </div>
+                      <div className="ua-stack-card__meta">
+                        {source.name} → {target.name}
+                      </div>
+                      <div className="ua-stack-card__meta">
+                        Speed: {entry.speed} | {entry.types.join(" / ")}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="ua-match-grid">
         {(["p1", "p2"] as PlayerId[]).map((playerId) => {
@@ -605,11 +865,22 @@ const App = () => {
                 </div>
                 {statusEntries.length > 0 && (
                   <div className="ua-statuses">
-                    {statusEntries.map(([status, value]) => (
-                      <span key={status} className="ua-pill">
-                        {status}: {value}
-                      </span>
-                    ))}
+                    {statusEntries.map(([status, value]) => {
+                      const info = statusDetails.get(normalizeKey(status));
+                      const tip = info
+                        ? `${status}\nMode: ${info.mode}\nTurn End: ${info.turnEnd}`
+                        : null;
+                      return (
+                        <span
+                          key={status}
+                          className={`ua-pill${info ? " ua-tooltip ua-status-pill" : ""}`}
+                          data-tip={tip ?? undefined}
+                          tabIndex={info ? 0 : undefined}
+                        >
+                          {status}: {value}
+                        </span>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -620,7 +891,7 @@ const App = () => {
 
       <section className="ua-panel ua-panel--wide">
         <div className="ua-panel__header">
-          <h2>Combat Log</h2>
+          <h2>Event Log</h2>
           <div className="ua-inline-actions">
             <button
               className="ua-button ua-button--ghost"
@@ -631,10 +902,24 @@ const App = () => {
           </div>
         </div>
         <div className="ua-log">
-          {matchState.log.length === 0 && <p>No log entries yet.</p>}
-          {matchState.log.map((entry, index) => (
-            <div key={`${entry}-${index}`} className="ua-log-entry">
-              {entry}
+          {logGroups.length === 0 && <p>No log entries yet.</p>}
+          {logGroups.map((group, groupIndex) => (
+            <div key={`${group.title}-${groupIndex}`} className="ua-log-group">
+              <div className="ua-log-group__title">{group.title}</div>
+              <div className="ua-log-group__entries">
+                {group.entries.map((entry, entryIndex) => (
+                  <div key={`${groupIndex}-${entryIndex}`} className="ua-log-entry">
+                    <div className="ua-log-entry__summary">{entry.summary}</div>
+                    {entry.details && (
+                      <div className="ua-log-entry__details">
+                        {entry.details.map((detail) => (
+                          <span key={detail}>{detail}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
@@ -673,6 +958,15 @@ const App = () => {
             Reaction window: {reactionNames.join(" / ")} can play Follow-Up or Assist Attack now.
           </p>
         )}
+        <div className="ua-help-row">
+          <span className="ua-help-label">Rules tooltips</span>
+          <span className="ua-tooltip" data-tip={cardFlowTip} tabIndex={0}>
+            Played vs Used vs Cancelled vs Negated
+          </span>
+          <span className="ua-tooltip" data-tip={timingTip} tabIndex={0}>
+            On Hit vs On Damage vs On HP Damage
+          </span>
+        </div>
         {activeCharacter ? (
           <>
             <h3>Hand</h3>
@@ -715,9 +1009,9 @@ const App = () => {
                     </div>
                     <div className="ua-card__tags">{card.types.join(" / ")}</div>
                     <div className="ua-card__effect">
-                      {card.effect.map((line) => (
-                        <p key={line}>{line}</p>
-                      ))}
+                      {card.effect.map((line, index) =>
+                        renderEffectLine(line, `${instance.id}-${index}`)
+                      )}
                     </div>
                     {isVariable && <span className="ua-card__tag">X Cost</span>}
                     {xRange && <span className="ua-card__tag">Choose X</span>}
@@ -756,9 +1050,9 @@ const App = () => {
                         </div>
                         <div className="ua-card__tags">{card.types.join(" / ")}</div>
                         <div className="ua-card__effect">
-                          {card.effect.map((line) => (
-                            <p key={line}>{line}</p>
-                          ))}
+                          {card.effect.map((line, index) =>
+                            renderEffectLine(line, `${card.slot}-${index}`)
+                          )}
                         </div>
                         {isVariable && <span className="ua-card__tag">X Cost</span>}
                       </button>
@@ -830,9 +1124,9 @@ const App = () => {
                     </div>
                     <div className="ua-card__tags">{card.types.join(" / ")}</div>
                     <div className="ua-card__effect">
-                      {card.effect.map((line) => (
-                        <p key={line}>{line}</p>
-                      ))}
+                      {card.effect.map((line, index) =>
+                        renderEffectLine(line, `${instance.id}-${index}`)
+                      )}
                     </div>
                     {isVariable && <span className="ua-card__tag">X Cost</span>}
                     {xRange && <span className="ua-card__tag">Choose X</span>}

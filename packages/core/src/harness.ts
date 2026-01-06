@@ -142,6 +142,18 @@ const testCharacters = (): Character[] => [
   },
 ];
 
+const harnessSeed = 1337;
+
+const createHarnessState = (characters: Character[]) =>
+  createMatchState(
+    characters,
+    [
+      { id: "p1", name: "Attacker", characterId: "test-attacker" },
+      { id: "p2", name: "Defender", characterId: "test-defender" },
+    ],
+    { seed: harnessSeed }
+  );
+
 const applyOrThrow = (
   state: ReturnType<typeof createMatchState>,
   action: Parameters<typeof applyAction>[1],
@@ -190,10 +202,7 @@ const playFromHand = (
 };
 
 const runEvadeTest = (characters: Character[]): HarnessResult => {
-  let state = createMatchState(characters, [
-    { id: "p1", name: "Attacker", characterId: "test-attacker" },
-    { id: "p2", name: "Defender", characterId: "test-defender" },
-  ]);
+  let state = createHarnessState(characters);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   state = applyOrThrow(state, playFromHand(state, "p2", "1", "normal"), characters);
@@ -208,10 +217,7 @@ const runEvadeTest = (characters: Character[]): HarnessResult => {
 };
 
 const runFollowUpTest = (characters: Character[]): HarnessResult => {
-  let state = createMatchState(characters, [
-    { id: "p1", name: "Attacker", characterId: "test-attacker" },
-    { id: "p2", name: "Defender", characterId: "test-defender" },
-  ]);
+  let state = createHarnessState(characters);
   state.initiativePlayerId = "p2";
   state.activePlayerId = "p1";
 
@@ -228,10 +234,7 @@ const runFollowUpTest = (characters: Character[]): HarnessResult => {
 };
 
 const runMitigationTest = (characters: Character[]): HarnessResult[] => {
-  let state = createMatchState(characters, [
-    { id: "p1", name: "Attacker", characterId: "test-attacker" },
-    { id: "p2", name: "Defender", characterId: "test-defender" },
-  ]);
+  let state = createHarnessState(characters);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
@@ -239,10 +242,7 @@ const runMitigationTest = (characters: Character[]): HarnessResult[] => {
 
   const resistOk = state.players.p2.hp === 95;
 
-  let fireState = createMatchState(characters, [
-    { id: "p1", name: "Attacker", characterId: "test-attacker" },
-    { id: "p2", name: "Defender", characterId: "test-defender" },
-  ]);
+  let fireState = createHarnessState(characters);
   fireState = applyOrThrow(fireState, playFromHand(fireState, "p1", "2", "normal"), characters);
   fireState = applyOrThrow(fireState, { type: "pass", playerId: "p2" }, characters);
   fireState = applyOrThrow(fireState, { type: "pass", playerId: "p1" }, characters);
@@ -256,10 +256,7 @@ const runMitigationTest = (characters: Character[]): HarnessResult[] => {
 };
 
 const runRestrictionTest = (characters: Character[]): HarnessResult[] => {
-  let state = createMatchState(characters, [
-    { id: "p1", name: "Attacker", characterId: "test-attacker" },
-    { id: "p2", name: "Defender", characterId: "test-defender" },
-  ]);
+  let state = createHarnessState(characters);
 
   const blocked = applyAction(state, playFromHand(state, "p1", "6", "normal"), characters);
   if (!blocked.error) {
@@ -289,18 +286,11 @@ const runRestrictionTest = (characters: Character[]): HarnessResult[] => {
 
 export const runHarness = () => {
   const results: HarnessResult[] = [];
-  const originalRandom = Math.random;
-  Math.random = () => 0;
-
-  try {
-    const characters = testCharacters();
-    results.push(runEvadeTest(characters));
-    results.push(runFollowUpTest(characters));
-    results.push(...runMitigationTest(characters));
-    results.push(...runRestrictionTest(characters));
-  } finally {
-    Math.random = originalRandom;
-  }
+  const characters = testCharacters();
+  results.push(runEvadeTest(characters));
+  results.push(runFollowUpTest(characters));
+  results.push(...runMitigationTest(characters));
+  results.push(...runRestrictionTest(characters));
 
   return results;
 };

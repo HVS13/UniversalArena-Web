@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "pnpm --filter @ua/client dev",
     "build": "pnpm --filter @ua/client build",
-    "preview": "pnpm --filter @ua/client preview"
+    "preview": "pnpm --filter @ua/client preview",
+    "golden": "pnpm --filter @ua/core golden"
+  },
+  "devDependencies": {
+    "tsx": "^4.8.1"
   }
 }

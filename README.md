@@ -15,14 +15,14 @@ Web-based Universal Arena prototype (local hot-seat). Data is exported from the 
 
 Note: On Windows with restricted PowerShell scripts, use `cmd /c` for pnpm commands.
 
-## Install
+## Step 1 - Install
 
 ```powershell
 cd C:\Git\UniversalArena-Web
 cmd /c pnpm install
 ```
 
-## Sync data from docs (required)
+## Step 2 - Sync data from docs (required)
 
 The canonical data lives in `C:\Git\UniversalArena\docs\data`. Export it before running the game:
 
@@ -38,7 +38,7 @@ Do not edit `packages/data/src/characters.json` by hand.
 2. Export to this repo after any data change.
 3. If core logic or UI changes affect rules, mirror the change in the docs repo and re-export.
 
-## Run locally
+## Step 3 - Run locally
 
 ```powershell
 cd C:\Git\UniversalArena-Web
@@ -47,11 +47,26 @@ cmd /c pnpm --filter @ua/client dev
 
 Open http://localhost:5173.
 
-## Build
+## Step 4 - Run golden tests (recommended)
+
+Golden tests validate deterministic replay and key combat edge cases.
+
+```powershell
+cd C:\Git\UniversalArena-Web
+cmd /c pnpm golden
+```
+
+## Step 5 - Build (optional)
 
 ```powershell
 cmd /c pnpm --filter @ua/client build
 ```
+
+## Deterministic replay and transcripts
+
+- Deterministic replay is built into `@ua/core`. Matches can be seeded and recorded.
+- Golden tests live in `packages/core/src/golden.ts` and are executed via `pnpm golden`.
+- If you change core rules, run `pnpm golden` after syncing data.
 
 ## Current limitations
 
@@ -59,7 +74,7 @@ cmd /c pnpm --filter @ua/client build
 - Status/keyword handling covers timing windows, caps/expiry, and cost/speed/power/damage modifiers plus spend/draw/creation hooks, but not all unique triggers.
 - Hand/deck/discard/exhaust are implemented, but there is no deck reshuffle or deck/discard inspection UI yet.
 - Multiplayer is not implemented yet.
-- Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines in docs (not yet surfaced in UI).
+- Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines, surfaced in UI tooltips.
 
 ## Gameplay notes
 

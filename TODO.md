@@ -1,36 +1,38 @@
 # TODO
 
 ## Priority order
-1. Rules completeness (structured effects coverage, trigger audit, regression tests).
-2. UI polish (tooltips, zone clarity, lifecycle indicators).
-3. Multiplayer (relay server + client sync).
+1. Engine determinism and rules completeness (structured effects coverage, trigger audit, deterministic replay, golden tests).
+2. UI explainability (Active Zone banner, resolution rail, nested event log, status/keyword tooltips).
+3. Pipeline automation and consistency (data export workflow, template enforcement, power budget checks).
+4. Multiplayer (relay server + client sync), only after 1-3 are done.
 
 ## Core rules
-- Add deterministic replay support (seed + action list) and combat transcript output.
-- Create golden tests for key edge cases: Fast interrupt chain, same-side adjacency, Attack vs Attack tie, Cancelled vs Always.
+- DONE: deterministic replay support (seed + action list) and combat transcript output.
+- DONE: initial golden tests for fast interrupt chain and cancelled vs always (includes attack tie).
+- DONE: defined a positional model (columns/line) and adjacency/opposed helpers for future mechanics.
+- DONE: expanded golden tests for timing windows, status expiry, cost/speed modifiers, mitigation stacking, and hand/deck spend flows.
 - Extend structured effect coverage for remaining optional spend/bonus damage/draw/create mechanics, then remove legacy text parsing once coverage is high.
-- Audit remaining status/keyword triggers (deck reshuffle rules if needed, unique per-card triggers) and add them to core.
-- Add regression tests for timing windows, status expiry, cost/speed modifiers, mitigation stacking, and hand/deck spend flows.
-- Add a regression test to ensure transform-target cards are not dealt into the deck/hand.
+- DONE: Turn End triggers for Barrier, Invulnerable, Regen, Renewal, Thorns, Disarm, Root, Seal, Silence, Stagger, Taunt, Wound, Wither, and Cover/Stun expiry.
+- DONE: Thorns on-hit damage and Wound/Wither healing reduction across all healing (including Regen/Renewal).
+- Audit remaining status/keyword effects (deck reshuffle if needed).
+- DONE: regression test ensures transform-target cards are not dealt into the deck/hand.
 
 ## UI/UX
-- Add Active Zone banner with "why can/can't play here" tooltip.
-- Add resolution rail that shows right-to-left order and next pairing.
-- Add event log with nested damage causes (e.g., Fortified/Vulnerable/Shield/Barrier/HP).
-- Add tooltips for "Played vs Used vs Cancelled vs Negated" and "On Hit vs On Damage vs On HP Damage".
-- Add zone visualization and stack/clash animations.
-- Add tooltips for keywords/status effects from data (including keyword tier and status Mode/Turn End lines).
+- DONE: Active Zone banner with "why can't I play here" tooltip.
+- DONE: resolution rail showing right-to-left order and next pairing.
+- DONE: event log with nested entries and parsed damage/heal details.
+- DONE: tooltips for "Played vs Used vs Cancelled vs Negated" and "On Hit vs On Damage vs On HP Damage".
+- DONE: zone visualization with stack ordering and clash preview animations.
+- DONE: Add tooltips for keywords/status effects from data (including keyword tier and status Mode/Turn End lines).
 - Add discard/deck inspection and clearer card lifecycle indicators.
 - Label the active hand with player name to reduce hot-seat confusion.
 
 ## Multiplayer
-- Add relay server and client sync (room codes, reconnect, host authority).
+- Add relay server and client sync (room codes, reconnect, host authority) only after 1-3 are complete.
 
 ## Tooling
-- Extend schema validation for new effect types as they are introduced.
-- Add automated tests for core rules engine (seeded replay + transcript snapshot).
+- DONE: golden test runner for core engine (seeded replay + transcript snapshot).
+- Add CI step to run `pnpm golden` on PRs.
 
-## Content pipeline
-- Enforce template sections and timing label phrasing for all characters.
-- Standardize card type tag order for data/UI filtering.
-- Enforce power budgeting targets unless exceptions are documented.
+## Docs/data pipeline
+- Tracked in `C:\Git\UniversalArena\TODO.md` (template enforcement, power budgets, schema validation).

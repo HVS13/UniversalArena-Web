@@ -1682,6 +1682,138 @@ const runTurnEndDecayTest = (): GoldenResult => {
   }
 };
 
+const runDeckReshuffleTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Alpha", characterId: "shuffle-a" },
+    { id: "p2" as const, name: "Bravo", characterId: "shuffle-b" },
+  ];
+  const characters: Character[] = [
+    {
+      id: "shuffle-a",
+      name: "Shuffle Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Deck reshuffle coverage.",
+      art: "shuffle-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Short Strike",
+          cost: "0 Energy",
+          power: "10-10",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+        },
+        {
+          slot: "2",
+          name: "Short Guard",
+          cost: "0 Energy",
+          power: "10-10",
+          types: ["Basic", "Defense", "Physical"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Gain Power Shield."],
+          effects: [{ timing: "on_use", type: "gain_shield", amount: { kind: "power" } }],
+        },
+      ],
+    },
+    {
+      id: "shuffle-b",
+      name: "Shuffle Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Deck reshuffle coverage.",
+      art: "shuffle-bravo.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Short Strike",
+          cost: "0 Energy",
+          power: "10-10",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+        },
+        {
+          slot: "2",
+          name: "Short Guard",
+          cost: "0 Energy",
+          power: "10-10",
+          types: ["Basic", "Defense", "Physical"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Gain Power Shield."],
+          effects: [{ timing: "on_use", type: "gain_shield", amount: { kind: "power" } }],
+        },
+      ],
+    },
+  ];
+
+  let state = createSeededState(characters, players);
+  state = applyOrThrow(state, { type: "end_turn", playerId: "p1" }, characters);
+
+  const shuffleLogs = state.log.filter((entry) =>
+    entry.includes("shuffles their discard into the draw pile.")
+  );
+  const snapshot = {
+    turn: state.turn,
+    p1Hand: state.players.p1.hand.length,
+    p1Deck: state.players.p1.deck.length,
+    p1Discard: state.players.p1.discard.length,
+    shuffleLogs,
+  };
+  const expected = {
+    turn: 2,
+    p1Hand: 2,
+    p1Deck: 0,
+    p1Discard: 0,
+    shuffleLogs: [
+      "Bravo shuffles their discard into the draw pile.",
+      "Alpha shuffles their discard into the draw pile.",
+    ],
+  };
+
+  const replayState = runReplaySnapshot(characters, state);
+  const replayShuffleLogs = replayState.log.filter((entry) =>
+    entry.includes("shuffles their discard into the draw pile.")
+  );
+  const replaySnapshot = {
+    p1Hand: replayState.players.p1.hand.length,
+    p1Deck: replayState.players.p1.deck.length,
+    p1Discard: replayState.players.p1.discard.length,
+    shuffleLogs: replayShuffleLogs,
+  };
+  const expectedReplay = {
+    p1Hand: expected.p1Hand,
+    p1Deck: expected.p1Deck,
+    p1Discard: expected.p1Discard,
+    shuffleLogs: expected.shuffleLogs,
+  };
+
+  try {
+    assertSnapshot("Deck reshuffle snapshot", snapshot, expected);
+    assertSnapshot("Deck reshuffle replay", replaySnapshot, expectedReplay);
+    return { label: "Draw reshuffles discard when deck is empty", ok: true };
+  } catch (error) {
+    return {
+      label: "Draw reshuffles discard when deck is empty",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
 const runTransformTargetExclusionTest = (): GoldenResult => {
   const players = [
     { id: "p1" as const, name: "Transformer", characterId: "transform-a" },
@@ -1845,6 +1977,7 @@ export const runGoldenTests = () => [
   runHealingReductionTest(),
   runThornsOnHitTest(),
   runTurnEndDecayTest(),
+  runDeckReshuffleTest(),
   runTransformTargetExclusionTest(),
 ];
 

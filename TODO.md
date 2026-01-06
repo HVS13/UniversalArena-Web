@@ -14,7 +14,7 @@
 - DONE: structured effect coverage for optional spend/bonus damage/draw/create mechanics (legacy parsing still needed for unique triggers).
 - DONE: Turn End triggers for Barrier, Invulnerable, Regen, Renewal, Thorns, Disarm, Root, Seal, Silence, Stagger, Taunt, Wound, Wither, and Cover/Stun expiry.
 - DONE: Thorns on-hit damage and Wound/Wither healing reduction across all healing (including Regen/Renewal).
-- Audit remaining status/keyword effects (deck reshuffle if needed).
+- DONE: Audit remaining status/keyword effects; no current cards use unimplemented keywords and no deck reshuffle rule is defined in docs.
 - DONE: regression test ensures transform-target cards are not dealt into the deck/hand.
 
 ## UI/UX
@@ -24,8 +24,9 @@
 - DONE: tooltips for "Played vs Used vs Cancelled vs Negated" and "On Hit vs On Damage vs On HP Damage".
 - DONE: zone visualization with stack ordering and clash preview animations.
 - DONE: Add tooltips for keywords/status effects from data (including keyword tier and status Mode/Turn End lines).
-- Add discard/deck inspection and clearer card lifecycle indicators.
-- Label the active hand with player name to reduce hot-seat confusion.
+- DONE: Add discard/deck/exhaust inspection modal with pile summaries.
+- DONE: Label the active hand with player name to reduce hot-seat confusion.
+- Add clearer card lifecycle indicators beyond tooltip copy (stack/rail callouts).
 
 ## Multiplayer
 - Add relay server and client sync (room codes, reconnect, host authority) only after 1-3 are complete.

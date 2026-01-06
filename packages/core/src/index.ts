@@ -936,10 +936,23 @@ const pickTargetId = (
 const getCharacterById = (characters: Character[], characterId: string) =>
   characters.find((item) => item.id === characterId) ?? null;
 
+const reshuffleDiscardIntoDeck = (state: MatchState, playerId: PlayerId) => {
+  const player = state.players[playerId];
+  if (!player.discard.length) return false;
+  player.deck.push(...player.discard);
+  player.discard = [];
+  shuffle(player.deck, state.rng);
+  addLog(state, `${player.name} shuffles their discard into the draw pile.`);
+  return true;
+};
+
 const drawCards = (state: MatchState, playerId: PlayerId, count: number) => {
   const player = state.players[playerId];
   let remaining = count;
-  while (remaining > 0 && player.deck.length > 0) {
+  while (remaining > 0) {
+    if (player.deck.length === 0) {
+      if (!reshuffleDiscardIntoDeck(state, playerId)) break;
+    }
     const nextCard = player.deck.pop();
     if (!nextCard) break;
     player.hand.push(nextCard);

@@ -371,12 +371,31 @@ button {
   gap: 12px;
 }
 
-.ua-stats div {
+.ua-stats div,
+.ua-stat-button {
   background: #fff;
   border-radius: 12px;
   padding: 10px;
   text-align: center;
   border: 1px solid var(--ua-border);
+}
+
+.ua-stat-button {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+}
+
+.ua-stat-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(32, 30, 26, 0.12);
+}
+
+.ua-stat-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
 }
 
 .ua-stats span {
@@ -387,6 +406,23 @@ button {
 
 .ua-stats strong {
   font-size: 1.1rem;
+}
+
+.ua-pile-hint {
+  font-size: 0.75rem;
+  color: var(--ua-muted);
+}
+
+.ua-hand-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.ua-hand-title span {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ua-muted);
 }
 
 .ua-statuses {
@@ -698,6 +734,10 @@ button {
   gap: 12px;
 }
 
+.ua-modal__content--wide {
+  max-width: 560px;
+}
+
 .ua-modal__zones {
   display: flex;
   flex-direction: column;
@@ -722,6 +762,62 @@ button {
   padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--ua-border);
+}
+
+.ua-pile-note {
+  font-size: 0.78rem;
+  color: var(--ua-muted);
+}
+
+.ua-pile-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.ua-pile-item {
+  border-radius: 12px;
+  border: 1px solid var(--ua-border);
+  background: #fff;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.ua-pile-name {
+  font-weight: 600;
+}
+
+.ua-pile-meta {
+  font-size: 0.75rem;
+  color: var(--ua-muted);
+}
+
+.ua-pile-count {
+  min-width: 36px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--ua-pill);
+  color: var(--ua-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+}
+
+.ua-pile-order {
+  min-width: 56px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: var(--ua-pill);
+  color: var(--ua-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-align: center;
 }
 
 .ua-footer {

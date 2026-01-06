@@ -32,11 +32,55 @@ const getCharacter = (list: Character[], id: string) => list.find((entry) => ent
 
 type CardInstance = MatchState["players"][PlayerId]["hand"][number];
 
+type PileType = "deck" | "discard" | "exhausted";
+
+type PileSummary = {
+  name: string;
+  slot: string;
+  count: number;
+  types: string;
+};
+
 const getCardBySlot = (character: Character | undefined, slot: string) => {
   if (!character) return undefined;
   const card = character.cards.find((entry) => entry.slot === slot);
   if (card) return card;
   return character.createdCards?.find((entry) => entry.slot === slot);
+};
+
+const pileLabelMap: Record<PileType, string> = {
+  deck: "Deck",
+  discard: "Discard",
+  exhausted: "Exhausted",
+};
+
+const getPileInstances = (
+  player: MatchState["players"][PlayerId],
+  pile: PileType
+) => {
+  if (pile === "deck") return player.deck;
+  if (pile === "discard") return player.discard;
+  return player.exhausted;
+};
+
+const summarizePile = (
+  instances: CardInstance[],
+  character: Character | undefined
+): PileSummary[] => {
+  const map = new Map<string, PileSummary>();
+  instances.forEach((instance) => {
+    const card = getCardBySlot(character, instance.cardSlot);
+    const name = card?.name ?? instance.cardSlot;
+    const types = card ? card.types.join(" / ") : "Unknown";
+    const key = `${instance.cardSlot}-${name}`;
+    const entry = map.get(key);
+    if (entry) {
+      entry.count += 1;
+    } else {
+      map.set(key, { name, slot: instance.cardSlot, count: 1, types });
+    }
+  });
+  return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
 };
 
 const isUltimateCard = (card: Card) =>
@@ -440,6 +484,10 @@ const App = () => {
     choices: { index: number; label: string }[];
     choiceIndex: number;
   } | null>(null);
+  const [inspectPile, setInspectPile] = useState<{
+    playerId: PlayerId;
+    pile: PileType;
+  } | null>(null);
 
   const startMatch = () => {
     const state = createMatchState(roster, [
@@ -526,6 +574,14 @@ const App = () => {
       choices,
       choiceIndex: 0,
     });
+  };
+
+  const openPile = (playerId: PlayerId, pile: PileType) => {
+    setInspectPile({ playerId, pile });
+  };
+
+  const closePile = () => {
+    setInspectPile(null);
   };
 
   const confirmXPlay = () => {
@@ -666,6 +722,26 @@ const App = () => {
   const activeUltimates = activeCharacter
     ? activeCharacter.cards.filter((card) => isUltimateCard(card))
     : [];
+  const inspectPlayer = inspectPile ? matchState.players[inspectPile.playerId] : null;
+  const inspectCharacter = inspectPlayer
+    ? getCharacter(roster, inspectPlayer.characterId)
+    : undefined;
+  const inspectInstances =
+    inspectPlayer && inspectPile ? getPileInstances(inspectPlayer, inspectPile.pile) : [];
+  const isDeckPile = inspectPile?.pile === "deck";
+  const orderedInstances = !isDeckPile ? [...inspectInstances].reverse() : [];
+  const inspectSummary = isDeckPile
+    ? summarizePile(inspectInstances, inspectCharacter)
+    : [];
+  const inspectLabel =
+    inspectPile && inspectPlayer
+      ? `${inspectPlayer.name} ${pileLabelMap[inspectPile.pile]}`
+      : "";
+  const inspectNote = inspectPile
+    ? isDeckPile
+      ? "Order is hidden. Counts are grouped by card."
+      : "Top is most recent. List shows actual order."
+    : "";
   const cardFlowTip =
     "Played: placed in a legal zone after paying cost and choosing legal targets.\n" +
     "Used: the card's effects apply (default timing is On Use).\n" +
@@ -872,19 +948,34 @@ const App = () => {
                     <span>Hand</span>
                     <strong>{player.hand.length}</strong>
                   </div>
-                  <div>
+                  <button
+                    type="button"
+                    className="ua-stat-button"
+                    onClick={() => openPile(playerId, "deck")}
+                  >
                     <span>Deck</span>
                     <strong>{player.deck.length}</strong>
-                  </div>
-                  <div>
+                  </button>
+                  <button
+                    type="button"
+                    className="ua-stat-button"
+                    onClick={() => openPile(playerId, "discard")}
+                  >
                     <span>Discard</span>
                     <strong>{player.discard.length}</strong>
-                  </div>
-                  <div>
+                  </button>
+                  <button
+                    type="button"
+                    className="ua-stat-button"
+                    onClick={() => openPile(playerId, "exhausted")}
+                  >
                     <span>Exhaust</span>
                     <strong>{player.exhausted.length}</strong>
-                  </div>
+                  </button>
                 </div>
+                <p className="ua-pile-hint">
+                  Click Deck, Discard, or Exhaust to inspect pile contents.
+                </p>
                 {statusEntries.length > 0 && (
                   <div className="ua-statuses">
                     {statusEntries.map(([status, value]) => {
@@ -991,7 +1082,9 @@ const App = () => {
         </div>
         {activeCharacter ? (
           <>
-            <h3>Hand</h3>
+            <h3 className="ua-hand-title">
+              Active Hand <span>({activePlayer.name})</span>
+            </h3>
             <div className="ua-card-grid">
               {activeHand.map(({ instance, card }) => {
                 const cost = parseCost(card.cost);
@@ -1231,6 +1324,63 @@ const App = () => {
               </button>
               <button className="ua-button ua-button--ghost" onClick={() => setPendingPlay(null)}>
                 Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {inspectPile && inspectPlayer && (
+        <div className="ua-modal">
+          <div className="ua-modal__content ua-modal__content--wide">
+            <h3>{inspectLabel}</h3>
+            <p className="ua-pile-note">
+              Total cards: {inspectInstances.length}. {inspectNote}
+            </p>
+            <div className="ua-pile-list">
+              {isDeckPile ? (
+                <>
+                  {inspectSummary.length === 0 && (
+                    <p className="ua-empty">No cards in this pile.</p>
+                  )}
+                  {inspectSummary.map((entry) => (
+                    <div key={`${entry.slot}-${entry.name}`} className="ua-pile-item">
+                      <div>
+                        <div className="ua-pile-name">{entry.name}</div>
+                        <div className="ua-pile-meta">{entry.types}</div>
+                      </div>
+                      <div className="ua-pile-count">{entry.count}</div>
+                    </div>
+                  ))}
+                </>
+              ) : (
+                <>
+                  {orderedInstances.length === 0 && (
+                    <p className="ua-empty">No cards in this pile.</p>
+                  )}
+                  {orderedInstances.map((instance, index) => {
+                    const card = getCardBySlot(inspectCharacter, instance.cardSlot);
+                    const name = card?.name ?? instance.cardSlot;
+                    const types = card ? card.types.join(" / ") : "Unknown";
+                    const isTop = index === 0;
+                    const isBottom = index === orderedInstances.length - 1;
+                    const label = isTop ? "Top" : isBottom ? "Bottom" : `#${index + 1}`;
+                    return (
+                      <div key={instance.id} className="ua-pile-item">
+                        <div>
+                          <div className="ua-pile-name">{name}</div>
+                          <div className="ua-pile-meta">{types}</div>
+                        </div>
+                        <div className="ua-pile-order">{label}</div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+            <div className="ua-modal__controls">
+              <button className="ua-button ua-button--primary" onClick={closePile}>
+                Close
               </button>
             </div>
           </div>

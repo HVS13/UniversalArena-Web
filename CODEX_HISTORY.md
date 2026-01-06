@@ -60,3 +60,6 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-06: Added keyword and status tooltips in the client UI (keyword tier, status Mode, and Turn End details).
 - 2026-01-06: Added structured support for optional spend and bonus damage, plus per-spend status and draw/create effects, and enabled spend-driven keyword grants (Evade) in core/data.
 - 2026-01-06: Added a CI workflow to run `pnpm golden` on pull requests that touch core/data files.
+- 2026-01-06: Audited remaining status/keyword effects; no current cards use unimplemented keywords and no deck reshuffle rule exists in docs.
+- 2026-01-06: Implemented automatic draw pile reshuffle when drawing from an empty deck, added reshuffle logging, and covered it with a golden test.
+- 2026-01-06: Added pile inspection modals for deck/discard/exhaust and labeled the active hand in the client UI.

@@ -26,7 +26,7 @@
 - DONE: Add tooltips for keywords/status effects from data (including keyword tier and status Mode/Turn End lines).
 - DONE: Add discard/deck/exhaust inspection modal with pile summaries.
 - DONE: Label the active hand with player name to reduce hot-seat confusion.
-- Add clearer card lifecycle indicators beyond tooltip copy (stack/rail callouts).
+- DONE: Add clearer card lifecycle indicators in the rail/stack and log (Played/Used/Cancelled tags).
 
 ## Multiplayer
 - Add relay server and client sync (room codes, reconnect, host authority) only after 1-3 are complete.

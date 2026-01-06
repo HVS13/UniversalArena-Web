@@ -3193,6 +3193,7 @@ const resolveUse = (
   }
 
   if (!cancelled) {
+    addLog(state, `${source.name} uses ${entry.cardName}.`);
     if (getActionType(entry.types) === "attack") {
       const targetText = entry.targetText?.toLowerCase() ?? "";
       if (

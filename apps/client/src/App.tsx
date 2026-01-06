@@ -7,6 +7,7 @@ import {
   parseCost,
   type MatchState,
   type PlayerId,
+  type StackEntry,
   type ZoneName,
 } from "@ua/core";
 
@@ -198,6 +199,31 @@ const zoneRank: Record<ZoneName, number> = { slow: 0, normal: 1, fast: 2 };
 
 const zoneLabel = (zone: ZoneName) => zone.charAt(0).toUpperCase() + zone.slice(1);
 
+type StackLifecycle = {
+  label: string;
+  tone: "active" | "paused" | "queued" | "cancelled";
+};
+
+const getStackLifecycleTag = (
+  entry: StackEntry,
+  zone: { isActive: boolean; isPaused: boolean },
+  index: number
+): StackLifecycle => {
+  if (entry.cancelledBeforeUse) {
+    return { label: "Cancelled", tone: "cancelled" };
+  }
+  if (zone.isActive && index === 0) {
+    return { label: "Resolving", tone: "active" };
+  }
+  if (zone.isPaused) {
+    return { label: "Paused", tone: "paused" };
+  }
+  if (index === 0) {
+    return { label: "Next", tone: "queued" };
+  }
+  return { label: "Queued", tone: "queued" };
+};
+
 const getLegalZonesForSpeed = (speed: string): ZoneName[] => {
   const normalized = speed.trim().toLowerCase();
   if (normalized.includes("fast")) return ["fast", "normal", "slow"];
@@ -355,9 +381,18 @@ const getCardChoices = (card: Card) => {
   }));
 };
 
+type LogKind = "played" | "used" | "cancelled";
+
+const logKindLabels: Record<LogKind, string> = {
+  played: "Played",
+  used: "Used",
+  cancelled: "Cancelled",
+};
+
 type LogEntry = {
   summary: string;
   details?: string[];
+  kind?: LogKind;
 };
 
 type LogGroup = {
@@ -387,10 +422,35 @@ const parseLogEntry = (line: string): LogEntry => {
     const [, target, amount] = shieldMatch;
     return { summary: `${target} gains ${amount} shield` };
   }
+  const coverRedirectMatch = line.match(/uses Cover to redirect the attack\.$/i);
+  if (coverRedirectMatch) {
+    return { summary: line };
+  }
+  const useMatch = line.match(/^(.+?) uses (.+?)\.$/);
+  if (useMatch) {
+    const [, player, cardName] = useMatch;
+    return { summary: `${player} uses ${cardName}`, kind: "used" };
+  }
   const playMatch = line.match(/^(.+?) plays (.+?) in the (.+?) Zone\.$/);
   if (playMatch) {
     const [, player, cardName, zoneName] = playMatch;
-    return { summary: `${player} plays ${cardName}`, details: [`Zone: ${zoneName}`] };
+    return {
+      summary: `${player} plays ${cardName}`,
+      details: [`Zone: ${zoneName}`],
+      kind: "played",
+    };
+  }
+  const overpowerMatch = line.match(/^(.+?) overpowers (.+?)\.$/);
+  if (overpowerMatch) {
+    const [, winner, loser] = overpowerMatch;
+    return {
+      summary: `${winner} overpowers ${loser}`,
+      details: [`Cancelled: ${loser}`],
+      kind: "cancelled",
+    };
+  }
+  if (line.toLowerCase().includes("cancelled")) {
+    return { summary: line, kind: "cancelled" };
   }
   return { summary: line };
 };
@@ -851,6 +911,9 @@ const App = () => {
                 <span>{zone.cards.length} card(s)</span>
                 {zone.isActive && <span className="ua-rail__tag">Active</span>}
                 {!zone.isActive && zone.isPaused && <span className="ua-rail__tag">Paused</span>}
+                {!zone.isActive && !zone.isPaused && zone.cards.length > 0 && (
+                  <span className="ua-rail__tag ua-rail__tag--queued">Queued</span>
+                )}
               </div>
               {zone.nextPair && <div className="ua-rail__next">{zone.nextPair}</div>}
             </div>
@@ -887,6 +950,7 @@ const App = () => {
                 {zone.cards.map((entry, index) => {
                   const source = matchState.players[entry.playedBy];
                   const target = matchState.players[entry.targetId];
+                  const lifecycle = getStackLifecycleTag(entry, zone, index);
                   return (
                     <div
                       key={entry.id}
@@ -895,7 +959,9 @@ const App = () => {
                     >
                       <div className="ua-stack-card__title">
                         <span>{entry.cardName}</span>
-                        {index === 0 && <span className="ua-stack-card__tag">Top</span>}
+                        <span className={`ua-stack-card__tag ua-stack-card__tag--${lifecycle.tone}`}>
+                          {lifecycle.label}
+                        </span>
                       </div>
                       <div className="ua-stack-card__meta">
                         {source.name} → {target.name}
@@ -1022,7 +1088,14 @@ const App = () => {
               <div className="ua-log-group__entries">
                 {group.entries.map((entry, entryIndex) => (
                   <div key={`${groupIndex}-${entryIndex}`} className="ua-log-entry">
-                    <div className="ua-log-entry__summary">{entry.summary}</div>
+                    <div className="ua-log-entry__header">
+                      {entry.kind && (
+                        <span className={`ua-log-entry__tag ua-log-entry__tag--${entry.kind}`}>
+                          {logKindLabels[entry.kind]}
+                        </span>
+                      )}
+                      <div className="ua-log-entry__summary">{entry.summary}</div>
+                    </div>
                     {entry.details && (
                       <div className="ua-log-entry__details">
                         {entry.details.map((detail) => (

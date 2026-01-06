@@ -466,6 +466,36 @@ button {
   border: 1px solid var(--ua-border);
 }
 
+.ua-log-entry__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ua-log-entry__tag {
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.ua-log-entry__tag--played {
+  background: #ffe9d7;
+  color: var(--ua-accent-dark);
+}
+
+.ua-log-entry__tag--used {
+  background: #e8f6ee;
+  color: var(--ua-success);
+}
+
+.ua-log-entry__tag--cancelled {
+  background: #fbe7e6;
+  color: var(--ua-danger);
+}
+
 .ua-log-entry__summary {
   font-weight: 600;
   color: var(--ua-ink);
@@ -528,6 +558,11 @@ button {
   border-radius: 999px;
   background: var(--ua-pill);
   font-size: 0.7rem;
+  color: var(--ua-muted);
+}
+
+.ua-rail__tag--queued {
+  background: #f4efe7;
   color: var(--ua-muted);
 }
 
@@ -635,6 +670,26 @@ button {
   border-radius: 999px;
   background: var(--ua-pill);
   color: var(--ua-muted);
+}
+
+.ua-stack-card__tag--active {
+  background: #ffe3cd;
+  color: var(--ua-accent-dark);
+}
+
+.ua-stack-card__tag--paused {
+  background: #f4efe7;
+  color: var(--ua-muted);
+}
+
+.ua-stack-card__tag--queued {
+  background: #f8f3ea;
+  color: var(--ua-muted);
+}
+
+.ua-stack-card__tag--cancelled {
+  background: #fbe7e6;
+  color: var(--ua-danger);
 }
 
 .ua-stack-card__meta {

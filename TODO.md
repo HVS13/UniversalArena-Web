@@ -11,10 +11,11 @@
 - DONE: initial golden tests for fast interrupt chain and cancelled vs always (includes attack tie).
 - DONE: defined a positional model (columns/line) and adjacency/opposed helpers for future mechanics.
 - DONE: expanded golden tests for timing windows, status expiry, cost/speed modifiers, mitigation stacking, and hand/deck spend flows.
+- DONE: 3v3 teams with shared deck/hand/energy/ultimate and per-character HP/status/defeat handling.
 - DONE: structured effect coverage for optional spend/bonus damage/draw/create mechanics (legacy parsing still needed for unique triggers).
 - DONE: Turn End triggers for Barrier, Invulnerable, Regen, Renewal, Thorns, Disarm, Root, Seal, Silence, Stagger, Taunt, Wound, Wither, and Cover/Stun expiry.
 - DONE: Thorns on-hit damage and Wound/Wither healing reduction across all healing (including Regen/Renewal).
-- DONE: Audit remaining status/keyword effects; no current cards use unimplemented keywords and no deck reshuffle rule is defined in docs.
+- DONE: Audit remaining status/keyword effects; no current cards use unimplemented keywords.
 - DONE: regression test ensures transform-target cards are not dealt into the deck/hand.
 - DONE: Enforced combat-round "cannot play cards" via structured `block_play` + golden test.
 
@@ -28,6 +29,7 @@
 - DONE: Add discard/deck/exhaust inspection modal with pile summaries.
 - DONE: Label the active hand with player name to reduce hot-seat confusion.
 - DONE: Add clearer card lifecycle indicators in the rail/stack and log (Played/Used/Cancelled tags).
+- DONE: Team setup for three characters, per-character panels, and target selection UI for multi-legal targets.
 
 ## Multiplayer
 - Add relay server and client sync (room codes, reconnect, host authority) only after 1-3 are complete.

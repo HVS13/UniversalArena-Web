@@ -263,6 +263,45 @@ button {
   font-size: 0.95rem;
 }
 
+.ua-team-selects {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ua-team-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.ua-team-preview__card {
+  border-radius: 12px;
+  border: 1px solid var(--ua-border);
+  background: #fff;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ua-character-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.ua-character-title span {
+  color: var(--ua-muted);
+  font-weight: 400;
+}
+
+.ua-character-origin,
+.ua-character-roles,
+.ua-character-difficulty {
+  font-size: 0.8rem;
+  color: var(--ua-muted);
+}
+
 .ua-setup-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -354,21 +393,24 @@ button {
   gap: 20px;
 }
 
-.ua-player-meta {
+.ua-team-meta {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.ua-player-character span {
-  color: var(--ua-muted);
-  font-weight: 400;
+  gap: 16px;
 }
 
 .ua-stats {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+}
+
+.ua-stats--team {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+}
+
+.ua-stats--compact {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .ua-stats div,
@@ -411,6 +453,44 @@ button {
 .ua-pile-hint {
   font-size: 0.75rem;
   color: var(--ua-muted);
+}
+
+.ua-team-characters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.ua-character-card {
+  border-radius: 14px;
+  border: 1px solid var(--ua-border);
+  background: #fff;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ua-character-card.is-defeated {
+  border-color: var(--ua-danger);
+  opacity: 0.65;
+}
+
+.ua-character-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ua-character-card__tag {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #fbe7e6;
+  color: var(--ua-danger);
 }
 
 .ua-hand-title {

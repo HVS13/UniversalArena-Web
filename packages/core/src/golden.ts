@@ -18,9 +18,48 @@ type GoldenResult = {
 
 const goldenSeed = 424242;
 
+const fillerIds = ["filler-1", "filler-2"] as const;
+
+const fillerCharacters: Character[] = [
+  {
+    id: "filler-1",
+    name: "Filler One",
+    version: "Golden",
+    origin: "Test",
+    roles: [],
+    difficulty: "Low",
+    gameplan: "Filler roster slot.",
+    art: "filler-1.png",
+    innates: [],
+    cards: [],
+  },
+  {
+    id: "filler-2",
+    name: "Filler Two",
+    version: "Golden",
+    origin: "Test",
+    roles: [],
+    difficulty: "Low",
+    gameplan: "Filler roster slot.",
+    art: "filler-2.png",
+    innates: [],
+    cards: [],
+  },
+];
+
+const withFillers = (list: Character[]) => {
+  const ids = new Set(list.map((entry) => entry.id));
+  return [...list, ...fillerCharacters.filter((entry) => !ids.has(entry.id))];
+};
+
+const withFillersIds = (primaryId: string) => [primaryId, ...fillerIds];
+
+const getPrimary = (state: MatchState, playerId: PlayerId) =>
+  state.players[playerId].characters[0];
+
 const goldenPlayers = [
-  { id: "p1" as const, name: "Alpha", characterId: "golden-a" },
-  { id: "p2" as const, name: "Bravo", characterId: "golden-b" },
+  { id: "p1" as const, name: "Alpha", characterIds: withFillersIds("golden-a") },
+  { id: "p2" as const, name: "Bravo", characterIds: withFillersIds("golden-b") },
 ];
 
 const goldenCharacters = (): Character[] => [
@@ -168,9 +207,9 @@ const goldenCharacters = (): Character[] => [
 
 const createSeededState = (
   characters: Character[],
-  players: { id: PlayerId; name: string; characterId: string }[]
+  players: { id: PlayerId; name: string; characterIds: string[] }[]
 ) =>
-  createMatchState(characters, players, {
+  createMatchState(withFillers(characters), players, {
     seed: goldenSeed,
     enableTranscript: true,
   });
@@ -237,10 +276,11 @@ const playFromHand = (
   return { type: "play_card" as const, playerId, cardInstanceId, zone };
 };
 
-const snapshotStatuses = (state: MatchState, playerId: PlayerId, names: string[]) =>
-  Object.fromEntries(
+const snapshotStatuses = (state: MatchState, playerId: PlayerId, names: string[]) => {
+  const primary = getPrimary(state, playerId);
+  return Object.fromEntries(
     names.map((name) => {
-      const entry = state.players[playerId].statuses[name];
+      const entry = primary?.statuses[name];
       return [
         name,
         entry
@@ -254,6 +294,7 @@ const snapshotStatuses = (state: MatchState, playerId: PlayerId, names: string[]
       ];
     })
   );
+};
 
 const countCardSlots = (player: MatchState["players"][PlayerId]) => {
   const counts: Record<string, number> = {};
@@ -299,7 +340,7 @@ const runReplaySnapshot = (characters: Character[], state: MatchState) => {
   if (!transcript) {
     throw new Error("Transcript missing.");
   }
-  const replay = replayTranscript(characters, transcript);
+  const replay = replayTranscript(withFillers(characters), transcript);
   if (replay.error) {
     throw new Error(replay.error);
   }
@@ -315,7 +356,7 @@ const assertSnapshot = (label: string, actual: unknown, expected: unknown) => {
 };
 
 const runInterruptChainTest = (): GoldenResult => {
-  const characters = goldenCharacters();
+  const characters = withFillers(goldenCharacters());
   let state = createMatchState(characters, goldenPlayers, {
     seed: goldenSeed,
     enableTranscript: true,
@@ -334,7 +375,7 @@ const runInterruptChainTest = (): GoldenResult => {
     activeZone: "fast",
     pausedZones: ["slow", "normal"],
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players: goldenPlayers,
       actions: [
@@ -393,7 +434,7 @@ const runCancelledAlwaysTest = (): GoldenResult => {
       "OnUse Buff": { potency: 0, count: 0, stack: 0, value: 0 },
     },
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players: goldenPlayers,
       actions: [
@@ -434,8 +475,8 @@ const runCancelledAlwaysTest = (): GoldenResult => {
 
 const runCannotPlayTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Target", characterId: "locker-b" },
-    { id: "p2" as const, name: "Locker", characterId: "locker-a" },
+    { id: "p1" as const, name: "Target", characterIds: withFillersIds("locker-b") },
+    { id: "p2" as const, name: "Locker", characterIds: withFillersIds("locker-a") },
   ];
   const characters: Character[] = [
     {
@@ -550,8 +591,8 @@ const runCannotPlayTest = (): GoldenResult => {
 
 const runTimingWindowsTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Timer", characterId: "timing-a" },
-    { id: "p2" as const, name: "Guard", characterId: "timing-b" },
+    { id: "p1" as const, name: "Timer", characterIds: withFillersIds("timing-a") },
+    { id: "p2" as const, name: "Guard", characterIds: withFillersIds("timing-b") },
   ];
   const characters: Character[] = [
     {
@@ -688,7 +729,7 @@ const runTimingWindowsTest = (): GoldenResult => {
       "After Buff": valueStatus(1),
     },
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players,
       actions: [
@@ -731,8 +772,8 @@ const runTimingWindowsTest = (): GoldenResult => {
 
 const runStatusExpiryTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Burner", characterId: "expiry-a" },
-    { id: "p2" as const, name: "Target", characterId: "expiry-b" },
+    { id: "p1" as const, name: "Burner", characterIds: withFillersIds("expiry-a") },
+    { id: "p2" as const, name: "Target", characterIds: withFillersIds("expiry-b") },
   ];
   const characters: Character[] = [
     {
@@ -798,7 +839,7 @@ const runStatusExpiryTest = (): GoldenResult => {
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
 
   const afterResolve = {
-    p2Hp: state.players.p2.hp,
+    p2Hp: getPrimary(state, "p2").hp,
     burn: snapshotStatuses(state, "p2", ["Burn"]),
   };
 
@@ -806,7 +847,7 @@ const runStatusExpiryTest = (): GoldenResult => {
 
   const afterEnd = {
     turn: state.turn,
-    p2Hp: state.players.p2.hp,
+    p2Hp: getPrimary(state, "p2").hp,
     burn: snapshotStatuses(state, "p2", ["Burn"]),
   };
 
@@ -830,7 +871,7 @@ const runStatusExpiryTest = (): GoldenResult => {
       },
     },
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players,
       actions: [
@@ -844,7 +885,7 @@ const runStatusExpiryTest = (): GoldenResult => {
 
   const replayState = runReplaySnapshot(characters, state);
   const replaySnapshot = {
-    p2Hp: replayState.players.p2.hp,
+    p2Hp: getPrimary(replayState, "p2").hp,
     burn: snapshotStatuses(replayState, "p2", ["Burn"]),
   };
   const expectedReplay = {
@@ -869,8 +910,8 @@ const runStatusExpiryTest = (): GoldenResult => {
 
 const runCostSpeedModifierTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Modifier", characterId: "mod-a" },
-    { id: "p2" as const, name: "Observer", characterId: "mod-b" },
+    { id: "p1" as const, name: "Modifier", characterIds: withFillersIds("mod-a") },
+    { id: "p2" as const, name: "Observer", characterIds: withFillersIds("mod-b") },
   ];
   const characters: Character[] = [
     {
@@ -944,7 +985,7 @@ const runCostSpeedModifierTest = (): GoldenResult => {
       Strain: potencyStatus(1, 1),
     },
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players,
       actions: [
@@ -980,8 +1021,8 @@ const runCostSpeedModifierTest = (): GoldenResult => {
 
 const runMitigationStackingTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Attacker", characterId: "mitigate-a" },
-    { id: "p2" as const, name: "Defender", characterId: "mitigate-b" },
+    { id: "p1" as const, name: "Attacker", characterIds: withFillersIds("mitigate-a") },
+    { id: "p2" as const, name: "Defender", characterIds: withFillersIds("mitigate-b") },
   ];
   const characters: Character[] = [
     {
@@ -1045,14 +1086,14 @@ const runMitigationStackingTest = (): GoldenResult => {
 
   const snapshot = {
     activeZone: state.activeZone,
-    p2Hp: state.players.p2.hp,
+    p2Hp: getPrimary(state, "p2").hp,
     transcript: snapshotTranscript(state),
   };
   const expected = {
     activeZone: null,
     p2Hp: 96,
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players,
       actions: [
@@ -1066,7 +1107,7 @@ const runMitigationStackingTest = (): GoldenResult => {
   const replayState = runReplaySnapshot(characters, state);
   const replaySnapshot = {
     activeZone: replayState.activeZone,
-    p2Hp: replayState.players.p2.hp,
+    p2Hp: getPrimary(replayState, "p2").hp,
   };
   const expectedReplay = {
     activeZone: null,
@@ -1088,8 +1129,8 @@ const runMitigationStackingTest = (): GoldenResult => {
 
 const runSpendFlowTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Spender", characterId: "spend-a" },
-    { id: "p2" as const, name: "Receiver", characterId: "spend-b" },
+    { id: "p1" as const, name: "Spender", characterIds: withFillersIds("spend-a") },
+    { id: "p2" as const, name: "Receiver", characterIds: withFillersIds("spend-b") },
   ];
   const characters: Character[] = [
     {
@@ -1173,7 +1214,7 @@ const runSpendFlowTest = (): GoldenResult => {
 
   const snapshot = {
     activeZone: state.activeZone,
-    p2Hp: state.players.p2.hp,
+    p2Hp: getPrimary(state, "p2").hp,
     p1Hand: state.players.p1.hand.length,
     p1Discard: state.players.p1.discard.length,
     p1Ammo: snapshotStatuses(state, "p1", ["Test Ammo"]),
@@ -1188,7 +1229,7 @@ const runSpendFlowTest = (): GoldenResult => {
       "Test Ammo": valueStatus(1),
     },
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players,
       actions: [
@@ -1201,7 +1242,7 @@ const runSpendFlowTest = (): GoldenResult => {
 
   const replayState = runReplaySnapshot(characters, state);
   const replaySnapshot = {
-    p2Hp: replayState.players.p2.hp,
+    p2Hp: getPrimary(replayState, "p2").hp,
     p1Hand: replayState.players.p1.hand.length,
     p1Discard: replayState.players.p1.discard.length,
     p1Ammo: snapshotStatuses(replayState, "p1", ["Test Ammo"]),
@@ -1230,8 +1271,8 @@ const runSpendFlowTest = (): GoldenResult => {
 
 const runHealingReductionTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Healer", characterId: "heal-a" },
-    { id: "p2" as const, name: "Watcher", characterId: "heal-b" },
+    { id: "p1" as const, name: "Healer", characterIds: withFillersIds("heal-a") },
+    { id: "p2" as const, name: "Watcher", characterIds: withFillersIds("heal-b") },
   ];
   const characters: Character[] = [
     {
@@ -1349,7 +1390,7 @@ const runHealingReductionTest = (): GoldenResult => {
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
 
   const afterResolve = {
-    p1Hp: state.players.p1.hp,
+    p1Hp: getPrimary(state, "p1").hp,
     p1Statuses: snapshotStatuses(state, "p1", ["Wound", "Wither", "Regen", "Renewal"]),
   };
 
@@ -1357,7 +1398,7 @@ const runHealingReductionTest = (): GoldenResult => {
 
   const afterEnd = {
     turn: state.turn,
-    p1Hp: state.players.p1.hp,
+    p1Hp: getPrimary(state, "p1").hp,
     p1Statuses: snapshotStatuses(state, "p1", ["Wound", "Wither", "Regen", "Renewal"]),
   };
 
@@ -1387,7 +1428,7 @@ const runHealingReductionTest = (): GoldenResult => {
       },
     },
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players,
       actions: [
@@ -1407,7 +1448,7 @@ const runHealingReductionTest = (): GoldenResult => {
 
   const replayState = runReplaySnapshot(characters, state);
   const replaySnapshot = {
-    p1Hp: replayState.players.p1.hp,
+    p1Hp: getPrimary(replayState, "p1").hp,
     p1Statuses: snapshotStatuses(replayState, "p1", ["Wound", "Wither", "Regen", "Renewal"]),
   };
   const expectedReplay = {
@@ -1430,8 +1471,8 @@ const runHealingReductionTest = (): GoldenResult => {
 
 const runThornsOnHitTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Striker", characterId: "thorn-a" },
-    { id: "p2" as const, name: "Bristle", characterId: "thorn-b" },
+    { id: "p1" as const, name: "Striker", characterIds: withFillersIds("thorn-a") },
+    { id: "p2" as const, name: "Bristle", characterIds: withFillersIds("thorn-b") },
   ];
   const characters: Character[] = [
     {
@@ -1502,8 +1543,8 @@ const runThornsOnHitTest = (): GoldenResult => {
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
 
   const snapshot = {
-    p1Hp: state.players.p1.hp,
-    p2Hp: state.players.p2.hp,
+    p1Hp: getPrimary(state, "p1").hp,
+    p2Hp: getPrimary(state, "p2").hp,
     p2Thorns: snapshotStatuses(state, "p2", ["Thorns"]),
     transcript: snapshotTranscript(state),
   };
@@ -1514,7 +1555,7 @@ const runThornsOnHitTest = (): GoldenResult => {
       Thorns: potencyStatus(3, 1),
     },
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players,
       actions: [
@@ -1531,8 +1572,8 @@ const runThornsOnHitTest = (): GoldenResult => {
 
   const replayState = runReplaySnapshot(characters, state);
   const replaySnapshot = {
-    p1Hp: replayState.players.p1.hp,
-    p2Hp: replayState.players.p2.hp,
+    p1Hp: getPrimary(replayState, "p1").hp,
+    p2Hp: getPrimary(replayState, "p2").hp,
   };
   const expectedReplay = {
     p1Hp: 97,
@@ -1550,8 +1591,8 @@ const runThornsOnHitTest = (): GoldenResult => {
 
 const runTurnEndDecayTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Decay", characterId: "decay-a" },
-    { id: "p2" as const, name: "Witness", characterId: "decay-b" },
+    { id: "p1" as const, name: "Decay", characterIds: withFillersIds("decay-a") },
+    { id: "p2" as const, name: "Witness", characterIds: withFillersIds("decay-b") },
   ];
   const characters: Character[] = [
     {
@@ -1749,7 +1790,7 @@ const runTurnEndDecayTest = (): GoldenResult => {
       Stun: stackStatus(0),
     },
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players,
       actions: [
@@ -1800,8 +1841,8 @@ const runTurnEndDecayTest = (): GoldenResult => {
 
 const runDeckReshuffleTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Alpha", characterId: "shuffle-a" },
-    { id: "p2" as const, name: "Bravo", characterId: "shuffle-b" },
+    { id: "p1" as const, name: "Alpha", characterIds: withFillersIds("shuffle-a") },
+    { id: "p2" as const, name: "Bravo", characterIds: withFillersIds("shuffle-b") },
   ];
   const characters: Character[] = [
     {
@@ -1932,8 +1973,8 @@ const runDeckReshuffleTest = (): GoldenResult => {
 
 const runTransformTargetExclusionTest = (): GoldenResult => {
   const players = [
-    { id: "p1" as const, name: "Transformer", characterId: "transform-a" },
-    { id: "p2" as const, name: "Mirror", characterId: "transform-b" },
+    { id: "p1" as const, name: "Transformer", characterIds: withFillersIds("transform-a") },
+    { id: "p2" as const, name: "Mirror", characterIds: withFillersIds("transform-b") },
   ];
   const characters: Character[] = [
     {
@@ -2052,7 +2093,7 @@ const runTransformTargetExclusionTest = (): GoldenResult => {
     p1Slots: { "1": 1, "3": 1 },
     p2Slots: { "1": 1, "3": 1 },
     transcript: {
-      version: 1,
+      version: 2,
       seed: goldenSeed,
       players,
       actions: [],
@@ -2110,3 +2151,4 @@ if (process.argv[1]?.includes("golden")) {
     process.exitCode = 1;
   }
 }
+

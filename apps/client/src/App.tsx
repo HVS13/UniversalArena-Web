@@ -4,7 +4,9 @@ import type { Card, Character, Keyword, StatusEffectDefinition } from "@ua/data"
 import {
   applyAction,
   createMatchState,
+  getLegalTargets,
   parseCost,
+  type MatchCharacterId,
   type MatchState,
   type PlayerId,
   type StackEntry,
@@ -14,15 +16,18 @@ import {
 type Stage = "setup" | "match";
 
 type SelectionState = {
-  p1: string;
-  p2: string;
+  p1: string[];
+  p2: string[];
 };
 
 const defaultSelection = (): SelectionState => {
-  const [first, second] = roster;
+  const sorted = sortRoster(roster);
+  const p1 = sorted.slice(0, 3).map((entry) => entry.id);
+  const p2 = sorted.slice(3, 6).map((entry) => entry.id);
+  const fallback = sorted[0]?.id ?? "";
   return {
-    p1: first?.id ?? "",
-    p2: second?.id ?? first?.id ?? "",
+    p1: p1.length === 3 ? p1 : [fallback, fallback, fallback],
+    p2: p2.length === 3 ? p2 : [fallback, fallback, fallback],
   };
 };
 
@@ -31,7 +36,10 @@ const sortRoster = (list: Character[]) =>
 
 const getCharacter = (list: Character[], id: string) => list.find((entry) => entry.id === id);
 
-type CardInstance = MatchState["players"][PlayerId]["hand"][number];
+type Team = MatchState["players"][PlayerId];
+type TeamMember = Team["characters"][number];
+type CardInstance = Team["hand"][number];
+type TeamLookup = { teamId: PlayerId; team: Team; member: TeamMember };
 
 type PileType = "deck" | "discard" | "exhausted";
 
@@ -40,6 +48,21 @@ type PileSummary = {
   slot: string;
   count: number;
   types: string;
+  owner: string;
+};
+
+type HandEntry = {
+  instance: CardInstance;
+  card: Card;
+  owner: TeamMember;
+  ownerTeam: Team;
+  ownerCharacter: Character;
+};
+
+type UltimateEntry = {
+  card: Card;
+  member: TeamMember;
+  character: Character;
 };
 
 const getCardBySlot = (character: Character | undefined, slot: string) => {
@@ -47,6 +70,41 @@ const getCardBySlot = (character: Character | undefined, slot: string) => {
   const card = character.cards.find((entry) => entry.slot === slot);
   if (card) return card;
   return character.createdCards?.find((entry) => entry.slot === slot);
+};
+
+const getCardByInstance = (instance: CardInstance) => {
+  const owner = getCharacter(roster, instance.characterId);
+  return getCardBySlot(owner, instance.cardSlot);
+};
+
+const getTeamIdFromMatchCharacterId = (matchId: MatchCharacterId) => {
+  if (matchId.startsWith("p1:")) return "p1" as const;
+  if (matchId.startsWith("p2:")) return "p2" as const;
+  return null;
+};
+
+const getMemberById = (
+  state: MatchState,
+  matchId: MatchCharacterId
+): TeamLookup | null => {
+  const teamId = getTeamIdFromMatchCharacterId(matchId);
+  if (teamId) {
+    const team = state.players[teamId];
+    const member = team.characters.find((entry) => entry.id === matchId);
+    return member ? { teamId, team, member } : null;
+  }
+  for (const candidateId of ["p1", "p2"] as PlayerId[]) {
+    const team = state.players[candidateId];
+    const member = team.characters.find((entry) => entry.id === matchId);
+    if (member) return { teamId: candidateId, team, member };
+  }
+  return null;
+};
+
+const formatMemberLabel = (state: MatchState, matchId: MatchCharacterId) => {
+  const entry = getMemberById(state, matchId);
+  if (!entry) return matchId;
+  return `${entry.team.name}: ${entry.member.name}`;
 };
 
 const pileLabelMap: Record<PileType, string> = {
@@ -64,21 +122,20 @@ const getPileInstances = (
   return player.exhausted;
 };
 
-const summarizePile = (
-  instances: CardInstance[],
-  character: Character | undefined
-): PileSummary[] => {
+const summarizePile = (instances: CardInstance[]): PileSummary[] => {
   const map = new Map<string, PileSummary>();
   instances.forEach((instance) => {
-    const card = getCardBySlot(character, instance.cardSlot);
+    const card = getCardByInstance(instance);
+    const owner = getCharacter(roster, instance.characterId);
+    const ownerLabel = owner ? `${owner.name} (${owner.version})` : instance.characterId;
     const name = card?.name ?? instance.cardSlot;
     const types = card ? card.types.join(" / ") : "Unknown";
-    const key = `${instance.cardSlot}-${name}`;
+    const key = `${instance.cardSlot}-${name}-${instance.characterId}`;
     const entry = map.get(key);
     if (entry) {
       entry.count += 1;
     } else {
-      map.set(key, { name, slot: instance.cardSlot, count: 1, types });
+      map.set(key, { name, slot: instance.cardSlot, count: 1, types, owner: ownerLabel });
     }
   });
   return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -87,7 +144,7 @@ const summarizePile = (
 const isUltimateCard = (card: Card) =>
   card.types.some((type) => type.toLowerCase() === "ultimate");
 
-const isStatusActive = (state?: MatchState["players"][PlayerId]["statuses"][string]) => {
+const isStatusActive = (state?: TeamMember["statuses"][string]) => {
   if (!state) return false;
   if (state.potency > 0) return state.count > 0;
   if (state.stack > 0) return true;
@@ -95,24 +152,24 @@ const isStatusActive = (state?: MatchState["players"][PlayerId]["statuses"][stri
 };
 
 const getStatusStat = (
-  player: MatchState["players"][PlayerId],
+  member: TeamMember,
   status: string,
   stat: "potency" | "count" | "stack" | "value"
 ) => {
-  const state = player.statuses[status];
+  const state = member.statuses[status];
   if (!isStatusActive(state)) return 0;
   return state[stat];
 };
 
-const getEnergyCostAdjustment = (player: MatchState["players"][PlayerId]) => {
-  const focus = getStatusStat(player, "Focus", "potency");
-  const strain = getStatusStat(player, "Strain", "potency");
-  const bloodFocus = getStatusStat(player, "Blood Focus", "value");
+const getEnergyCostAdjustment = (member: TeamMember) => {
+  const focus = getStatusStat(member, "Focus", "potency");
+  const strain = getStatusStat(member, "Strain", "potency");
+  const bloodFocus = getStatusStat(member, "Blood Focus", "value");
   return strain - focus - bloodFocus;
 };
 
 const getAdjustedEnergyCost = (
-  player: MatchState["players"][PlayerId],
+  member: TeamMember,
   cost: ReturnType<typeof parseCost>,
   xValue: number,
   cardInstance?: CardInstance,
@@ -123,21 +180,22 @@ const getAdjustedEnergyCost = (
   const base =
     cost.energy +
     variableEnergy +
-    getEnergyCostAdjustment(player) +
+    getEnergyCostAdjustment(member) +
     (cardInstance?.costAdjustment ?? 0) +
     followUpAdjustment;
   return Math.max(0, base);
 };
 
 const canAffordWithAdjustments = (
-  player: MatchState["players"][PlayerId],
+  team: Team,
+  member: TeamMember,
   cost: ReturnType<typeof parseCost>,
   xValue: number,
   cardInstance?: CardInstance,
   followUpAdjustment = 0
 ) => {
   const energyCost = getAdjustedEnergyCost(
-    player,
+    member,
     cost,
     xValue,
     cardInstance,
@@ -146,11 +204,12 @@ const canAffordWithAdjustments = (
   const variableUltimate =
     cost.variable?.type === "ultimate" ? cost.variable.multiplier * xValue : 0;
   const ultimateCost = cost.ultimate + variableUltimate;
-  return player.energy >= energyCost && player.ultimate >= ultimateCost;
+  return team.energy >= energyCost && team.ultimate >= ultimateCost;
 };
 
 const getMaxX = (
-  player: MatchState["players"][PlayerId],
+  team: Team,
+  member: TeamMember,
   cost: ReturnType<typeof parseCost>,
   cardInstance?: CardInstance,
   followUpAdjustment = 0
@@ -158,15 +217,15 @@ const getMaxX = (
   if (!cost.variable) return 0;
   const available =
     cost.variable.type === "energy"
-      ? player.energy -
+      ? team.energy -
         Math.max(
           0,
           cost.energy +
-            getEnergyCostAdjustment(player) +
+            getEnergyCostAdjustment(member) +
             (cardInstance?.costAdjustment ?? 0) +
             followUpAdjustment
         )
-      : player.ultimate - cost.ultimate;
+      : team.ultimate - cost.ultimate;
   if (available <= 0) return 0;
   return Math.floor(available / cost.variable.multiplier);
 };
@@ -174,7 +233,7 @@ const getMaxX = (
 const formatRoles = (roles: string[]) =>
   roles.map((role) => role.replace("role-", "")).join(", ");
 
-const formatStatusValue = (state: MatchState["players"][PlayerId]["statuses"][string]) => {
+const formatStatusValue = (state: TeamMember["statuses"][string]) => {
   if (state.potency > 0 || state.count > 0) {
     return `P${state.potency}/C${state.count}`;
   }
@@ -187,7 +246,7 @@ const formatStatusValue = (state: MatchState["players"][PlayerId]["statuses"][st
   return null;
 };
 
-const formatStatusList = (statuses: MatchState["players"][PlayerId]["statuses"]) =>
+const formatStatusList = (statuses: TeamMember["statuses"]) =>
   Object.entries(statuses)
     .map(([status, state]) => {
       const value = formatStatusValue(state);
@@ -231,17 +290,17 @@ const getLegalZonesForSpeed = (speed: string): ZoneName[] => {
   return ["slow"];
 };
 
-const getSpeedShift = (player: MatchState["players"][PlayerId]) => {
-  const haste = Math.min(2, getStatusStat(player, "Haste", "potency"));
-  const slow = Math.min(2, getStatusStat(player, "Slow", "potency"));
+const getSpeedShift = (member: TeamMember) => {
+  const haste = Math.min(2, getStatusStat(member, "Haste", "potency"));
+  const slow = Math.min(2, getStatusStat(member, "Slow", "potency"));
   return Math.max(-2, Math.min(2, haste - slow));
 };
 
 const getEffectiveSpeed = (
   speed: string,
-  player: MatchState["players"][PlayerId]
+  member: TeamMember
 ) => {
-  const shift = getSpeedShift(player);
+  const shift = getSpeedShift(member);
   if (shift === 0) return speed;
   const normalized = speed.trim().toLowerCase();
   const order = ["slow", "normal", "fast"];
@@ -302,10 +361,10 @@ const getFollowUpCostAdjustment = (card: Card) => {
 const getPlayableZones = (
   card: Card,
   state: MatchState,
-  playerId: PlayerId
+  playerId: PlayerId,
+  member: TeamMember
 ): ZoneName[] => {
-  const player = state.players[playerId];
-  const effectiveSpeed = getEffectiveSpeed(card.speed, player);
+  const effectiveSpeed = getEffectiveSpeed(card.speed, member);
   const legal = getLegalZonesForSpeed(effectiveSpeed);
   if (!state.activeZone) return legal;
   return legal.filter(
@@ -340,29 +399,52 @@ const getTextChoiceOptions = (card: Card) => {
   return options;
 };
 
-const canReactAfterUse = (state: MatchState, playerId: PlayerId, card: Card) => {
+const canReactAfterUse = (
+  state: MatchState,
+  card: Card,
+  sourceId: MatchCharacterId
+) => {
   const window = state.afterUseWindow;
   if (!window || window.validForAction !== state.actionId + 1) return false;
+  const teamId = getTeamIdFromMatchCharacterId(sourceId);
+  if (!teamId || teamId !== window.lastUsedBy) return false;
   const flags = getCardKeywords(card);
-  const timeStop = state.players[playerId].statuses["The World: Time Stop"];
-  const timeStopFollowUp =
-    isStatusActive(timeStop) && card.types.some((type) => type.toLowerCase() === "attack");
-  if (playerId === window.lastUsedBy) return flags.followUp || timeStopFollowUp;
-  return flags.assistAttack;
+  let followUpAllowed = flags.followUp;
+  if (!followUpAllowed) {
+    const lastUsed = getMemberById(state, window.lastUsedCharacterId);
+    const timeStop = lastUsed
+      ? isStatusActive(lastUsed.member.statuses["The World: Time Stop"])
+      : false;
+    if (timeStop && card.types.some((type) => type.toLowerCase() === "attack")) {
+      followUpAllowed = true;
+    }
+  }
+  if (followUpAllowed && window.lastUsedCharacterId === sourceId) return true;
+  if (flags.assistAttack && window.lastUsedCharacterId !== sourceId) return true;
+  return false;
 };
 
 const getReactivePlayers = (state: MatchState, rosterList: Character[]) => {
   const window = state.afterUseWindow;
   if (!window || window.validForAction !== state.actionId + 1) return [];
-  return (["p1", "p2"] as PlayerId[]).filter((playerId) => {
-    const player = state.players[playerId];
-    const character = getCharacter(rosterList, player.characterId);
-    if (!character) return false;
-    const handCards = player.hand
-      .map((instance) => getCardBySlot(character, instance.cardSlot))
-      .filter((card): card is Card => Boolean(card));
-    return handCards.some((card) => canReactAfterUse(state, playerId, card));
+  const reactiveId = window.lastUsedBy;
+  const team = state.players[reactiveId];
+  const handReact = team.hand.some((instance) => {
+    const card = getCardByInstance(instance);
+    const ownerEntry = getMemberById(state, instance.ownerId);
+    if (!card || !ownerEntry) return false;
+    return canReactAfterUse(state, card, ownerEntry.member.id);
   });
+  const ultimateReact = team.characters.some((member) => {
+    if (member.defeated) return false;
+    const character = getCharacter(rosterList, member.characterId);
+    if (!character) return false;
+    return character.cards.some(
+      (card) =>
+        isUltimateCard(card) && canReactAfterUse(state, card, member.id)
+    );
+  });
+  return handReact || ultimateReact ? [reactiveId] : [];
 };
 
 const getCardChoices = (card: Card) => {
@@ -537,12 +619,15 @@ const App = () => {
     playerId: PlayerId;
     card: Card;
     cardInstanceId?: string;
+    sourceId: MatchCharacterId;
     zones: ZoneName[];
     zone: ZoneName;
     xValue: number;
     xRange?: { min: number; max: number } | null;
     choices: { index: number; label: string }[];
     choiceIndex: number;
+    targets: { id: MatchCharacterId; label: string }[];
+    targetId: MatchCharacterId;
   } | null>(null);
   const [inspectPile, setInspectPile] = useState<{
     playerId: PlayerId;
@@ -550,12 +635,17 @@ const App = () => {
   } | null>(null);
 
   const startMatch = () => {
-    const state = createMatchState(roster, [
-      { id: "p1", name: names.p1.trim() || "Player 1", characterId: selection.p1 },
-      { id: "p2", name: names.p2.trim() || "Player 2", characterId: selection.p2 },
-    ]);
-    setMatchState(state);
-    setStage("match");
+    try {
+      const state = createMatchState(roster, [
+        { id: "p1", name: names.p1.trim() || "Player 1", characterIds: selection.p1 },
+        { id: "p2", name: names.p2.trim() || "Player 2", characterIds: selection.p2 },
+      ]);
+      setMatchState(state);
+      setStage("match");
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to start match.");
+    }
   };
 
   const resetMatch = () => {
@@ -571,16 +661,27 @@ const App = () => {
     setMessage(result.error ?? null);
   };
 
-  const handlePlayCard = (playerId: PlayerId, card: Card, cardInstanceId?: string) => {
+  const handlePlayCard = (
+    playerId: PlayerId,
+    card: Card,
+    sourceId: MatchCharacterId,
+    cardInstanceId?: string
+  ) => {
     if (!matchState) return;
-    const zones = getPlayableZones(card, matchState, playerId);
+    const team = matchState.players[playerId];
+    const ownerEntry = getMemberById(matchState, sourceId);
+    if (!ownerEntry || ownerEntry.teamId !== playerId) {
+      setMessage("Card source not found.");
+      return;
+    }
+    const member = ownerEntry.member;
+    const zones = getPlayableZones(card, matchState, playerId, member);
     if (!zones.length) {
       setMessage("No legal zones available.");
       return;
     }
-    const player = matchState.players[playerId];
     const cardInstance = cardInstanceId
-      ? player.hand.find((instance) => instance.id === cardInstanceId)
+      ? team.hand.find((instance) => instance.id === cardInstanceId)
       : undefined;
     const cost = parseCost(card.cost);
     const xRange = getXRangeFromText(card);
@@ -588,19 +689,34 @@ const App = () => {
       matchState.afterUseWindow &&
       matchState.afterUseWindow.validForAction === matchState.actionId + 1;
     const isFollowUpPlay =
-      Boolean(isAfterUse) && matchState.afterUseWindow?.lastUsedBy === playerId;
+      Boolean(isAfterUse) && matchState.afterUseWindow?.lastUsedCharacterId === sourceId;
     const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
-    const max = cost.variable ? getMaxX(player, cost, cardInstance, followUpAdjustment) : 0;
+    const max = cost.variable
+      ? getMaxX(team, member, cost, cardInstance, followUpAdjustment)
+      : 0;
     const baseAffordable = canAffordWithAdjustments(
-      player,
+      team,
+      member,
       cost,
       0,
       cardInstance,
       followUpAdjustment
     );
     const choices = getCardChoices(card);
+    const targets = getLegalTargets(card, sourceId, matchState, roster).map((targetId) => ({
+      id: targetId,
+      label: formatMemberLabel(matchState, targetId),
+    }));
+    if (!targets.length) {
+      setMessage("No legal targets.");
+      return;
+    }
     const needsModal =
-      zones.length > 1 || cost.variable || choices.length > 0 || Boolean(xRange);
+      zones.length > 1 ||
+      cost.variable ||
+      choices.length > 0 ||
+      Boolean(xRange) ||
+      targets.length > 1;
     if (cost.variable && !baseAffordable) {
       setMessage("Insufficient resources.");
       return;
@@ -619,6 +735,8 @@ const App = () => {
         playerId,
         cardInstanceId,
         cardSlot: card.slot,
+        sourceId,
+        targetId: targets[0].id,
         zone: zones[0],
       });
       return;
@@ -627,12 +745,15 @@ const App = () => {
       playerId,
       card,
       cardInstanceId,
+      sourceId,
       zones,
       zone: zones[0],
       xValue: xRange ? xRange.max : max,
       xRange,
       choices,
       choiceIndex: 0,
+      targets,
+      targetId: targets[0].id,
     });
   };
 
@@ -651,6 +772,8 @@ const App = () => {
       playerId: pendingPlay.playerId,
       cardSlot: pendingPlay.card.slot,
       cardInstanceId: pendingPlay.cardInstanceId,
+      sourceId: pendingPlay.sourceId,
+      targetId: pendingPlay.targetId,
       zone: pendingPlay.zone,
       xValue: pendingPlay.xValue,
       choiceIndex: pendingPlay.choices.length ? pendingPlay.choiceIndex : undefined,
@@ -664,18 +787,23 @@ const App = () => {
         <header className="ua-header">
           <div>
             <p className="ua-kicker">Universal Arena</p>
-            <h1>Local Match Setup</h1>
-            <p className="ua-subtitle">
-              Pick any two characters from the current roster and start a hot-seat match.
-            </p>
-          </div>
-          <div className="ua-badge">Prototype Engine</div>
+          <h1>Local Match Setup</h1>
+          <p className="ua-subtitle">
+              Pick three characters per team from the current roster and start a hot-seat match.
+          </p>
+        </div>
+        <div className="ua-badge">Prototype Engine</div>
         </header>
+
+        {message && <div className="ua-toast">{message}</div>}
 
         <section className="ua-setup-grid">
           {(["p1", "p2"] as PlayerId[]).map((playerId) => {
             const selected = selection[playerId];
-            const character = getCharacter(roster, selected);
+            const selectedCharacters = selected
+              .map((id) => getCharacter(roster, id))
+              .filter((entry): entry is Character => Boolean(entry));
+            const taken = new Set(selected);
             return (
               <div key={playerId} className="ua-panel">
                 <div className="ua-panel__header">
@@ -691,33 +819,47 @@ const App = () => {
                     }
                   />
                 </label>
-                <label className="ua-label">
-                  Character
-                  <select
-                    value={selection[playerId]}
-                    onChange={(event) =>
-                      setSelection((prev) => ({ ...prev, [playerId]: event.target.value }))
-                    }
-                  >
-                    {rosterSorted.map((entry) => (
-                      <option key={entry.id} value={entry.id}>
-                        {entry.name} ({entry.version})
-                      </option>
+                <div className="ua-team-selects">
+                  {selected.map((selectionId, index) => (
+                    <label key={`${playerId}-${index}`} className="ua-label">
+                      Character {index + 1}
+                      <select
+                        value={selectionId}
+                        onChange={(event) =>
+                          setSelection((prev) => {
+                            const next = [...prev[playerId]];
+                            next[index] = event.target.value;
+                            return { ...prev, [playerId]: next };
+                          })
+                        }
+                      >
+                        {rosterSorted.map((entry) => (
+                          <option
+                            key={entry.id}
+                            value={entry.id}
+                            disabled={taken.has(entry.id) && entry.id !== selectionId}
+                          >
+                            {entry.name} ({entry.version})
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+                {selectedCharacters.length > 0 && (
+                  <div className="ua-team-preview">
+                    {selectedCharacters.map((character) => (
+                      <div key={character.id} className="ua-team-preview__card">
+                        <p className="ua-character-title">
+                          {character.name} <span>({character.version})</span>
+                        </p>
+                        <p className="ua-character-origin">{character.origin}</p>
+                        <p className="ua-character-roles">{formatRoles(character.roles)}</p>
+                        <p className="ua-character-difficulty">
+                          Difficulty: {character.difficulty}
+                        </p>
+                      </div>
                     ))}
-                  </select>
-                </label>
-                {character && (
-                  <div className="ua-character-preview">
-                    <div className="ua-character-preview__meta">
-                      <p className="ua-character-title">
-                        {character.name} <span>({character.version})</span>
-                      </p>
-                      <p className="ua-character-origin">{character.origin}</p>
-                      <p className="ua-character-roles">{formatRoles(character.roles)}</p>
-                      <p className="ua-character-difficulty">
-                        Difficulty: {character.difficulty}
-                      </p>
-                    </div>
                   </div>
                 )}
               </div>
@@ -758,8 +900,7 @@ const App = () => {
     return null;
   }
 
-  const activePlayer = matchState.players[matchState.activePlayerId];
-  const activeCharacter = getCharacter(roster, activePlayer.characterId);
+  const activeTeam = matchState.players[matchState.activePlayerId];
   const activeZoneLabel = matchState.activeZone ? zoneLabel(matchState.activeZone) : "None";
   const pausedZonesLabel = matchState.pausedZones.length
     ? matchState.pausedZones.map(zoneLabel).join(", ")
@@ -771,27 +912,39 @@ const App = () => {
   const reactionNames = allReactivePlayers
     .map((playerId) => matchState.players[playerId]?.name)
     .filter((name): name is string => Boolean(name));
-  const activeHand = activeCharacter
-    ? activePlayer.hand
-        .map((instance) => ({
+  const buildHandEntries = (team: Team): HandEntry[] =>
+    team.hand
+      .map((instance) => {
+        const ownerEntry = getMemberById(matchState, instance.ownerId);
+        if (!ownerEntry) return null;
+        const ownerCharacter = getCharacter(roster, ownerEntry.member.characterId);
+        if (!ownerCharacter) return null;
+        const card = getCardBySlot(ownerCharacter, instance.cardSlot);
+        if (!card) return null;
+        return {
           instance,
-          card: getCardBySlot(activeCharacter, instance.cardSlot),
-        }))
-        .filter((entry): entry is { instance: CardInstance; card: Card } => Boolean(entry.card))
-    : [];
-  const activeUltimates = activeCharacter
-    ? activeCharacter.cards.filter((card) => isUltimateCard(card))
-    : [];
+          card,
+          owner: ownerEntry.member,
+          ownerTeam: ownerEntry.team,
+          ownerCharacter,
+        };
+      })
+      .filter((entry): entry is HandEntry => Boolean(entry));
+  const activeHand = buildHandEntries(activeTeam);
+  const activeUltimates = activeTeam.characters.flatMap((member) => {
+    const character = getCharacter(roster, member.characterId);
+    if (!character) return [];
+    return character.cards
+      .filter((card) => isUltimateCard(card))
+      .map((card) => ({ card, member, character }));
+  });
   const inspectPlayer = inspectPile ? matchState.players[inspectPile.playerId] : null;
-  const inspectCharacter = inspectPlayer
-    ? getCharacter(roster, inspectPlayer.characterId)
-    : undefined;
   const inspectInstances =
     inspectPlayer && inspectPile ? getPileInstances(inspectPlayer, inspectPile.pile) : [];
   const isDeckPile = inspectPile?.pile === "deck";
   const orderedInstances = !isDeckPile ? [...inspectInstances].reverse() : [];
   const inspectSummary = isDeckPile
-    ? summarizePile(inspectInstances, inspectCharacter)
+    ? summarizePile(inspectInstances)
     : [];
   const inspectLabel =
     inspectPile && inspectPlayer
@@ -869,7 +1022,7 @@ const App = () => {
           <p className="ua-kicker">Universal Arena</p>
           <h1>Local Match</h1>
           <p className="ua-subtitle">
-            Turn {matchState.turn} • Active: {activePlayer.name}
+            Turn {matchState.turn} • Active: {activeTeam.name}
           </p>
         </div>
         <div className="ua-header__actions">
@@ -948,8 +1101,8 @@ const App = () => {
               <div className="ua-stack-list">
                 {zone.cards.length === 0 && <p className="ua-empty">No cards queued.</p>}
                 {zone.cards.map((entry, index) => {
-                  const source = matchState.players[entry.playedBy];
-                  const target = matchState.players[entry.targetId];
+                  const sourceLabel = formatMemberLabel(matchState, entry.sourceId);
+                  const targetLabel = formatMemberLabel(matchState, entry.targetId);
                   const lifecycle = getStackLifecycleTag(entry, zone, index);
                   return (
                     <div
@@ -964,7 +1117,7 @@ const App = () => {
                         </span>
                       </div>
                       <div className="ua-stack-card__meta">
-                        {source.name} → {target.name}
+                        {sourceLabel} -> {targetLabel}
                       </div>
                       <div className="ua-stack-card__meta">
                         Speed: {entry.speed} | {entry.types.join(" / ")}
@@ -980,39 +1133,29 @@ const App = () => {
 
       <section className="ua-match-grid">
         {(["p1", "p2"] as PlayerId[]).map((playerId) => {
-          const player = matchState.players[playerId];
-          const character = getCharacter(roster, player.characterId);
-          const statusEntries = formatStatusList(player.statuses);
+          const team = matchState.players[playerId];
           return (
-            <div key={playerId} className={`ua-panel ${playerId === matchState.activePlayerId ? "is-active" : ""}`}>
+            <div
+              key={playerId}
+              className={`ua-panel ${playerId === matchState.activePlayerId ? "is-active" : ""}`}
+            >
               <div className="ua-panel__header">
-                <h2>{player.name}</h2>
+                <h2>{team.name}</h2>
                 <span className="ua-panel__tag">{playerId.toUpperCase()}</span>
               </div>
-              <div className="ua-player-meta">
-                <p className="ua-player-character">
-                  {character?.name} <span>({character?.version})</span>
-                </p>
-                <div className="ua-stats">
-                  <div>
-                    <span>HP</span>
-                    <strong>{player.hp}</strong>
-                  </div>
-                  <div>
-                    <span>Shield</span>
-                    <strong>{player.shield}</strong>
-                  </div>
+              <div className="ua-team-meta">
+                <div className="ua-stats ua-stats--team">
                   <div>
                     <span>Energy</span>
-                    <strong>{player.energy}</strong>
+                    <strong>{team.energy}</strong>
                   </div>
                   <div>
                     <span>Ultimate</span>
-                    <strong>{player.ultimate}</strong>
+                    <strong>{team.ultimate}</strong>
                   </div>
                   <div>
                     <span>Hand</span>
-                    <strong>{player.hand.length}</strong>
+                    <strong>{team.hand.length}</strong>
                   </div>
                   <button
                     type="button"
@@ -1020,7 +1163,7 @@ const App = () => {
                     onClick={() => openPile(playerId, "deck")}
                   >
                     <span>Deck</span>
-                    <strong>{player.deck.length}</strong>
+                    <strong>{team.deck.length}</strong>
                   </button>
                   <button
                     type="button"
@@ -1028,7 +1171,7 @@ const App = () => {
                     onClick={() => openPile(playerId, "discard")}
                   >
                     <span>Discard</span>
-                    <strong>{player.discard.length}</strong>
+                    <strong>{team.discard.length}</strong>
                   </button>
                   <button
                     type="button"
@@ -1036,32 +1179,69 @@ const App = () => {
                     onClick={() => openPile(playerId, "exhausted")}
                   >
                     <span>Exhaust</span>
-                    <strong>{player.exhausted.length}</strong>
+                    <strong>{team.exhausted.length}</strong>
                   </button>
                 </div>
                 <p className="ua-pile-hint">
                   Click Deck, Discard, or Exhaust to inspect pile contents.
                 </p>
-                {statusEntries.length > 0 && (
-                  <div className="ua-statuses">
-                    {statusEntries.map(([status, value]) => {
-                      const info = statusDetails.get(normalizeKey(status));
-                      const tip = info
-                        ? `${status}\nMode: ${info.mode}\nTurn End: ${info.turnEnd}`
-                        : null;
-                      return (
-                        <span
-                          key={status}
-                          className={`ua-pill${info ? " ua-tooltip ua-status-pill" : ""}`}
-                          data-tip={tip ?? undefined}
-                          tabIndex={info ? 0 : undefined}
-                        >
-                          {status}: {value}
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                <div className="ua-team-characters">
+                  {team.characters.map((member) => {
+                    const character = getCharacter(roster, member.characterId);
+                    const statusEntries = formatStatusList(member.statuses);
+                    return (
+                      <div
+                        key={member.id}
+                        className={`ua-character-card${member.defeated ? " is-defeated" : ""}`}
+                      >
+                        <div className="ua-character-card__header">
+                          <div>
+                            <p className="ua-character-title">
+                              {character?.name ?? member.characterId}{" "}
+                              {character?.version ? <span>({character.version})</span> : null}
+                            </p>
+                            {character && (
+                              <p className="ua-character-origin">{character.origin}</p>
+                            )}
+                          </div>
+                          {member.defeated && (
+                            <span className="ua-character-card__tag">Defeated</span>
+                          )}
+                        </div>
+                        <div className="ua-stats ua-stats--compact">
+                          <div>
+                            <span>HP</span>
+                            <strong>{member.hp}</strong>
+                          </div>
+                          <div>
+                            <span>Shield</span>
+                            <strong>{member.shield}</strong>
+                          </div>
+                        </div>
+                        {statusEntries.length > 0 && (
+                          <div className="ua-statuses">
+                            {statusEntries.map(([status, value]) => {
+                              const info = statusDetails.get(normalizeKey(status));
+                              const tip = info
+                                ? `${status}\nMode: ${info.mode}\nTurn End: ${info.turnEnd}`
+                                : null;
+                              return (
+                                <span
+                                  key={status}
+                                  className={`ua-pill${info ? " ua-tooltip ua-status-pill" : ""}`}
+                                  data-tip={tip ?? undefined}
+                                  tabIndex={info ? 0 : undefined}
+                                >
+                                  {status}: {value}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           );
@@ -1117,8 +1297,8 @@ const App = () => {
           <div className="ua-inline-actions">
             <button
               className="ua-button"
-              disabled={matchState.activePlayerId !== activePlayer.id}
-              onClick={() => handleAction({ type: "pass", playerId: activePlayer.id })}
+              disabled={matchState.activePlayerId !== activeTeam.id}
+              onClick={() => handleAction({ type: "pass", playerId: activeTeam.id })}
             >
               Pass
             </button>
@@ -1153,36 +1333,190 @@ const App = () => {
             On Hit vs On Damage vs On HP Damage
           </span>
         </div>
-        {activeCharacter ? (
-          <>
-            <h3 className="ua-hand-title">
-              Active Hand <span>({activePlayer.name})</span>
-            </h3>
+        <>
+          <h3 className="ua-hand-title">
+            Active Hand <span>({activeTeam.name})</span>
+          </h3>
+          <div className="ua-card-grid">
+            {activeHand.map((entry) => {
+              const { instance, card, owner } = entry;
+              const cost = parseCost(card.cost);
+              const isVariable = Boolean(cost.variable);
+              const xRange = getXRangeFromText(card);
+              const isAfterUse =
+                matchState.afterUseWindow &&
+                matchState.afterUseWindow.validForAction === matchState.actionId + 1;
+              const isFollowUpPlay =
+                Boolean(isAfterUse) &&
+                matchState.afterUseWindow?.lastUsedCharacterId === owner.id;
+              const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+              const baseAffordable = canAffordWithAdjustments(
+                activeTeam,
+                owner,
+                cost,
+                0,
+                instance,
+                followUpAdjustment
+              );
+              const canAct =
+                matchState.activePlayerId === activeTeam.id ||
+                canReactAfterUse(matchState, card, owner.id);
+              const disabled = !canAct || !baseAffordable || owner.defeated;
+              const adjustment =
+                getEnergyCostAdjustment(owner) +
+                (instance.costAdjustment ?? 0) +
+                followUpAdjustment;
+              return (
+                <button
+                  key={instance.id}
+                  className="ua-card"
+                  disabled={disabled}
+                  onClick={() => handlePlayCard(activeTeam.id, card, owner.id, instance.id)}
+                >
+                  <div className="ua-card__title">{card.name}</div>
+                  <div className="ua-card__meta">
+                    <span>Owner: {owner.name}</span>
+                  </div>
+                  <div className="ua-card__meta">
+                    <span>
+                      Cost: {card.cost}
+                      {adjustment !== 0 &&
+                        ` (Adj ${adjustment >= 0 ? "+" : ""}${adjustment})`}
+                    </span>
+                    <span>Power: {card.power}</span>
+                  </div>
+                  <div className="ua-card__meta">
+                    <span>Speed: {card.speed}</span>
+                    <span>Target: {card.target}</span>
+                  </div>
+                  <div className="ua-card__tags">{card.types.join(" / ")}</div>
+                  <div className="ua-card__effect">
+                    {card.effect.map((line, index) =>
+                      renderEffectLine(line, `${instance.id}-${index}`)
+                    )}
+                  </div>
+                  {isVariable && <span className="ua-card__tag">X Cost</span>}
+                  {xRange && <span className="ua-card__tag">Choose X</span>}
+                </button>
+              );
+            })}
+            {activeHand.length === 0 && <p>No cards in hand.</p>}
+          </div>
+          {activeUltimates.length > 0 && (
+            <>
+              <h3>Ultimates</h3>
+              <div className="ua-card-grid">
+                {activeUltimates.map((entry) => {
+                  const { card, member } = entry;
+                  const cost = parseCost(card.cost);
+                  const isVariable = Boolean(cost.variable);
+                  const isAfterUse =
+                    matchState.afterUseWindow &&
+                    matchState.afterUseWindow.validForAction === matchState.actionId + 1;
+                  const isFollowUpPlay =
+                    Boolean(isAfterUse) &&
+                    matchState.afterUseWindow?.lastUsedCharacterId === member.id;
+                  const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+                  const baseAffordable = canAffordWithAdjustments(
+                    activeTeam,
+                    member,
+                    cost,
+                    0,
+                    undefined,
+                    followUpAdjustment
+                  );
+                  const canAct =
+                    matchState.activePlayerId === activeTeam.id ||
+                    canReactAfterUse(matchState, card, member.id);
+                  const disabled = !canAct || !baseAffordable || member.defeated;
+                  return (
+                    <button
+                      key={`${member.id}-${card.slot}`}
+                      className="ua-card"
+                      disabled={disabled}
+                      onClick={() => handlePlayCard(activeTeam.id, card, member.id)}
+                    >
+                      <div className="ua-card__title">{card.name}</div>
+                      <div className="ua-card__meta">
+                        <span>Owner: {member.name}</span>
+                      </div>
+                      <div className="ua-card__meta">
+                        <span>Cost: {card.cost}</span>
+                        <span>Power: {card.power}</span>
+                      </div>
+                      <div className="ua-card__meta">
+                        <span>Speed: {card.speed}</span>
+                        <span>Target: {card.target}</span>
+                      </div>
+                      <div className="ua-card__tags">{card.types.join(" / ")}</div>
+                      <div className="ua-card__effect">
+                        {card.effect.map((line, index) =>
+                          renderEffectLine(line, `${member.id}-${card.slot}-${index}`)
+                        )}
+                      </div>
+                      {isVariable && <span className="ua-card__tag">X Cost</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      </section>
+
+      {reactivePlayers.map((playerId) => {
+        const team = matchState.players[playerId];
+        const handEntries = buildHandEntries(team);
+        const ultimateEntries: UltimateEntry[] = team.characters.flatMap((member) => {
+          const character = getCharacter(roster, member.characterId);
+          if (!character) return [];
+          return character.cards
+            .filter((card) => isUltimateCard(card))
+            .map((card) => ({ card, member, character }));
+        });
+        return (
+          <section key={`react-${playerId}`} className="ua-panel ua-panel--wide">
+            <div className="ua-panel__header">
+              <h2>Reaction ({team.name})</h2>
+            </div>
             <div className="ua-card-grid">
-              {activeHand.map(({ instance, card }) => {
+              {handEntries.map((entry) => {
+                const { instance, card, owner } = entry;
                 const cost = parseCost(card.cost);
                 const isVariable = Boolean(cost.variable);
                 const xRange = getXRangeFromText(card);
+                const isAfterUse =
+                  matchState.afterUseWindow &&
+                  matchState.afterUseWindow.validForAction === matchState.actionId + 1;
+                const isFollowUpPlay =
+                  Boolean(isAfterUse) &&
+                  matchState.afterUseWindow?.lastUsedCharacterId === owner.id;
+                const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
                 const baseAffordable = canAffordWithAdjustments(
-                  activePlayer,
+                  team,
+                  owner,
                   cost,
                   0,
-                  instance
+                  instance,
+                  followUpAdjustment
                 );
-                const canAct =
-                  matchState.activePlayerId === activePlayer.id ||
-                  canReactAfterUse(matchState, activePlayer.id, card);
-                const disabled = !canAct || !baseAffordable;
+                const canReact = canReactAfterUse(matchState, card, owner.id);
+                const disabled = !canReact || !baseAffordable || owner.defeated;
                 const adjustment =
-                  getEnergyCostAdjustment(activePlayer) + (instance.costAdjustment ?? 0);
+                  getEnergyCostAdjustment(owner) +
+                  (instance.costAdjustment ?? 0) +
+                  followUpAdjustment;
                 return (
                   <button
                     key={instance.id}
                     className="ua-card"
                     disabled={disabled}
-                    onClick={() => handlePlayCard(activePlayer.id, card, instance.id)}
+                    onClick={() => handlePlayCard(playerId, card, owner.id, instance.id)}
                   >
                     <div className="ua-card__title">{card.name}</div>
+                    <div className="ua-card__meta">
+                      <span>Owner: {owner.name}</span>
+                    </div>
                     <div className="ua-card__meta">
                       <span>
                         Cost: {card.cost}
@@ -1206,28 +1540,44 @@ const App = () => {
                   </button>
                 );
               })}
-              {activeHand.length === 0 && <p>No cards in hand.</p>}
+              {handEntries.length === 0 && <p>No cards in hand.</p>}
             </div>
-            {activeUltimates.length > 0 && (
+            {ultimateEntries.length > 0 && (
               <>
                 <h3>Ultimates</h3>
                 <div className="ua-card-grid">
-                  {activeUltimates.map((card) => {
+                  {ultimateEntries.map((entry) => {
+                    const { card, member } = entry;
                     const cost = parseCost(card.cost);
                     const isVariable = Boolean(cost.variable);
-                    const baseAffordable = canAffordWithAdjustments(activePlayer, cost, 0);
-                    const canAct =
-                      matchState.activePlayerId === activePlayer.id ||
-                      canReactAfterUse(matchState, activePlayer.id, card);
-                    const disabled = !canAct || !baseAffordable;
+                    const isAfterUse =
+                      matchState.afterUseWindow &&
+                      matchState.afterUseWindow.validForAction === matchState.actionId + 1;
+                    const isFollowUpPlay =
+                      Boolean(isAfterUse) &&
+                      matchState.afterUseWindow?.lastUsedCharacterId === member.id;
+                    const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+                    const baseAffordable = canAffordWithAdjustments(
+                      team,
+                      member,
+                      cost,
+                      0,
+                      undefined,
+                      followUpAdjustment
+                    );
+                    const canReact = canReactAfterUse(matchState, card, member.id);
+                    const disabled = !canReact || !baseAffordable || member.defeated;
                     return (
                       <button
-                        key={card.slot}
+                        key={`${member.id}-${card.slot}`}
                         className="ua-card"
                         disabled={disabled}
-                        onClick={() => handlePlayCard(activePlayer.id, card)}
+                        onClick={() => handlePlayCard(playerId, card, member.id)}
                       >
                         <div className="ua-card__title">{card.name}</div>
+                        <div className="ua-card__meta">
+                          <span>Owner: {member.name}</span>
+                        </div>
                         <div className="ua-card__meta">
                           <span>Cost: {card.cost}</span>
                           <span>Power: {card.power}</span>
@@ -1239,7 +1589,7 @@ const App = () => {
                         <div className="ua-card__tags">{card.types.join(" / ")}</div>
                         <div className="ua-card__effect">
                           {card.effect.map((line, index) =>
-                            renderEffectLine(line, `${card.slot}-${index}`)
+                            renderEffectLine(line, `${member.id}-${card.slot}-${index}`)
                           )}
                         </div>
                         {isVariable && <span className="ua-card__tag">X Cost</span>}
@@ -1249,80 +1599,6 @@ const App = () => {
                 </div>
               </>
             )}
-          </>
-        ) : (
-          <p>No character selected.</p>
-        )}
-      </section>
-
-      {reactivePlayers.map((playerId) => {
-        const player = matchState.players[playerId];
-        const character = getCharacter(roster, player.characterId);
-        if (!character) return null;
-        return (
-          <section key={`react-${playerId}`} className="ua-panel ua-panel--wide">
-            <div className="ua-panel__header">
-              <h2>Reaction ({player.name})</h2>
-            </div>
-            <div className="ua-card-grid">
-              {player.hand.map((instance) => {
-                const card = getCardBySlot(character, instance.cardSlot);
-                if (!card) return null;
-                const cost = parseCost(card.cost);
-                const isVariable = Boolean(cost.variable);
-                const xRange = getXRangeFromText(card);
-                const isAfterUse =
-                  matchState.afterUseWindow &&
-                  matchState.afterUseWindow.validForAction === matchState.actionId + 1;
-                const isFollowUpPlay =
-                  Boolean(isAfterUse) && matchState.afterUseWindow?.lastUsedBy === playerId;
-                const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
-                const baseAffordable = canAffordWithAdjustments(
-                  player,
-                  cost,
-                  0,
-                  instance,
-                  followUpAdjustment
-                );
-                const canReact = canReactAfterUse(matchState, playerId, card);
-                const disabled = !canReact || !baseAffordable;
-                const adjustment =
-                  getEnergyCostAdjustment(player) +
-                  (instance.costAdjustment ?? 0) +
-                  followUpAdjustment;
-                return (
-                  <button
-                    key={instance.id}
-                    className="ua-card"
-                    disabled={disabled}
-                    onClick={() => handlePlayCard(playerId, card, instance.id)}
-                  >
-                    <div className="ua-card__title">{card.name}</div>
-                    <div className="ua-card__meta">
-                      <span>
-                        Cost: {card.cost}
-                        {adjustment !== 0 &&
-                          ` (Adj ${adjustment >= 0 ? "+" : ""}${adjustment})`}
-                      </span>
-                      <span>Power: {card.power}</span>
-                    </div>
-                    <div className="ua-card__meta">
-                      <span>Speed: {card.speed}</span>
-                      <span>Target: {card.target}</span>
-                    </div>
-                    <div className="ua-card__tags">{card.types.join(" / ")}</div>
-                    <div className="ua-card__effect">
-                      {card.effect.map((line, index) =>
-                        renderEffectLine(line, `${instance.id}-${index}`)
-                      )}
-                    </div>
-                    {isVariable && <span className="ua-card__tag">X Cost</span>}
-                    {xRange && <span className="ua-card__tag">Choose X</span>}
-                  </button>
-                );
-              })}
-              {player.hand.length === 0 && <p>No cards in hand.</p>}
-            </div>
           </section>
         );
       })}
@@ -1346,6 +1622,26 @@ const App = () => {
                       }
                     >
                       {zoneLabel(zone)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {pendingPlay.targets.length > 1 && (
+              <div className="ua-modal__zones">
+                <p>Choose a target:</p>
+                <div className="ua-modal__zone-buttons">
+                  {pendingPlay.targets.map((target) => (
+                    <button
+                      key={target.id}
+                      className={`ua-button ${pendingPlay.targetId === target.id ? "ua-button--primary" : ""}`}
+                      onClick={() =>
+                        setPendingPlay((prev) =>
+                          prev ? { ...prev, targetId: target.id } : prev
+                        )
+                      }
+                    >
+                      {target.label}
                     </button>
                   ))}
                 </div>
@@ -1421,6 +1717,7 @@ const App = () => {
                       <div>
                         <div className="ua-pile-name">{entry.name}</div>
                         <div className="ua-pile-meta">{entry.types}</div>
+                        <div className="ua-pile-meta">{entry.owner}</div>
                       </div>
                       <div className="ua-pile-count">{entry.count}</div>
                     </div>
@@ -1432,7 +1729,11 @@ const App = () => {
                     <p className="ua-empty">No cards in this pile.</p>
                   )}
                   {orderedInstances.map((instance, index) => {
-                    const card = getCardBySlot(inspectCharacter, instance.cardSlot);
+                    const card = getCardByInstance(instance);
+                    const owner = getCharacter(roster, instance.characterId);
+                    const ownerLabel = owner
+                      ? `${owner.name} (${owner.version})`
+                      : instance.characterId;
                     const name = card?.name ?? instance.cardSlot;
                     const types = card ? card.types.join(" / ") : "Unknown";
                     const isTop = index === 0;
@@ -1443,6 +1744,7 @@ const App = () => {
                         <div>
                           <div className="ua-pile-name">{name}</div>
                           <div className="ua-pile-meta">{types}</div>
+                          <div className="ua-pile-meta">{ownerLabel}</div>
                         </div>
                         <div className="ua-pile-order">{label}</div>
                       </div>
@@ -1477,3 +1779,4 @@ const App = () => {
 };
 
 export default App;
+

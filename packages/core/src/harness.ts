@@ -7,6 +7,13 @@ type HarnessResult = {
   details?: string;
 };
 
+const fillerIds = ["h-filler-1", "h-filler-2"] as const;
+
+const getPrimary = (
+  state: ReturnType<typeof createMatchState>,
+  playerId: "p1" | "p2"
+) => state.players[playerId].characters[0];
+
 const testCharacters = (): Character[] => [
   {
     id: "test-attacker",
@@ -140,6 +147,30 @@ const testCharacters = (): Character[] => [
       },
     ],
   },
+  {
+    id: "h-filler-1",
+    name: "Harness Filler One",
+    version: "Harness",
+    origin: "Test",
+    roles: [],
+    difficulty: "Low",
+    gameplan: "Filler roster slot.",
+    art: "h-filler-1.png",
+    innates: [],
+    cards: [],
+  },
+  {
+    id: "h-filler-2",
+    name: "Harness Filler Two",
+    version: "Harness",
+    origin: "Test",
+    roles: [],
+    difficulty: "Low",
+    gameplan: "Filler roster slot.",
+    art: "h-filler-2.png",
+    innates: [],
+    cards: [],
+  },
 ];
 
 const harnessSeed = 1337;
@@ -148,8 +179,8 @@ const createHarnessState = (characters: Character[]) =>
   createMatchState(
     characters,
     [
-      { id: "p1", name: "Attacker", characterId: "test-attacker" },
-      { id: "p2", name: "Defender", characterId: "test-defender" },
+      { id: "p1", name: "Attacker", characterIds: ["test-attacker", ...fillerIds] },
+      { id: "p2", name: "Defender", characterIds: ["test-defender", ...fillerIds] },
     ],
     { seed: harnessSeed }
   );
@@ -209,7 +240,7 @@ const runEvadeTest = (characters: Character[]): HarnessResult => {
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
 
-  const weak = state.players.p2.statuses["Weak"];
+  const weak = getPrimary(state, "p2").statuses["Weak"];
   if (weak && (weak.potency > 0 || weak.count > 0 || weak.stack > 0 || weak.value > 0)) {
     return { label: "Evade prevents On Hit effects", ok: false, details: "Weak applied." };
   }
@@ -240,18 +271,26 @@ const runMitigationTest = (characters: Character[]): HarnessResult[] => {
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
 
-  const resistOk = state.players.p2.hp === 95;
+  const resistOk = getPrimary(state, "p2").hp === 95;
 
   let fireState = createHarnessState(characters);
   fireState = applyOrThrow(fireState, playFromHand(fireState, "p1", "2", "normal"), characters);
   fireState = applyOrThrow(fireState, { type: "pass", playerId: "p2" }, characters);
   fireState = applyOrThrow(fireState, { type: "pass", playerId: "p1" }, characters);
 
-  const immuneOk = fireState.players.p2.hp === 100;
+  const immuneOk = getPrimary(fireState, "p2").hp === 100;
 
   return [
-    { label: "Resist reduces damage after shield", ok: resistOk, details: `HP=${state.players.p2.hp}` },
-    { label: "Immune negates matching damage", ok: immuneOk, details: `HP=${fireState.players.p2.hp}` },
+    {
+      label: "Resist reduces damage after shield",
+      ok: resistOk,
+      details: `HP=${getPrimary(state, "p2").hp}`,
+    },
+    {
+      label: "Immune negates matching damage",
+      ok: immuneOk,
+      details: `HP=${getPrimary(fireState, "p2").hp}`,
+    },
   ];
 };
 

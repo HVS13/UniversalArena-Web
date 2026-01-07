@@ -1,6 +1,6 @@
 # Universal Arena Web
 
-Web-based Universal Arena prototype (local hot-seat). Data is exported from the docs repo and the rules engine is still incomplete.
+Web-based Universal Arena prototype (local hot-seat 3v3 with shared team deck/hand). Data is exported from the docs repo and the rules engine is still incomplete.
 
 ## Repo layout
 
@@ -74,13 +74,16 @@ cmd /c pnpm --filter @ua/client build
 
 - Structured effects now cover optional spend/bonus damage/draw/create mechanics; legacy text parsing still handles unique triggers and any remaining unmodeled text.
 - Status/keyword handling covers timing windows, caps/expiry, and cost/speed/power/damage modifiers plus spend/draw/creation hooks, but not all unique triggers.
-- Hand/deck/discard/exhaust are implemented, but there is no deck reshuffle or deck/discard inspection UI yet.
+- Movement Round and movement swaps are not implemented.
+- Multi-target/AoE/Splash/Bounce targeting is not implemented.
 - Multiplayer is not implemented yet.
 - Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines, surfaced in UI tooltips.
 
 ## Gameplay notes
 
-- Hand display is always the active player's hand (hot-seat flow).
+- Hand display is always the active team's hand (hot-seat flow, shared deck/hand).
+- Cards are owned by specific characters; owners are shown on hand cards and ultimates.
+- Target selection prompts appear when multiple legal targets exist.
 - Transformable cards resolve to alternates at play time; transform targets are excluded from deck/hand population.
 - Ultimates require the full base cost; variable X cannot bypass Ultimate meter requirements.
 

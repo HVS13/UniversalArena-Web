@@ -14,6 +14,7 @@ import type {
 } from "@ua/data";
 
 export type PlayerId = "p1" | "p2";
+export type MatchCharacterId = string;
 export type ZoneName = "fast" | "normal" | "slow";
 
 type ActionType = "attack" | "defense" | "special";
@@ -30,6 +31,8 @@ export type StatusState = {
 export type CardInstance = {
   id: string;
   cardSlot: string;
+  characterId: string;
+  ownerId: MatchCharacterId;
   costAdjustment: number;
 };
 
@@ -40,20 +43,30 @@ type EntryKeywords = {
   assistAttack?: boolean;
 };
 
-export type MatchPlayer = {
-  id: PlayerId;
-  name: string;
+export type MatchCharacter = {
+  id: MatchCharacterId;
   characterId: string;
+  name: string;
   hp: number;
   shield: number;
+  statuses: Record<string, StatusState>;
+  resourceMax: Record<string, number>;
+  position: number;
+  defeated: boolean;
+  turnFlags: TurnFlags;
+};
+
+export type MatchTeam = {
+  id: PlayerId;
+  name: string;
   energy: number;
   ultimate: number;
-  statuses: Record<string, StatusState>;
   deck: CardInstance[];
   hand: CardInstance[];
   discard: CardInstance[];
   exhausted: CardInstance[];
-  resourceMax: Record<string, number>;
+  defeated: CardInstance[];
+  characters: MatchCharacter[];
 };
 
 export type StackEntry = {
@@ -67,7 +80,8 @@ export type StackEntry = {
   types: string[];
   speed: string;
   playedBy: PlayerId;
-  targetId: PlayerId;
+  sourceId: MatchCharacterId;
+  targetId: MatchCharacterId;
   targetText?: string;
   xValue: number;
   choiceIndex?: number;
@@ -96,24 +110,22 @@ export type MatchState = {
   pausedZones: ZoneName[];
   zones: Record<ZoneName, ZoneState>;
   lineSize: number;
-  positions: Record<PlayerId, number>;
-  players: Record<PlayerId, MatchPlayer>;
+  players: Record<PlayerId, MatchTeam>;
   playLocks: Record<PlayerId, { source: string; duration: "combat_round" }[]>;
   log: string[];
   winnerId?: PlayerId;
-  pendingTurnStartGains: Record<PlayerId, PendingStatusGain[]>;
-  turnFlags: Record<PlayerId, TurnFlags>;
+  pendingTurnStartGains: Record<MatchCharacterId, PendingStatusGain[]>;
   nextCardInstanceId: number;
   rng: RngState;
   transcript?: MatchTranscript;
   afterUseWindow?: {
     lastUsedBy: PlayerId;
-    lastUsedCharacterId: string;
+    lastUsedCharacterId: MatchCharacterId;
     validForAction: number;
   };
 };
 
-type StatusSnapshot = Record<PlayerId, Record<string, StatusState>>;
+type StatusSnapshot = Record<MatchCharacterId, Record<string, StatusState>>;
 
 export type Action =
   | {
@@ -121,7 +133,9 @@ export type Action =
       playerId: PlayerId;
       cardSlot?: string;
       cardInstanceId?: string;
+      sourceId?: MatchCharacterId;
       zone: ZoneName;
+      targetId?: MatchCharacterId;
       xValue?: number;
       choiceIndex?: number;
     }
@@ -140,9 +154,9 @@ export type TranscriptEntry = {
 };
 
 export type MatchTranscript = {
-  version: 1;
+  version: 2;
   seed: number;
-  players: { id: PlayerId; name: string; characterId: string }[];
+  players: { id: PlayerId; name: string; characterIds: string[] }[];
   actions: TranscriptEntry[];
 };
 
@@ -164,9 +178,9 @@ const cloneAction = (action: Action): Action => ({ ...action });
 
 export const createMatchTranscript = (
   seed: number,
-  players: { id: PlayerId; name: string; characterId: string }[]
+  players: { id: PlayerId; name: string; characterIds: string[] }[]
 ): MatchTranscript => ({
-  version: 1,
+  version: 2,
   seed,
   players: players.map((player) => ({ ...player })),
   actions: [],
@@ -188,13 +202,56 @@ const recordTranscriptEntry = (
 
 const getOpponentId = (playerId: PlayerId) => (playerId === "p1" ? "p2" : "p1");
 
-const resolveEffectTargetId = (
+const buildMatchCharacterId = (teamId: PlayerId, characterId: string) =>
+  `${teamId}:${characterId}`;
+
+const getTeamIdFromMatchCharacterId = (matchId: MatchCharacterId) => {
+  if (matchId.startsWith("p1:")) return "p1";
+  if (matchId.startsWith("p2:")) return "p2";
+  return null;
+};
+
+const getMatchCharacter = (state: MatchState, matchId: MatchCharacterId) => {
+  const teamId = getTeamIdFromMatchCharacterId(matchId);
+  if (teamId) {
+    return state.players[teamId].characters.find((member) => member.id === matchId) ?? null;
+  }
+  return (
+    state.players.p1.characters.find((member) => member.id === matchId) ??
+    state.players.p2.characters.find((member) => member.id === matchId) ??
+    null
+  );
+};
+
+const getTeamForCharacter = (state: MatchState, matchId: MatchCharacterId) => {
+  const teamId = getTeamIdFromMatchCharacterId(matchId);
+  if (teamId) return state.players[teamId] ?? null;
+  const p1 = state.players.p1.characters.some((member) => member.id === matchId);
+  if (p1) return state.players.p1;
+  const p2 = state.players.p2.characters.some((member) => member.id === matchId);
+  return p2 ? state.players.p2 : null;
+};
+
+const resolveEffectTargetTeamId = (
+  state: MatchState,
+  target: EffectTarget | undefined,
+  entry: StackEntry
+) => {
+  if (target === "target") {
+    const team = getTeamForCharacter(state, entry.targetId);
+    return team?.id ?? entry.playedBy;
+  }
+  if (target === "opponent") return getOpponentId(entry.playedBy);
+  return entry.playedBy;
+};
+
+const resolveEffectTargetCharacterId = (
   target: EffectTarget | undefined,
   entry: StackEntry
 ) => {
   if (target === "target") return entry.targetId;
-  if (target === "opponent") return getOpponentId(entry.playedBy);
-  return entry.playedBy;
+  if (target === "opponent") return entry.targetId;
+  return entry.sourceId;
 };
 
 const hasCombatRoundLock = (state: MatchState, playerId: PlayerId) =>
@@ -215,12 +272,15 @@ const clearCombatRoundLocks = (state: MatchState) => {
 
 const baseHandSize = 5;
 const defaultLineSize = 3;
-const defaultPosition = Math.floor(defaultLineSize / 2);
 
-const createCardInstance = (state: MatchState, cardSlot: string): CardInstance => {
+const createCardInstance = (
+  state: MatchState,
+  owner: MatchCharacter,
+  cardSlot: string
+): CardInstance => {
   const id = `ci-${state.nextCardInstanceId}`;
   state.nextCardInstanceId += 1;
-  return { id, cardSlot, costAdjustment: 0 };
+  return { id, cardSlot, characterId: owner.characterId, ownerId: owner.id, costAdjustment: 0 };
 };
 
 const shuffle = <T>(items: T[], rng: RngState) => {
@@ -280,22 +340,27 @@ const cloneStatusMap = (statuses: Record<string, StatusState>) =>
     Object.entries(statuses).map(([status, state]) => [status, cloneStatusState(state)])
   );
 
-const snapshotStatuses = (state: MatchState): StatusSnapshot => ({
-  p1: cloneStatusMap(state.players.p1.statuses),
-  p2: cloneStatusMap(state.players.p2.statuses),
-});
+const snapshotStatuses = (state: MatchState): StatusSnapshot => {
+  const entries: [MatchCharacterId, Record<string, StatusState>][] = [];
+  (["p1", "p2"] as PlayerId[]).forEach((teamId) => {
+    state.players[teamId].characters.forEach((member) => {
+      entries.push([member.id, cloneStatusMap(member.statuses)]);
+    });
+  });
+  return Object.fromEntries(entries);
+};
 
 const getSnapshotStatusState = (
   snapshot: StatusSnapshot,
-  playerId: PlayerId,
+  characterId: MatchCharacterId,
   status: string
-) => snapshot[playerId]?.[status] ?? createEmptyStatusState();
+) => snapshot[characterId]?.[status] ?? createEmptyStatusState();
 
-const getStatusState = (player: MatchPlayer, status: string) => {
-  if (!player.statuses[status]) {
-    player.statuses[status] = createEmptyStatusState();
+const getStatusState = (character: MatchCharacter, status: string) => {
+  if (!character.statuses[status]) {
+    character.statuses[status] = createEmptyStatusState();
   }
-  return player.statuses[status];
+  return character.statuses[status];
 };
 
 const parseStatusLineValue = (line: string, label: string) => {
@@ -372,35 +437,36 @@ const getStatusDefinition = (status: string, character?: Character | null): Stat
 const persistentStatuses = new Set(["Death by Death Note"]);
 
 const getActiveStatusState = (
-  player: MatchPlayer,
+  member: MatchCharacter,
   status: string,
   character?: Character | null
 ) => {
-  const state = player.statuses[status];
+  const state = member.statuses[status];
   if (!state) return null;
   const definition = getStatusDefinition(status, character);
   return isStatusActive(state, definition) ? state : null;
 };
 
 const getStatusStatValue = (
-  player: MatchPlayer,
+  member: MatchCharacter,
   status: string,
   stat: StatusValueStat,
   character?: Character | null
 ) => {
-  const state = getActiveStatusState(player, status, character);
+  const state = getActiveStatusState(member, status, character);
   if (!state) return 0;
   return state[stat];
 };
 
 const applyStatusStatDelta = (
-  target: MatchPlayer,
+  target: MatchCharacter,
   status: string,
   delta: number,
   stat: StatusValueStat,
   targetCharacter?: Character | null
 ) => {
   if (!status || delta === 0) return;
+  if (target.defeated) return;
   const state = target.statuses[status];
   if (!state) return;
   const definition = getStatusDefinition(status, targetCharacter);
@@ -415,7 +481,7 @@ const applyStatusStatDelta = (
   state[stat] = clampValue(state[stat] + delta, max);
 };
 
-const expireStatus = (target: MatchPlayer, status: string) => {
+const expireStatus = (target: MatchCharacter, status: string) => {
   const state = target.statuses[status];
   if (!state) return;
   state.potency = 0;
@@ -426,10 +492,13 @@ const expireStatus = (target: MatchPlayer, status: string) => {
 
 const scheduleTurnStartGain = (
   state: MatchState,
-  playerId: PlayerId,
+  characterId: MatchCharacterId,
   gain: PendingStatusGain
 ) => {
-  state.pendingTurnStartGains[playerId].push(gain);
+  if (!state.pendingTurnStartGains[characterId]) {
+    state.pendingTurnStartGains[characterId] = [];
+  }
+  state.pendingTurnStartGains[characterId].push(gain);
 };
 
 const resetTurnFlags = (flags: TurnFlags) => {
@@ -473,55 +542,74 @@ const areAdjacent = (left: number, right: number) => Math.abs(left - right) === 
 
 const areOpposed = (left: number, right: number) => left === right;
 
-const canMovePlayer = (state: MatchState, playerId: PlayerId, characters: Character[]) => {
-  const player = state.players[playerId];
-  const character = getCharacterById(characters, player.characterId);
-  return !getActiveStatusState(player, "Root", character);
+const canMoveCharacter = (
+  state: MatchState,
+  characterId: MatchCharacterId,
+  characters: Character[]
+) => {
+  const member = getMatchCharacter(state, characterId);
+  if (!member || member.defeated) return false;
+  const character = getCharacterById(characters, member.characterId);
+  return !getActiveStatusState(member, "Root", character);
 };
 
-const tryMovePlayer = (
+const tryMoveCharacter = (
   state: MatchState,
-  playerId: PlayerId,
+  characterId: MatchCharacterId,
   nextPosition: number,
   characters: Character[]
 ) => {
   if (!isValidPosition(nextPosition, state.lineSize)) return false;
-  if (!canMovePlayer(state, playerId, characters)) {
-    addLog(state, `${state.players[playerId].name} is rooted and cannot move.`);
+  if (!canMoveCharacter(state, characterId, characters)) {
+    const member = getMatchCharacter(state, characterId);
+    if (member) {
+      addLog(state, `${member.name} is rooted and cannot move.`);
+    }
     return false;
   }
-  state.positions[playerId] = nextPosition;
+  const member = getMatchCharacter(state, characterId);
+  if (!member) return false;
+  member.position = nextPosition;
   return true;
 };
 
-const trySwapPlayers = (
+const trySwapAllies = (
   state: MatchState,
-  firstId: PlayerId,
-  secondId: PlayerId,
+  teamId: PlayerId,
+  firstId: MatchCharacterId,
+  secondId: MatchCharacterId,
   characters: Character[]
 ) => {
-  if (!canMovePlayer(state, firstId, characters) || !canMovePlayer(state, secondId, characters)) {
+  const team = state.players[teamId];
+  const first = team.characters.find((member) => member.id === firstId);
+  const second = team.characters.find((member) => member.id === secondId);
+  if (!first || !second) return false;
+  if (
+    !canMoveCharacter(state, firstId, characters) ||
+    !canMoveCharacter(state, secondId, characters)
+  ) {
     addLog(state, "A rooted character cannot be moved or swapped.");
     return false;
   }
-  const firstPos = state.positions[firstId];
-  const secondPos = state.positions[secondId];
+  const firstPos = first.position;
+  const secondPos = second.position;
   if (!isValidPosition(firstPos, state.lineSize) || !isValidPosition(secondPos, state.lineSize)) {
     return false;
   }
-  state.positions[firstId] = secondPos;
-  state.positions[secondId] = firstPos;
+  first.position = secondPos;
+  second.position = firstPos;
   return true;
 };
 
 const applyStatusDelta = (
-  target: MatchPlayer,
+  target: MatchCharacter,
   status: string,
   amount: number,
   stat: StatusValueStat | undefined,
   targetCharacter?: Character | null
 ) => {
   if (!status || amount === 0) return;
+  if (target.defeated) return;
   const definition = getStatusDefinition(status, targetCharacter);
   const state = getStatusState(target, status);
   const wasActive = isStatusActive(state, definition);
@@ -569,13 +657,14 @@ const applyStatusDelta = (
 };
 
 const setStatusValue = (
-  target: MatchPlayer,
+  target: MatchCharacter,
   status: string,
   amount: number,
   stat: StatusValueStat | undefined,
   targetCharacter?: Character | null
 ) => {
   if (!status || Number.isNaN(amount)) return null;
+  if (target.defeated) return null;
   const definition = getStatusDefinition(status, targetCharacter);
   const state = getStatusState(target, status);
   const wasActive = isStatusActive(state, definition);
@@ -603,7 +692,7 @@ const setStatusValue = (
 };
 
 const reduceStatusValue = (
-  target: MatchPlayer,
+  target: MatchCharacter,
   status: string,
   amount: number,
   stat: StatusValueStat | undefined,
@@ -611,6 +700,7 @@ const reduceStatusValue = (
   targetCharacter?: Character | null
 ) => {
   if (!status || Number.isNaN(amount)) return null;
+  if (target.defeated) return null;
   const definition = getStatusDefinition(status, targetCharacter);
   const state = getStatusState(target, status);
   const statKey = stat ?? getStatusPrimaryStat(definition);
@@ -638,15 +728,16 @@ const reduceStatusValue = (
 
 const spendStatus = (
   state: MatchState,
-  playerId: PlayerId,
+  characterId: MatchCharacterId,
   status: string,
   amount: number,
   character?: Character | null,
   options?: { allowPartial?: boolean; label?: string }
 ) => {
   if (!status || amount <= 0) return 0;
-  const player = state.players[playerId];
-  const statusState = player.statuses[status];
+  const member = getMatchCharacter(state, characterId);
+  if (!member || member.defeated) return 0;
+  const statusState = member.statuses[status];
   if (!statusState) return 0;
   const definition = getStatusDefinition(status, character);
   const stat = getStatusPrimaryStat(definition);
@@ -666,13 +757,13 @@ const spendStatus = (
   statusState[stat] = clampValue(current - spendAmount, max);
   addLog(
     state,
-    `${player.name} spends ${spendAmount} ${options?.label ?? status}.`
+    `${member.name} spends ${spendAmount} ${options?.label ?? status}.`
   );
   return spendAmount;
 };
 
 const handleStatusOnGain = (
-  target: MatchPlayer,
+  target: MatchCharacter,
   status: string,
   targetCharacter?: Character | null
 ) => {
@@ -702,11 +793,12 @@ const handleStatusOnGain = (
 
 const handleStatusExpiration = (
   state: MatchState,
-  targetId: PlayerId,
+  targetId: MatchCharacterId,
   status: string,
   targetCharacter?: Character | null
 ) => {
-  const target = state.players[targetId];
+  const target = getMatchCharacter(state, targetId);
+  if (!target) return;
   const normalized = normalizeStatusName(status);
   switch (normalized) {
     case "bankai: tensa zangetsu":
@@ -726,12 +818,12 @@ const handleStatusExpiration = (
   }
 };
 
-const pruneStatuses = (player: MatchPlayer, character?: Character | null) => {
-  Object.entries(player.statuses).forEach(([status, state]) => {
+const pruneStatuses = (member: MatchCharacter, character?: Character | null) => {
+  Object.entries(member.statuses).forEach(([status, state]) => {
     if (persistentStatuses.has(status)) return;
     const definition = getStatusDefinition(status, character);
     if (!isStatusActive(state, definition)) {
-      delete player.statuses[status];
+      delete member.statuses[status];
     }
   });
 };
@@ -764,25 +856,25 @@ const parseXExpression = (value: string, xValue: number) => {
   return numberMatch ? Number(numberMatch[1]) : 0;
 };
 
-const getEnergyCostAdjustment = (player: MatchPlayer, character?: Character | null) => {
-  const focus = getStatusStatValue(player, "Focus", "potency", character);
-  const strain = getStatusStatValue(player, "Strain", "potency", character);
-  const bloodFocus = getStatusStatValue(player, "Blood Focus", "value", character);
+const getEnergyCostAdjustment = (member: MatchCharacter, character?: Character | null) => {
+  const focus = getStatusStatValue(member, "Focus", "potency", character);
+  const strain = getStatusStatValue(member, "Strain", "potency", character);
+  const bloodFocus = getStatusStatValue(member, "Blood Focus", "value", character);
   return strain - focus - bloodFocus;
 };
 
-const getSpeedShift = (player: MatchPlayer, character?: Character | null) => {
-  const haste = Math.min(2, getStatusStatValue(player, "Haste", "potency", character));
-  const slow = Math.min(2, getStatusStatValue(player, "Slow", "potency", character));
+const getSpeedShift = (member: MatchCharacter, character?: Character | null) => {
+  const haste = Math.min(2, getStatusStatValue(member, "Haste", "potency", character));
+  const slow = Math.min(2, getStatusStatValue(member, "Slow", "potency", character));
   return Math.max(-2, Math.min(2, haste - slow));
 };
 
 const getEffectiveSpeed = (
   speedText: string,
-  player: MatchPlayer,
+  member: MatchCharacter,
   character?: Character | null
 ) => {
-  const shift = getSpeedShift(player, character);
+  const shift = getSpeedShift(member, character);
   if (shift === 0) return speedText;
   const normalized = speedText.trim().toLowerCase();
   const order = ["slow", "normal", "fast"];
@@ -794,21 +886,21 @@ const getEffectiveSpeed = (
 };
 
 const getPowerMultiplier = (
-  player: MatchPlayer,
+  member: MatchCharacter,
   character: Character | null,
   actionType: ActionType
 ) => {
   let modifier = 0;
   if (actionType === "attack") {
-    modifier += 0.1 * getStatusStatValue(player, "Strength", "potency", character);
-    modifier -= 0.1 * getStatusStatValue(player, "Weak", "potency", character);
+    modifier += 0.1 * getStatusStatValue(member, "Strength", "potency", character);
+    modifier -= 0.1 * getStatusStatValue(member, "Weak", "potency", character);
   } else if (actionType === "defense") {
-    modifier += 0.1 * getStatusStatValue(player, "Dexterity", "potency", character);
-    modifier -= 0.1 * getStatusStatValue(player, "Frail", "potency", character);
+    modifier += 0.1 * getStatusStatValue(member, "Dexterity", "potency", character);
+    modifier -= 0.1 * getStatusStatValue(member, "Frail", "potency", character);
   }
 
   if (actionType !== "special") {
-    modifier += 0.05 * getStatusStatValue(player, "Zenkai", "value", character);
+    modifier += 0.05 * getStatusStatValue(member, "Zenkai", "value", character);
   }
 
   return Math.max(0, 1 + modifier);
@@ -816,14 +908,14 @@ const getPowerMultiplier = (
 
 const applyPowerModifiers = (
   power: number,
-  player: MatchPlayer,
+  member: MatchCharacter,
   character: Character | null,
   actionType: ActionType
-) => Math.max(0, Math.floor(power * getPowerMultiplier(player, character, actionType)));
+) => Math.max(0, Math.floor(power * getPowerMultiplier(member, character, actionType)));
 
-const getDamageTakenMultiplier = (player: MatchPlayer, character: Character | null) => {
-  const vulnerable = getStatusStatValue(player, "Vulnerable", "potency", character);
-  const fortified = getStatusStatValue(player, "Fortified", "potency", character);
+const getDamageTakenMultiplier = (member: MatchCharacter, character: Character | null) => {
+  const vulnerable = getStatusStatValue(member, "Vulnerable", "potency", character);
+  const fortified = getStatusStatValue(member, "Fortified", "potency", character);
   return Math.max(0, 1 + 0.1 * vulnerable - 0.1 * fortified);
 };
 
@@ -886,7 +978,8 @@ const getFollowUpCostAdjustment = (lines: string[]) => {
 };
 
 const getAdjustedCostTotals = (
-  player: MatchPlayer,
+  team: MatchTeam,
+  member: MatchCharacter,
   character: Character | null,
   cost: CostBreakdown,
   xValue: number,
@@ -894,15 +987,15 @@ const getAdjustedCostTotals = (
   followUpAdjustment = 0
 ) => {
   const totals = computeCost(cost, xValue);
-  const energyAdjustment = getEnergyCostAdjustment(player, character);
+  const energyAdjustment = getEnergyCostAdjustment(member, character);
   const instanceAdjustment = cardInstance?.costAdjustment ?? 0;
   const energy = Math.max(0, totals.energy + energyAdjustment + instanceAdjustment + followUpAdjustment);
   return { energy, ultimate: totals.ultimate };
 };
 
-export const canAfford = (player: MatchPlayer, cost: CostBreakdown, xValue = 0) => {
+export const canAfford = (team: MatchTeam, cost: CostBreakdown, xValue = 0) => {
   const totals = computeCost(cost, xValue);
-  return player.energy >= totals.energy && player.ultimate >= totals.ultimate;
+  return team.energy >= totals.energy && team.ultimate >= totals.ultimate;
 };
 
 export const rollPower = (powerText: string, xValue = 0, rng?: RngState) => {
@@ -938,51 +1031,76 @@ const canTauntOverrideTarget = (card: Card) => {
   return true;
 };
 
-const pickTargetId = (
+export const getLegalTargets = (
   card: Card,
-  sourceId: PlayerId,
+  sourceId: MatchCharacterId,
   state: MatchState,
   characters: Character[]
 ) => {
-  const target = card.target.toLowerCase();
-  if (target.includes("enemy")) {
-    const opponentId = getOpponentId(sourceId);
+  const targetText = card.target.toLowerCase();
+  const sourceTeam = getTeamForCharacter(state, sourceId);
+  if (!sourceTeam) return [];
+  const enemyTeam = state.players[getOpponentId(sourceTeam.id)];
+  const allies = sourceTeam.characters.filter((member) => !member.defeated);
+  const enemies = enemyTeam.characters.filter((member) => !member.defeated);
+
+  if (targetText.includes("ally")) {
+    return allies.map((member) => member.id);
+  }
+  if (targetText.includes("self")) {
+    return [sourceId];
+  }
+  if (targetText.includes("enemy")) {
+    let candidates = enemies;
     if (canTauntOverrideTarget(card)) {
-      const opponent = state.players[opponentId];
-      const opponentCharacter = getCharacterById(characters, opponent.characterId);
-      if (getActiveStatusState(opponent, "Taunt", opponentCharacter)) {
-        return opponentId;
+      const taunts = enemies.filter((member) => {
+        const data = getCharacterById(characters, member.characterId);
+        return Boolean(getActiveStatusState(member, "Taunt", data));
+      });
+      if (taunts.length) {
+        candidates = taunts;
       }
     }
-    return opponentId;
+    return candidates.map((member) => member.id);
   }
-  if (target.includes("self") || target.includes("ally")) return sourceId;
-  return getOpponentId(sourceId);
+
+  return enemies.map((member) => member.id);
+};
+
+const pickTargetId = (
+  card: Card,
+  sourceId: MatchCharacterId,
+  state: MatchState,
+  characters: Character[]
+) => {
+  const legal = getLegalTargets(card, sourceId, state, characters);
+  if (legal.length) return legal[0];
+  return sourceId;
 };
 
 const getCharacterById = (characters: Character[], characterId: string) =>
   characters.find((item) => item.id === characterId) ?? null;
 
 const reshuffleDiscardIntoDeck = (state: MatchState, playerId: PlayerId) => {
-  const player = state.players[playerId];
-  if (!player.discard.length) return false;
-  player.deck.push(...player.discard);
-  player.discard = [];
-  shuffle(player.deck, state.rng);
-  addLog(state, `${player.name} shuffles their discard into the draw pile.`);
+  const team = state.players[playerId];
+  if (!team.discard.length) return false;
+  team.deck.push(...team.discard);
+  team.discard = [];
+  shuffle(team.deck, state.rng);
+  addLog(state, `${team.name} shuffles their discard into the draw pile.`);
   return true;
 };
 
 const drawCards = (state: MatchState, playerId: PlayerId, count: number) => {
-  const player = state.players[playerId];
+  const team = state.players[playerId];
   let remaining = count;
   while (remaining > 0) {
-    if (player.deck.length === 0) {
+    if (team.deck.length === 0) {
       if (!reshuffleDiscardIntoDeck(state, playerId)) break;
     }
-    const nextCard = player.deck.pop();
+    const nextCard = team.deck.pop();
     if (!nextCard) break;
-    player.hand.push(nextCard);
+    team.hand.push(nextCard);
     remaining -= 1;
   }
 };
@@ -992,8 +1110,8 @@ const drawToHandSize = (
   playerId: PlayerId,
   targetSize: number
 ) => {
-  const player = state.players[playerId];
-  const needed = Math.max(0, targetSize - player.hand.length);
+  const team = state.players[playerId];
+  const needed = Math.max(0, targetSize - team.hand.length);
   if (needed > 0) {
     drawCards(state, playerId, needed);
   }
@@ -1004,11 +1122,9 @@ const applyPrepareAdjustments = (
   playerId: PlayerId,
   characters: Character[]
 ) => {
-  const player = state.players[playerId];
-  const character = getCharacterById(characters, player.characterId);
-  if (!character) return;
-  player.hand.forEach((instance) => {
-    const card = findCard(characters, player.characterId, instance.cardSlot);
+  const team = state.players[playerId];
+  team.hand.forEach((instance) => {
+    const card = findCard(characters, instance.characterId, instance.cardSlot);
     if (!card) return;
     const lifecycle = getLifecycleKeywords(card.effect, card.effects);
     if (lifecycle.prepare !== 0) {
@@ -1022,24 +1138,24 @@ const applyHandEndCleanup = (
   playerId: PlayerId,
   characters: Character[]
 ) => {
-  const player = state.players[playerId];
+  const team = state.players[playerId];
   const remaining: CardInstance[] = [];
-  player.hand.forEach((instance) => {
-    const card = findCard(characters, player.characterId, instance.cardSlot);
+  team.hand.forEach((instance) => {
+    const card = findCard(characters, instance.characterId, instance.cardSlot);
     if (!card) return;
     const lifecycle = getLifecycleKeywords(card.effect, card.effects);
     if (lifecycle.ethereal) {
-      player.exhausted.push(instance);
-      addLog(state, `${player.name} exhausts ${card.name} (Ethereal).`);
+      team.exhausted.push(instance);
+      addLog(state, `${team.name} exhausts ${card.name} (Ethereal).`);
       return;
     }
     if (lifecycle.retain) {
       remaining.push(instance);
       return;
     }
-    player.discard.push(instance);
+    team.discard.push(instance);
   });
-  player.hand = remaining;
+  team.hand = remaining;
 };
 
 const buildStartingZones = (
@@ -1047,41 +1163,40 @@ const buildStartingZones = (
   playerId: PlayerId,
   characters: Character[]
 ) => {
-  const player = state.players[playerId];
-  const character = getCharacterById(characters, player.characterId);
-  if (!character) return;
-  const transformTargets = new Set(
-    character.cards.flatMap((card) =>
-      card.transforms?.map((transform) => transform.cardSlot) ?? []
-    )
-  );
-  player.deck = [];
-  player.hand = [];
-  player.discard = [];
-  player.exhausted = [];
-  player.resourceMax = {};
+  const team = state.players[playerId];
+  team.deck = [];
+  team.hand = [];
+  team.discard = [];
+  team.exhausted = [];
+  team.defeated = [];
 
-  character.cards.forEach((card) => {
-    if (isUltimateCard(card)) return;
-    if (transformTargets.has(card.slot)) return;
-    const instance = createCardInstance(state, card.slot);
-    const lifecycle = getLifecycleKeywords(card.effect, card.effects);
-    if (lifecycle.innate) {
-      player.hand.push(instance);
-    } else {
-      player.deck.push(instance);
-    }
+  team.characters.forEach((member) => {
+    member.resourceMax = {};
+    const character = getCharacterById(characters, member.characterId);
+    if (!character) return;
+    const transformTargets = new Set(
+      character.cards.flatMap((card) =>
+        card.transforms?.map((transform) => transform.cardSlot) ?? []
+      )
+    );
+
+    character.cards.forEach((card) => {
+      if (isUltimateCard(card)) return;
+      if (transformTargets.has(card.slot)) return;
+      const instance = createCardInstance(state, member, card.slot);
+      const lifecycle = getLifecycleKeywords(card.effect, card.effects);
+      if (lifecycle.innate) {
+        team.hand.push(instance);
+      } else {
+        team.deck.push(instance);
+      }
+    });
   });
 
-  shuffle(player.deck, state.rng);
+  shuffle(team.deck, state.rng);
 };
 
-const applyStartingStatuses = (
-  state: MatchState,
-  playerId: PlayerId,
-  character: Character
-) => {
-  const player = state.players[playerId];
+const applyStartingStatuses = (member: MatchCharacter, character: Character) => {
   if (!character.innates?.length) return;
   character.innates.forEach((innate) => {
     const normalized = innate.text.trim();
@@ -1098,7 +1213,7 @@ const applyStartingStatuses = (
         const statusName = atMatch[1].trim();
         const amount = Number(atMatch[2]);
         if (amount > 0) {
-          applyStatusDelta(player, statusName, amount, undefined, character);
+          applyStatusDelta(member, statusName, amount, undefined, character);
         }
         return;
       }
@@ -1107,55 +1222,59 @@ const applyStartingStatuses = (
         const amount = Number(valueMatch[1]);
         const statusName = valueMatch[2].trim().replace(/\.$/, "");
         if (amount > 0) {
-          applyStatusDelta(player, statusName, amount, undefined, character);
-          player.resourceMax[statusName] = amount;
+          applyStatusDelta(member, statusName, amount, undefined, character);
+          member.resourceMax[statusName] = amount;
         }
         return;
       }
       const statusName = part.replace(/\.$/, "");
       if (!statusName) return;
-      applyStatusDelta(player, statusName, 1, undefined, character);
-      player.resourceMax[statusName] = Math.max(player.resourceMax[statusName] ?? 0, 1);
+      applyStatusDelta(member, statusName, 1, undefined, character);
+      member.resourceMax[statusName] = Math.max(member.resourceMax[statusName] ?? 0, 1);
     });
   });
 };
 
 const createCardsInHand = (
   state: MatchState,
-  playerId: PlayerId,
+  characterId: MatchCharacterId,
   cardName: string,
   count: number,
   characters: Character[]
 ) => {
-  const player = state.players[playerId];
-  const character = getCharacterById(characters, player.characterId);
+  const member = getMatchCharacter(state, characterId);
+  if (!member) return;
+  const team = getTeamForCharacter(state, characterId);
+  if (!team) return;
+  const character = getCharacterById(characters, member.characterId);
   if (!character?.createdCards?.length) return;
   const match = character.createdCards.find(
     (card) => card.name.toLowerCase() === cardName.toLowerCase()
   );
   if (!match) return;
   for (let i = 0; i < count; i += 1) {
-    const instance = createCardInstance(state, match.slot);
-    player.hand.push(instance);
+    const instance = createCardInstance(state, member, match.slot);
+    team.hand.push(instance);
   }
-  addLog(state, `${player.name} creates ${count} ${match.name}.`);
+  addLog(state, `${member.name} creates ${count} ${match.name}.`);
 };
 
-const getEquippedWeaponStatus = (player: MatchPlayer, character: Character | null) => {
+const getEquippedWeaponStatus = (member: MatchCharacter, character: Character | null) => {
   const equipped = ["Equip: Handgun", "Equip: Riot Gun", "Equip: Chicago Typewriter"].find(
-    (status) => getActiveStatusState(player, status, character)
+    (status) => getActiveStatusState(member, status, character)
   );
   return equipped ?? null;
 };
 
 const reloadEquippedWeapon = (
   state: MatchState,
-  playerId: PlayerId,
+  characterId: MatchCharacterId,
   characters: Character[]
 ) => {
-  const player = state.players[playerId];
-  const character = getCharacterById(characters, player.characterId);
-  const equipped = getEquippedWeaponStatus(player, character);
+  const member = getMatchCharacter(state, characterId);
+  if (!member) return;
+  const character = getCharacterById(characters, member.characterId);
+  const equipped = getEquippedWeaponStatus(member, character);
   if (!equipped) return;
   const ammoMap: Record<string, string | null> = {
     "Equip: Handgun": "Handgun Ammo",
@@ -1164,36 +1283,37 @@ const reloadEquippedWeapon = (
   };
   const ammoStatus = ammoMap[equipped];
   if (!ammoStatus) return;
-  const max = player.resourceMax[ammoStatus];
+  const max = member.resourceMax[ammoStatus];
   if (!max) return;
-  const current = getStatusStatValue(player, ammoStatus, "value", character);
+  const current = getStatusStatValue(member, ammoStatus, "value", character);
   const delta = max - current;
   if (delta <= 0) return;
-  applyStatusDelta(player, ammoStatus, delta, "value", character);
-  addLog(state, `${player.name} reloads ${equipped.replace("Equip: ", "")}.`);
+  applyStatusDelta(member, ammoStatus, delta, "value", character);
+  addLog(state, `${member.name} reloads ${equipped.replace("Equip: ", "")}.`);
 };
 
 const switchEquipment = (
   state: MatchState,
-  playerId: PlayerId,
+  characterId: MatchCharacterId,
   equipStatus: string,
   characters: Character[]
 ) => {
-  const player = state.players[playerId];
-  const character = getCharacterById(characters, player.characterId);
+  const member = getMatchCharacter(state, characterId);
+  if (!member) return;
+  const character = getCharacterById(characters, member.characterId);
   if (!character) return;
-  const active = getActiveStatusState(player, equipStatus, character);
+  const active = getActiveStatusState(member, equipStatus, character);
   if (active) {
-    reloadEquippedWeapon(state, playerId, characters);
+    reloadEquippedWeapon(state, characterId, characters);
     return;
   }
   ["Equip: Handgun", "Equip: Riot Gun", "Equip: Chicago Typewriter"].forEach((status) => {
     if (status !== equipStatus) {
-      expireStatus(player, status);
+      expireStatus(member, status);
     }
   });
-  applyStatusDelta(player, equipStatus, 1, undefined, character);
-  addLog(state, `${player.name} equips ${equipStatus.replace("Equip: ", "")}.`);
+  applyStatusDelta(member, equipStatus, 1, undefined, character);
+  addLog(state, `${member.name} equips ${equipStatus.replace("Equip: ", "")}.`);
 };
 
 const applyStagnate = (
@@ -1201,19 +1321,20 @@ const applyStagnate = (
   entry: StackEntry,
   amount: number,
   characters: Character[],
-  targetId: PlayerId
+  targetId: MatchCharacterId
 ) => {
   if (amount <= 0) return;
-  const player = state.players[targetId];
+  const team = getTeamForCharacter(state, targetId);
+  if (!team) return;
   for (let i = 0; i < amount; i += 1) {
-    if (!player.hand.length) break;
-    const index = nextInt(state.rng, 0, player.hand.length - 1);
-    const instance = player.hand[index];
+    if (!team.hand.length) break;
+    const index = nextInt(state.rng, 0, team.hand.length - 1);
+    const instance = team.hand[index];
     if (!instance) continue;
     instance.costAdjustment += 1;
-    const card = findCard(characters, player.characterId, instance.cardSlot);
+    const card = findCard(characters, instance.characterId, instance.cardSlot);
     if (card) {
-      addLog(state, `${player.name}'s ${card.name} costs +1 Energy (Stagnate).`);
+      addLog(state, `${team.name}'s ${card.name} costs +1 Energy (Stagnate).`);
     }
   }
 };
@@ -1406,13 +1527,13 @@ type SpendContext = {
 };
 
 const getAvailableSpend = (
-  player: MatchPlayer,
+  member: MatchCharacter,
   status: string,
   amount: number,
   character: Character | null,
   allowPartial: boolean
 ) => {
-  const state = player.statuses[status];
+  const state = member.statuses[status];
   if (!state) return 0;
   const definition = getStatusDefinition(status, character);
   const stat = getStatusPrimaryStat(definition);
@@ -1773,7 +1894,7 @@ const parseMitigationRules = (text: string) => {
 };
 
 const getMitigationRules = (
-  player: MatchPlayer,
+  member: MatchCharacter,
   character: Character | null,
   extraText?: string[]
 ) => {
@@ -1786,7 +1907,7 @@ const getMitigationRules = (
     rules.push(...extraText.flatMap((line) => parseMitigationRules(line)));
   }
 
-  const statusEntries = Object.entries(player.statuses);
+  const statusEntries = Object.entries(member.statuses);
   if (!statusEntries.length) return rules;
 
   statusEntries.forEach(([statusName, state]) => {
@@ -1836,6 +1957,7 @@ const canPlayAfterUse = (
   state: MatchState,
   playerId: PlayerId,
   card: Card,
+  sourceId: MatchCharacterId,
   characters?: Character[]
 ) => {
   if (!state.afterUseWindow || state.afterUseWindow.validForAction !== state.actionId) {
@@ -1844,27 +1966,32 @@ const canPlayAfterUse = (
   const flags = getKeywordFlags(card.effect);
   let followUpAllowed = flags.followUp;
   if (!followUpAllowed && characters) {
-    const player = state.players[playerId];
-    const character = getCharacterById(characters, player.characterId);
-    const timeStop = getActiveStatusState(player, "The World: Time Stop", character);
+    const lastUsed = getMatchCharacter(state, state.afterUseWindow.lastUsedCharacterId);
+    const lastUsedCharacter = lastUsed
+      ? getCharacterById(characters, lastUsed.characterId)
+      : null;
+    const timeStop = lastUsed
+      ? getActiveStatusState(lastUsed, "The World: Time Stop", lastUsedCharacter)
+      : null;
     if (timeStop && getActionType(card.types) === "attack") {
       followUpAllowed = true;
     }
   }
-  if (followUpAllowed && state.afterUseWindow.lastUsedBy === playerId) return true;
-  if (flags.assistAttack && state.afterUseWindow.lastUsedBy !== playerId) return true;
+  if (followUpAllowed && state.afterUseWindow.lastUsedCharacterId === sourceId) return true;
+  if (flags.assistAttack && state.afterUseWindow.lastUsedCharacterId !== sourceId) return true;
   return false;
 };
 
 const applyStatusDamage = (
   state: MatchState,
-  targetId: PlayerId,
+  targetId: MatchCharacterId,
   amount: number,
   label: string,
   character: Character | null
 ) => {
   if (amount <= 0) return;
-  const target = state.players[targetId];
+  const target = getMatchCharacter(state, targetId);
+  if (!target || target.defeated) return;
   const invulnerable = getStatusStatValue(target, "Invulnerable", "value", character);
   if (invulnerable > 0) return;
   const multiplier = getDamageTakenMultiplier(target, character);
@@ -1886,21 +2013,20 @@ const applyStatusDamage = (
   target.hp = Math.max(target.hp - remaining, 0);
   addLog(state, `${target.name} takes ${remaining} damage from ${label}.`);
   if (target.hp <= 0) {
-    state.winnerId = getOpponentId(targetId);
-    state.phase = "finished";
-    addLog(state, `${state.players[state.winnerId].name} wins the match.`);
+    handleDefeat(state, target.id, `${target.name} is defeated.`);
   }
 };
 
 const applyHealing = (
   state: MatchState,
-  targetId: PlayerId,
+  targetId: MatchCharacterId,
   amount: number,
   character: Character | null,
   label?: string
 ) => {
   if (amount <= 0) return 0;
-  const target = state.players[targetId];
+  const target = getMatchCharacter(state, targetId);
+  if (!target || target.defeated) return 0;
   const wither = getStatusStatValue(target, "Wither", "stack", character);
   const wound = getStatusStatValue(target, "Wound", "stack", character);
   const percentReduction = wither > 0 ? Math.floor((amount * wither) / 100) : 0;
@@ -1917,13 +2043,15 @@ const applyHealing = (
 };
 
 const applyDamage = (
-  target: MatchPlayer,
+  state: MatchState,
+  target: MatchCharacter,
   damage: number,
   sourceTypes: string[],
   targetCharacter: Character | null,
   mitigationText?: string[]
 ) => {
   if (damage <= 0) return 0;
+  if (target.defeated) return 0;
   const normalizedTypes = new Set(sourceTypes.map(normalizeTag));
   const rules = getMitigationRules(target, targetCharacter, mitigationText);
 
@@ -1987,12 +2115,70 @@ const applyDamage = (
   if (absorbResult.reduced > 0) {
     target.hp = Math.min(target.hp + absorbResult.reduced, 100);
   }
+  if (target.hp <= 0) {
+    handleDefeat(state, target.id, `${target.name} is defeated.`);
+  }
 
   return absorbed + barrierAbsorbed + remaining;
 };
 
 const addLog = (state: MatchState, entry: string) => {
   state.log.push(entry);
+};
+
+const removeCharacterCards = (
+  pile: CardInstance[],
+  ownerId: MatchCharacterId,
+  removed: CardInstance[]
+) => {
+  const remaining: CardInstance[] = [];
+  pile.forEach((instance) => {
+    if (instance.ownerId === ownerId) {
+      removed.push(instance);
+    } else {
+      remaining.push(instance);
+    }
+  });
+  return remaining;
+};
+
+const handleDefeat = (state: MatchState, characterId: MatchCharacterId, reason?: string) => {
+  const member = getMatchCharacter(state, characterId);
+  const team = getTeamForCharacter(state, characterId);
+  if (!member || !team || member.defeated) return;
+
+  member.defeated = true;
+  member.hp = 0;
+  member.shield = 0;
+  member.statuses = {};
+  if (reason) {
+    addLog(state, reason);
+  }
+
+  const removed: CardInstance[] = [];
+  team.hand = removeCharacterCards(team.hand, member.id, removed);
+  team.deck = removeCharacterCards(team.deck, member.id, removed);
+  team.discard = removeCharacterCards(team.discard, member.id, removed);
+  team.exhausted = removeCharacterCards(team.exhausted, member.id, removed);
+
+  Object.values(state.zones).forEach((zone) => {
+    zone.cards = zone.cards.filter((entry) => {
+      if (entry.sourceId !== member.id) return true;
+      if (entry.cardInstance) removed.push(entry.cardInstance);
+      return false;
+    });
+  });
+
+  if (removed.length) {
+    team.defeated.push(...removed);
+    addLog(state, `${member.name}'s cards are removed from play.`);
+  }
+
+  if (team.characters.every((candidate) => candidate.defeated)) {
+    state.winnerId = getOpponentId(team.id);
+    state.phase = "finished";
+    addLog(state, `${state.players[state.winnerId].name} wins the match.`);
+  }
 };
 
 const getActionType = (types: string[]): ActionType => {
@@ -2008,46 +2194,48 @@ const applyCardPlayedStatusRules = (
   energySpent: number,
   characters: Character[]
 ) => {
-  const player = state.players[entry.playedBy];
-  const character = getCharacterById(characters, player.characterId);
+  const source = getMatchCharacter(state, entry.sourceId);
+  if (!source) return;
+  const sourceCharacter = getCharacterById(characters, source.characterId);
 
-  const bleed = getActiveStatusState(player, "Bleed", character);
+  const bleed = getActiveStatusState(source, "Bleed", sourceCharacter);
   if (bleed) {
-    applyStatusDamage(state, entry.playedBy, bleed.potency, "Bleed", character);
-    applyStatusDelta(player, "Bleed", energySpent, undefined, character);
+    applyStatusDamage(state, entry.sourceId, bleed.potency, "Bleed", sourceCharacter);
+    applyStatusDelta(source, "Bleed", energySpent, undefined, sourceCharacter);
   }
 
-  const burn = getActiveStatusState(player, "Burn", character);
+  const burn = getActiveStatusState(source, "Burn", sourceCharacter);
   if (burn) {
-    applyStatusDamage(state, entry.playedBy, burn.potency, "Burn", character);
-    applyStatusStatDelta(player, "Burn", -energySpent, "count", character);
+    applyStatusDamage(state, entry.sourceId, burn.potency, "Burn", sourceCharacter);
+    applyStatusStatDelta(source, "Burn", -energySpent, "count", sourceCharacter);
   }
 
-  const poison = getActiveStatusState(player, "Poison", character);
+  const poison = getActiveStatusState(source, "Poison", sourceCharacter);
   if (poison) {
-    applyStatusDelta(player, "Poison", energySpent, undefined, character);
+    applyStatusDelta(source, "Poison", energySpent, undefined, sourceCharacter);
   }
 
-  const kyuubi = getActiveStatusState(player, "Kyuubi Chakra", character);
-  const turnFlags = state.turnFlags[entry.playedBy];
+  const kyuubi = getActiveStatusState(source, "Kyuubi Chakra", sourceCharacter);
+  const turnFlags = source.turnFlags;
   if (kyuubi && !turnFlags.kyuubiCloneUsed && entry.cardName === "Shadow Clone Jutsu") {
-    applyStatusDelta(player, "Shadow Clones", kyuubi.potency, undefined, character);
+    applyStatusDelta(source, "Shadow Clones", kyuubi.potency, undefined, sourceCharacter);
     turnFlags.kyuubiCloneUsed = true;
   }
 
-  const gamabunta = getActiveStatusState(player, "Summoned: Gamabunta", character);
+  const gamabunta = getActiveStatusState(source, "Summoned: Gamabunta", sourceCharacter);
+  const targetTeam = getTeamForCharacter(state, entry.targetId);
   if (
     gamabunta &&
     !turnFlags.gamabuntaUsed &&
     getActionType(entry.types) === "attack" &&
     energySpent >= 2 &&
-    entry.targetId === getOpponentId(entry.playedBy)
+    targetTeam?.id === getOpponentId(entry.playedBy)
   ) {
     turnFlags.gamabuntaUsed = true;
-    createCardsInHand(state, entry.playedBy, "Gamabunta: Toad Smash", 1, characters);
+    createCardsInHand(state, entry.sourceId, "Gamabunta: Toad Smash", 1, characters);
   }
 
-  pruneStatuses(player, character);
+  pruneStatuses(source, sourceCharacter);
 };
 
 const applyTurnStartEffects = (
@@ -2056,277 +2244,293 @@ const applyTurnStartEffects = (
   characters: Character[],
   options?: { resolveStun?: boolean }
 ) => {
-  const player = state.players[playerId];
-  const character = getCharacterById(characters, player.characterId);
-  resetTurnFlags(state.turnFlags[playerId]);
+  const team = state.players[playerId];
+  let extraDraw = 0;
+  let allStunned = true;
 
-  const pending = state.pendingTurnStartGains[playerId];
-  if (pending.length) {
-    pending.forEach((gain) => {
-      applyStatusDelta(player, gain.status, gain.amount, gain.stat, character);
-    });
-    pending.length = 0;
-  }
+  team.characters.forEach((member) => {
+    if (member.defeated) return;
+    resetTurnFlags(member.turnFlags);
+    const character = getCharacterById(characters, member.characterId);
 
-  const gainStatus = (status: string, amount: number, stat?: StatusValueStat) => {
-    applyStatusDelta(player, status, amount, stat, character);
-  };
+    const pending = state.pendingTurnStartGains[member.id] ?? [];
+    if (pending.length) {
+      pending.forEach((gain) => {
+        applyStatusDelta(member, gain.status, gain.amount, gain.stat, character);
+      });
+      pending.length = 0;
+    }
 
-  if (getActiveStatusState(player, "Equip: Handgun", character)) {
-    gainStatus("Dexterity", 1);
-  }
-  if (getActiveStatusState(player, "Equip: Riot Gun", character)) {
-    gainStatus("Strength", 1);
-  }
-  if (getActiveStatusState(player, "Equip: Chicago Typewriter", character)) {
-    gainStatus("Haste", 1);
-  }
+    const gainStatus = (status: string, amount: number, stat?: StatusValueStat) => {
+      applyStatusDelta(member, status, amount, stat, character);
+    };
 
-  const kaioken = getActiveStatusState(player, "Kaioken", character);
-  if (kaioken) {
-    const boost = kaioken.potency;
-    if (boost > 0) {
-      gainStatus("Strength", boost);
-      gainStatus("Dexterity", boost);
-      if (boost > 1) {
-        gainStatus("Haste", boost - 1);
+    if (getActiveStatusState(member, "Equip: Handgun", character)) {
+      gainStatus("Dexterity", 1);
+    }
+    if (getActiveStatusState(member, "Equip: Riot Gun", character)) {
+      gainStatus("Strength", 1);
+    }
+    if (getActiveStatusState(member, "Equip: Chicago Typewriter", character)) {
+      gainStatus("Haste", 1);
+    }
+
+    const kaioken = getActiveStatusState(member, "Kaioken", character);
+    if (kaioken) {
+      const boost = kaioken.potency;
+      if (boost > 0) {
+        gainStatus("Strength", boost);
+        gainStatus("Dexterity", boost);
+        if (boost > 1) {
+          gainStatus("Haste", boost - 1);
+        }
       }
     }
-  }
 
-  const kyuubi = getActiveStatusState(player, "Kyuubi Chakra", character);
-  if (kyuubi) {
-    const boost = kyuubi.potency;
-    if (boost > 0) {
-      gainStatus("Strength", boost);
-      gainStatus("Haste", boost);
+    const kyuubi = getActiveStatusState(member, "Kyuubi Chakra", character);
+    if (kyuubi) {
+      const boost = kyuubi.potency;
+      if (boost > 0) {
+        gainStatus("Strength", boost);
+        gainStatus("Haste", boost);
+      }
     }
-  }
 
-  if (getActiveStatusState(player, "Bankai: Tensa Zangetsu", character)) {
-    gainStatus("Haste", 2);
-    gainStatus("Strength", 1);
-  }
-  if (getActiveStatusState(player, "Hollow Interference", character)) {
-    gainStatus("Haste", 2);
-    gainStatus("Strength", 2);
-  }
+    if (getActiveStatusState(member, "Bankai: Tensa Zangetsu", character)) {
+      gainStatus("Haste", 2);
+      gainStatus("Strength", 1);
+    }
+    if (getActiveStatusState(member, "Hollow Interference", character)) {
+      gainStatus("Haste", 2);
+      gainStatus("Strength", 2);
+    }
 
-  const stateValue = getStatusStatValue(player, "State", "value", character);
-  const stateBoost = Math.floor(stateValue / 10);
-  if (stateBoost > 0 && getActiveStatusState(player, "State: Normal", character)) {
-    gainStatus("Strength", stateBoost);
-    gainStatus("Dexterity", stateBoost);
-    gainStatus("Haste", stateBoost);
-  }
-  if (stateBoost > 0 && getActiveStatusState(player, "State: Serious", character)) {
-    gainStatus("Strength", stateBoost);
-    gainStatus("Dexterity", stateBoost);
-    gainStatus("Fortified", stateBoost);
-    gainStatus("Haste", stateBoost);
-  }
-  const extraDraw = getActiveStatusState(player, "State: Bored", character) ? 1 : 0;
+    const stateValue = getStatusStatValue(member, "State", "value", character);
+    const stateBoost = Math.floor(stateValue / 10);
+    if (stateBoost > 0 && getActiveStatusState(member, "State: Normal", character)) {
+      gainStatus("Strength", stateBoost);
+      gainStatus("Dexterity", stateBoost);
+      gainStatus("Haste", stateBoost);
+    }
+    if (stateBoost > 0 && getActiveStatusState(member, "State: Serious", character)) {
+      gainStatus("Strength", stateBoost);
+      gainStatus("Dexterity", stateBoost);
+      gainStatus("Fortified", stateBoost);
+      gainStatus("Haste", stateBoost);
+    }
+    if (getActiveStatusState(member, "State: Bored", character)) {
+      extraDraw += 1;
+    }
+
+    const stunned = Boolean(getActiveStatusState(member, "Stun", character));
+    if (stunned && options?.resolveStun) {
+      expireStatus(member, "Stun");
+    }
+    if (!stunned) {
+      allStunned = false;
+    }
+  });
+
   drawToHandSize(state, playerId, baseHandSize + extraDraw);
   applyPrepareAdjustments(state, playerId, characters);
 
-  const stunned = Boolean(getActiveStatusState(player, "Stun", character));
-  if (stunned && options?.resolveStun) {
-    expireStatus(player, "Stun");
-  }
-  return stunned && Boolean(options?.resolveStun);
+  return allStunned && Boolean(options?.resolveStun);
 };
 
 const applyTurnEndEffects = (state: MatchState, playerId: PlayerId, characters: Character[]) => {
   if (state.phase === "finished") return;
-  const player = state.players[playerId];
-  const character = getCharacterById(characters, player.characterId);
+  const team = state.players[playerId];
 
-  const updateStatus = (
-    statusName: string,
-    updater: (statusState: StatusState, definition: StatusDefinition) => void
-  ) => {
-    const statusState = player.statuses[statusName];
-    if (!statusState) return;
-    const definition = getStatusDefinition(statusName, character);
-    const wasActive = isStatusActive(statusState, definition);
-    if (!wasActive) return;
-    updater(statusState, definition);
-    if (wasActive && !isStatusActive(statusState, definition)) {
-      handleStatusExpiration(state, playerId, statusName, character);
-    }
-  };
+  team.characters.forEach((member) => {
+    if (member.defeated || state.phase === "finished") return;
+    const character = getCharacterById(characters, member.characterId);
 
-  updateStatus("Bleed", (statusState) => {
-    statusState.count = Math.floor(statusState.count / 2);
-  });
-  updateStatus("Burn", (statusState) => {
-    applyStatusDamage(state, playerId, statusState.potency, "Burn", character);
-    statusState.count = Math.floor(statusState.count / 2);
-  });
-  updateStatus("Poison", (statusState) => {
-    applyStatusDamage(state, playerId, statusState.potency, "Poison", character);
-    statusState.count = Math.floor(statusState.count / 2);
-  });
-  updateStatus("Frail", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Slow", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Strain", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Weak", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Vulnerable", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Dexterity", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Focus", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Fortified", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Haste", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Strength", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Regen", (statusState, definition) => {
-    if (statusState.potency > 0) {
-      applyHealing(state, playerId, statusState.potency, character, "Regen");
-    }
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Renewal", (statusState, definition) => {
-    if (statusState.potency > 0) {
-      const amount = Math.floor((100 * statusState.potency) / 100);
-      applyHealing(state, playerId, amount, character, "Renewal");
-    }
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Thorns", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Barrier", (statusState, definition) => {
-    statusState.value = clampValue(statusState.value - 1, definition.valueMax);
-  });
-  updateStatus("Invulnerable", (statusState, definition) => {
-    statusState.value = clampValue(statusState.value - 1, definition.valueMax);
-  });
+    const updateStatus = (
+      statusName: string,
+      updater: (statusState: StatusState, definition: StatusDefinition) => void
+    ) => {
+      const statusState = member.statuses[statusName];
+      if (!statusState) return;
+      const definition = getStatusDefinition(statusName, character);
+      const wasActive = isStatusActive(statusState, definition);
+      if (!wasActive) return;
+      updater(statusState, definition);
+      if (wasActive && !isStatusActive(statusState, definition)) {
+        handleStatusExpiration(state, member.id, statusName, character);
+      }
+    };
 
-  updateStatus("Spectro Frazzle", (statusState, definition) => {
-    applyStatusDamage(state, playerId, statusState.stack * 5, "Spectro Frazzle", character);
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
+    updateStatus("Bleed", (statusState) => {
+      statusState.count = Math.floor(statusState.count / 2);
+    });
+    updateStatus("Burn", (statusState) => {
+      applyStatusDamage(state, member.id, statusState.potency, "Burn", character);
+      statusState.count = Math.floor(statusState.count / 2);
+    });
+    updateStatus("Poison", (statusState) => {
+      applyStatusDamage(state, member.id, statusState.potency, "Poison", character);
+      statusState.count = Math.floor(statusState.count / 2);
+    });
+    updateStatus("Frail", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Slow", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Strain", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Weak", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Vulnerable", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Dexterity", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Focus", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Fortified", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Haste", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Strength", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Regen", (statusState, definition) => {
+      if (statusState.potency > 0) {
+        applyHealing(state, member.id, statusState.potency, character, "Regen");
+      }
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Renewal", (statusState, definition) => {
+      if (statusState.potency > 0) {
+        const amount = Math.floor((100 * statusState.potency) / 100);
+        applyHealing(state, member.id, amount, character, "Renewal");
+      }
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Thorns", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Barrier", (statusState, definition) => {
+      statusState.value = clampValue(statusState.value - 1, definition.valueMax);
+    });
+    updateStatus("Invulnerable", (statusState, definition) => {
+      statusState.value = clampValue(statusState.value - 1, definition.valueMax);
+    });
 
-  updateStatus("Shadow Clones", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Summoned: Gamabunta", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("One-Tail Cloak", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Deflate", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Disarm", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Root", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Seal", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Silence", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Stagger", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Taunt", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Wither", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-  updateStatus("Wound", (statusState, definition) => {
-    statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-  });
-
-  updateStatus("Stolen Information", (statusState, definition) => {
-    if (statusState.stack <= 5) {
+    updateStatus("Spectro Frazzle", (statusState, definition) => {
+      applyStatusDamage(state, member.id, statusState.stack * 5, "Spectro Frazzle", character);
       statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
-    }
+    });
+
+    updateStatus("Shadow Clones", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Summoned: Gamabunta", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("One-Tail Cloak", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Deflate", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Disarm", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Root", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Seal", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Silence", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Stagger", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Taunt", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Wither", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+    updateStatus("Wound", (statusState, definition) => {
+      statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+    });
+
+    updateStatus("Stolen Information", (statusState, definition) => {
+      if (statusState.stack <= 5) {
+        statusState.stack = clampValue(statusState.stack - 1, definition.stackMax);
+      }
+    });
+
+    updateStatus("Reiatsu", (statusState, definition) => {
+      statusState.value = clampValue(statusState.value - 1, definition.valueMax);
+    });
+    updateStatus("Stolen Blood", (statusState, definition) => {
+      statusState.value = clampValue(statusState.value - 1, definition.valueMax);
+    });
+    updateStatus("Blood Focus", (statusState, definition) => {
+      statusState.value = clampValue(statusState.value - 1, definition.valueMax);
+    });
+
+    updateStatus("Death by Death Note", (statusState, definition) => {
+      statusState.value = clampValue(statusState.value - 1, definition.valueMax);
+      if (statusState.value <= 0) {
+        member.hp = 0;
+        handleDefeat(state, member.id, `${member.name} succumbs to Death by Death Note.`);
+      }
+    });
+
+    updateStatus("Cover", () => {
+      expireStatus(member, "Cover");
+    });
+    updateStatus("Stun", () => {
+      expireStatus(member, "Stun");
+    });
+    updateStatus("Gear 2nd", () => {
+      expireStatus(member, "Gear 2nd");
+    });
+    updateStatus("Gear 3rd", () => {
+      expireStatus(member, "Gear 3rd");
+    });
+    updateStatus("Hollow Interference", () => {
+      expireStatus(member, "Hollow Interference");
+    });
+
+    updateStatus("Bankai: Tensa Zangetsu", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("The World: Time Stop", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+    });
+    updateStatus("Kyuubi Chakra", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+      if (statusState.potency > 0) {
+        const drain = Math.floor(member.hp * 0.05 * statusState.potency);
+        applyStatusDamage(state, member.id, drain, "Kyuubi Chakra", character);
+      }
+    });
+    updateStatus("Kaioken", (statusState, definition) => {
+      statusState.count = clampValue(statusState.count - 1, definition.countMax);
+      if (statusState.potency > 0) {
+        const drain = Math.floor(member.hp * 0.1 * statusState.potency);
+        applyStatusDamage(state, member.id, drain, "Kaioken", character);
+      }
+    });
+
+    pruneStatuses(member, character);
+    member.shield = 0;
   });
 
-  updateStatus("Reiatsu", (statusState, definition) => {
-    statusState.value = clampValue(statusState.value - 1, definition.valueMax);
-  });
-  updateStatus("Stolen Blood", (statusState, definition) => {
-    statusState.value = clampValue(statusState.value - 1, definition.valueMax);
-  });
-  updateStatus("Blood Focus", (statusState, definition) => {
-    statusState.value = clampValue(statusState.value - 1, definition.valueMax);
-  });
-
-  updateStatus("Death by Death Note", (statusState, definition) => {
-    statusState.value = clampValue(statusState.value - 1, definition.valueMax);
-    if (statusState.value <= 0) {
-      player.hp = 0;
-      state.winnerId = getOpponentId(playerId);
-      state.phase = "finished";
-      addLog(state, `${player.name} succumbs to Death by Death Note.`);
-      addLog(state, `${state.players[state.winnerId].name} wins the match.`);
-    }
-  });
-
-  updateStatus("Cover", () => {
-    expireStatus(player, "Cover");
-  });
-  updateStatus("Stun", () => {
-    expireStatus(player, "Stun");
-  });
-  updateStatus("Gear 2nd", () => {
-    expireStatus(player, "Gear 2nd");
-  });
-  updateStatus("Gear 3rd", () => {
-    expireStatus(player, "Gear 3rd");
-  });
-  updateStatus("Hollow Interference", () => {
-    expireStatus(player, "Hollow Interference");
-  });
-
-  updateStatus("Bankai: Tensa Zangetsu", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("The World: Time Stop", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-  });
-  updateStatus("Kyuubi Chakra", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-    if (statusState.potency > 0) {
-      const drain = Math.floor(player.hp * 0.05 * statusState.potency);
-      applyStatusDamage(state, playerId, drain, "Kyuubi Chakra", character);
-    }
-  });
-  updateStatus("Kaioken", (statusState, definition) => {
-    statusState.count = clampValue(statusState.count - 1, definition.countMax);
-    if (statusState.potency > 0) {
-      const drain = Math.floor(player.hp * 0.1 * statusState.potency);
-      applyStatusDamage(state, playerId, drain, "Kaioken", character);
-    }
-  });
-
-  pruneStatuses(player, character);
   applyHandEndCleanup(state, playerId, characters);
 };
 
@@ -2346,9 +2550,8 @@ const advanceTurn = (state: MatchState, characters: Character[]) => {
       zone.lastPlayedBy = undefined;
     });
 
-    Object.values(state.players).forEach((player) => {
-      player.energy = 5;
-      player.shield = 0;
+    Object.values(state.players).forEach((team) => {
+      team.energy = 5;
     });
 
     const initiator = state.players[state.initiativePlayerId];
@@ -2406,8 +2609,8 @@ const resolveEffectAmount = (amount: EffectAmount, power: number, xValue: number
 const isConditionMet = (
   condition: EffectCondition | undefined,
   snapshot: StatusSnapshot,
-  sourceId: PlayerId,
-  targetId: PlayerId,
+  sourceId: MatchCharacterId,
+  targetId: MatchCharacterId,
   sourceCharacter: Character | null,
   targetCharacter: Character | null
 ) => {
@@ -2441,12 +2644,12 @@ const isConditionMet = (
 
 const isStatusRequirementMet = (
   snapshot: StatusSnapshot,
-  playerId: PlayerId,
+  characterId: MatchCharacterId,
   status: string,
   min: number,
   character: Character | null
 ) => {
-  const state = getSnapshotStatusState(snapshot, playerId, status);
+  const state = getSnapshotStatusState(snapshot, characterId, status);
   const definition = getStatusDefinition(status, character);
   return isStatusActive(state, definition) && getStatusPrimaryValue(state, definition) >= min;
 };
@@ -2454,15 +2657,21 @@ const isStatusRequirementMet = (
 const getUseRestrictionError = (
   card: Card,
   state: MatchState,
-  sourceId: PlayerId,
-  targetId: PlayerId,
+  sourceId: MatchCharacterId,
+  targetId: MatchCharacterId,
   characters: Character[]
 ) => {
   const restrictions = card.restrictions ?? [];
   if (!restrictions.length) return null;
   const snapshot = snapshotStatuses(state);
-  const sourceCharacter = getCharacterById(characters, state.players[sourceId].characterId);
-  const targetCharacter = getCharacterById(characters, state.players[targetId].characterId);
+  const sourceMember = getMatchCharacter(state, sourceId);
+  const targetMember = getMatchCharacter(state, targetId);
+  const sourceCharacter = sourceMember
+    ? getCharacterById(characters, sourceMember.characterId)
+    : null;
+  const targetCharacter = targetMember
+    ? getCharacterById(characters, targetMember.characterId)
+    : null;
 
   for (const restriction of restrictions) {
     const statuses = restriction.statuses
@@ -2499,8 +2708,10 @@ const resolveStructuredEffectList = (
   isHit: boolean,
   characters: Character[],
   snapshot: StatusSnapshot,
-  source: MatchPlayer,
-  target: MatchPlayer,
+  source: MatchCharacter,
+  target: MatchCharacter,
+  sourceTeam: MatchTeam,
+  targetTeam: MatchTeam,
   sourceCharacter: Character | null,
   targetCharacter: Character | null,
   spendContext: SpendContext
@@ -2508,7 +2719,7 @@ const resolveStructuredEffectList = (
   effects.forEach((effect) => {
     if (effect.timing !== timing) return;
     if (timing === "on_hit" && !isHit) return;
-    if (!isConditionMet(effect.condition, snapshot, entry.playedBy, entry.targetId, sourceCharacter, targetCharacter)) {
+    if (!isConditionMet(effect.condition, snapshot, entry.sourceId, entry.targetId, sourceCharacter, targetCharacter)) {
       return;
     }
 
@@ -2521,13 +2732,14 @@ const resolveStructuredEffectList = (
         const total = amount * hits;
         if (total <= 0) break;
         const applied = applyDamage(
+          state,
           target,
           total,
           entry.types,
           targetCharacter,
           entry.mitigationText
         );
-        addLog(state, `${state.players[entry.playedBy].name} deals ${applied} damage to ${target.name}.`);
+        addLog(state, `${source.name} deals ${applied} damage to ${target.name}.`);
         break;
       }
       case "gain_shield": {
@@ -2540,21 +2752,21 @@ const resolveStructuredEffectList = (
       case "heal": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         if (amount <= 0) break;
-        applyHealing(state, entry.playedBy, amount, sourceCharacter);
+        applyHealing(state, source.id, amount, sourceCharacter);
         break;
       }
       case "gain_ultimate": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         if (amount <= 0) break;
-        source.ultimate += amount;
-        addLog(state, `${source.name} gains ${amount} ultimate meter.`);
+        sourceTeam.ultimate += amount;
+        addLog(state, `${sourceTeam.name} gains ${amount} ultimate meter.`);
         break;
       }
       case "gain_status": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         if (amount <= 0) break;
         if (effect.status === "Stagnate") {
-          applyStagnate(state, entry, amount, characters, entry.playedBy);
+          applyStagnate(state, entry, amount, characters, source.id);
         } else {
           applyStatusDelta(source, effect.status, amount, effect.stat, sourceCharacter);
           addLog(state, `${source.name} gains ${amount} ${effect.status}.`);
@@ -2606,8 +2818,9 @@ const resolveStructuredEffectList = (
       }
       case "set_status": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
-        const recipientId = resolveEffectTargetId(effect.target, entry);
-        const recipient = state.players[recipientId];
+        const recipientId = resolveEffectTargetCharacterId(effect.target, entry);
+        const recipient = getMatchCharacter(state, recipientId);
+        if (!recipient || recipient.defeated) break;
         const recipientCharacter = getCharacterById(characters, recipient.characterId);
         const applied = setStatusValue(recipient, effect.status, amount, effect.stat, recipientCharacter);
         if (applied === null) break;
@@ -2616,8 +2829,9 @@ const resolveStructuredEffectList = (
       }
       case "reduce_status": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
-        const recipientId = resolveEffectTargetId(effect.target, entry);
-        const recipient = state.players[recipientId];
+        const recipientId = resolveEffectTargetCharacterId(effect.target, entry);
+        const recipient = getMatchCharacter(state, recipientId);
+        if (!recipient || recipient.defeated) break;
         const recipientCharacter = getCharacterById(characters, recipient.characterId);
         const applied = reduceStatusValue(
           recipient,
@@ -2643,20 +2857,21 @@ const resolveStructuredEffectList = (
         const total = amount * spent;
         if (total <= 0) break;
         const applied = applyDamage(
+          state,
           target,
           total,
           entry.types,
           targetCharacter,
           entry.mitigationText
         );
-        addLog(state, `${state.players[entry.playedBy].name} deals ${applied} damage to ${target.name}.`);
+        addLog(state, `${source.name} deals ${applied} damage to ${target.name}.`);
         break;
       }
       case "draw_cards": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         const count = Math.floor(amount);
         if (count <= 0) break;
-        const recipientId = resolveEffectTargetId(effect.target, entry);
+        const recipientId = resolveEffectTargetTeamId(state, effect.target, entry);
         drawCards(state, recipientId, count);
         break;
       }
@@ -2664,22 +2879,22 @@ const resolveStructuredEffectList = (
         const amount = resolveEffectAmount(effect.count, power, entry.xValue);
         const count = Math.floor(amount);
         if (count <= 0) break;
-        const recipientId = resolveEffectTargetId(effect.target, entry);
+        const recipientId = resolveEffectTargetCharacterId(effect.target, entry);
         createCardsInHand(state, recipientId, effect.cardName, count, characters);
         break;
       }
       case "block_play": {
         if (effect.duration !== "combat_round") break;
-        const recipientId = resolveEffectTargetId(effect.target, entry);
+        const recipientId = resolveEffectTargetTeamId(state, effect.target, entry);
         addCombatRoundLock(state, recipientId, entry.cardName);
         break;
       }
       case "reload_equipped": {
-        reloadEquippedWeapon(state, entry.playedBy, characters);
+        reloadEquippedWeapon(state, entry.sourceId, characters);
         break;
       }
       case "switch_equip": {
-        switchEquipment(state, entry.playedBy, effect.status, characters);
+        switchEquipment(state, entry.sourceId, effect.status, characters);
         break;
       }
       case "choose": {
@@ -2697,6 +2912,8 @@ const resolveStructuredEffectList = (
           snapshot,
           source,
           target,
+          sourceTeam,
+          targetTeam,
           sourceCharacter,
           targetCharacter,
           spendContext
@@ -2737,8 +2954,12 @@ const resolveStructuredEffects = (
   spendContext: SpendContext
 ) => {
   if (!entry.effects) return;
-  const source = state.players[entry.playedBy];
-  const target = state.players[entry.targetId];
+  const source = getMatchCharacter(state, entry.sourceId);
+  const target = getMatchCharacter(state, entry.targetId);
+  if (!source || !target) return;
+  const sourceTeam = getTeamForCharacter(state, entry.sourceId);
+  const targetTeam = getTeamForCharacter(state, entry.targetId);
+  if (!sourceTeam || !targetTeam) return;
   const sourceCharacter = getCharacterById(characters, source.characterId);
   const targetCharacter = getCharacterById(characters, target.characterId);
 
@@ -2753,6 +2974,8 @@ const resolveStructuredEffects = (
     snapshot,
     source,
     target,
+    sourceTeam,
+    targetTeam,
     sourceCharacter,
     targetCharacter,
     spendContext
@@ -2766,17 +2989,20 @@ const resolveSpendContext = (
   characters: Character[],
   options?: { preview?: boolean }
 ): SpendContext => {
-  const source = state.players[entry.playedBy];
-  const target = state.players[entry.targetId];
-  const sourceCharacter = getCharacterById(characters, source.characterId);
-  const targetCharacter = getCharacterById(characters, target.characterId);
-  const segments = getTimedTextSegments(entry.effectText);
   const context: SpendContext = {
     skipAll: false,
     skipDamage: false,
     ammoSpent: 0,
     spentResources: {},
   };
+  const source = getMatchCharacter(state, entry.sourceId);
+  const target = getMatchCharacter(state, entry.targetId);
+  if (!source || !target) return context;
+  const sourceTeam = getTeamForCharacter(state, entry.sourceId);
+  if (!sourceTeam) return context;
+  const sourceCharacter = getCharacterById(characters, source.characterId);
+  const targetCharacter = getCharacterById(characters, target.characterId);
+  const segments = getTimedTextSegments(entry.effectText);
 
   const recordSpend = (resource: string, spent: number) => {
     if (spent <= 0) return;
@@ -2813,7 +3039,7 @@ const resolveSpendContext = (
         !isConditionMet(
           effect.condition,
           snapshot,
-          entry.playedBy,
+          entry.sourceId,
           entry.targetId,
           sourceCharacter,
           targetCharacter
@@ -2835,7 +3061,7 @@ const resolveSpendContext = (
         ? available
         : spendStatus(
             state,
-            entry.playedBy,
+            entry.sourceId,
             effect.status,
             amount,
             sourceCharacter,
@@ -2866,7 +3092,7 @@ const resolveSpendContext = (
       if (available >= spendInflict.spendAmount && !options?.preview) {
         const spent = spendStatus(
           state,
-          entry.playedBy,
+          entry.sourceId,
           spendInflict.resource,
           spendInflict.spendAmount,
           sourceCharacter,
@@ -2903,7 +3129,7 @@ const resolveSpendContext = (
       ? available
       : spendStatus(
           state,
-          entry.playedBy,
+          entry.sourceId,
           instruction.resource,
           instruction.amount,
           sourceCharacter,
@@ -2972,21 +3198,24 @@ const resolveTextMetaEffects = (
 
     const create = hasCreateEffect ? null : parseCreateFromLine(line);
     if (create) {
-      createCardsInHand(state, entry.playedBy, create.cardName, create.count, characters);
+      createCardsInHand(state, entry.sourceId, create.cardName, create.count, characters);
     }
 
     const drawCount = hasDrawEffect ? null : parseDrawFromLine(line);
     if (drawCount && drawCount > 0) {
-      drawCards(state, entry.playedBy, drawCount);
+      const sourceTeam = getTeamForCharacter(state, entry.sourceId);
+      if (sourceTeam) {
+        drawCards(state, sourceTeam.id, drawCount);
+      }
     }
 
     if (!hasReloadEffect && isReloadLine(line)) {
-      reloadEquippedWeapon(state, entry.playedBy, characters);
+      reloadEquippedWeapon(state, entry.sourceId, characters);
     }
 
     const switchEquip = hasSwitchEquipEffect ? null : parseEquipSwitchLine(line);
     if (switchEquip) {
-      switchEquipment(state, entry.playedBy, switchEquip, characters);
+      switchEquipment(state, entry.sourceId, switchEquip, characters);
     }
 
     const xConditionalMatch = normalized.match(
@@ -2997,7 +3226,8 @@ const resolveTextMetaEffects = (
       const amount = Number(xConditionalMatch[2]);
       const status = xConditionalMatch[3].split(/ and |, /i)[0].trim();
       if (!Number.isNaN(xTarget) && entry.xValue === xTarget && amount > 0 && status) {
-        const target = state.players[entry.targetId];
+        const target = getMatchCharacter(state, entry.targetId);
+        if (!target || target.defeated) return;
         const targetCharacter = getCharacterById(characters, target.characterId);
         applyStatusDelta(target, status, amount, undefined, targetCharacter);
         addLog(state, `${target.name} gains ${amount} ${status}.`);
@@ -3017,8 +3247,11 @@ const resolveTextEffectsForTiming = (
 ) => {
   if (timing === "on_hit" && !isHit) return;
   if (spendContext.skipAll) return;
-  const source = state.players[entry.playedBy];
-  const target = state.players[entry.targetId];
+  const source = getMatchCharacter(state, entry.sourceId);
+  const target = getMatchCharacter(state, entry.targetId);
+  if (!source || !target) return;
+  const sourceTeam = getTeamForCharacter(state, entry.sourceId);
+  if (!sourceTeam) return;
   const sourceCharacter = getCharacterById(characters, source.characterId);
   const targetCharacter = getCharacterById(characters, target.characterId);
   const segments = getTimedTextSegments(entry.effectText);
@@ -3054,6 +3287,7 @@ const resolveTextEffectsForTiming = (
           : damage;
       if (totalDamage > 0) {
         const applied = applyDamage(
+          state,
           target,
           totalDamage,
           entry.types,
@@ -3062,7 +3296,7 @@ const resolveTextEffectsForTiming = (
         );
         addLog(
           state,
-          `${state.players[entry.playedBy].name} deals ${applied} damage to ${target.name}.`
+          `${source.name} deals ${applied} damage to ${target.name}.`
         );
       }
     }
@@ -3075,13 +3309,13 @@ const resolveTextEffectsForTiming = (
 
     const heal = parseHealFromLine(line, power, entry.xValue);
     if (heal !== null && heal > 0) {
-      applyHealing(state, entry.playedBy, heal, sourceCharacter);
+      applyHealing(state, source.id, heal, sourceCharacter);
     }
 
     const ultimate = parseUltimateFromLine(line, power);
     if (ultimate !== null && ultimate > 0) {
-      source.ultimate += ultimate;
-      addLog(state, `${source.name} gains ${ultimate} ultimate meter.`);
+      sourceTeam.ultimate += ultimate;
+      addLog(state, `${sourceTeam.name} gains ${ultimate} ultimate meter.`);
     }
 
     const spendInflict = parseSpendInflictLine(line);
@@ -3091,6 +3325,7 @@ const resolveTextEffectsForTiming = (
         const recipient = statusChange.type === "inflict" ? target : source;
         const recipientCharacter =
           statusChange.type === "inflict" ? targetCharacter : sourceCharacter;
+        if (recipient.defeated) return;
         if (statusChange.status === "Stagnate") {
           applyStagnate(state, entry, statusChange.amount, characters, recipient.id);
         } else {
@@ -3117,8 +3352,9 @@ const resolveEffectsForTiming = (
   isHit: boolean,
   characters: Character[]
 ) => {
-  const source = state.players[entry.playedBy];
-  const target = state.players[entry.targetId];
+  const source = getMatchCharacter(state, entry.sourceId);
+  const target = getMatchCharacter(state, entry.targetId);
+  if (!source || !target) return;
   const sourceCharacter = getCharacterById(characters, source.characterId);
   const targetCharacter = getCharacterById(characters, target.characterId);
   const spendContext = resolveSpendContext(state, entry, timing, characters);
@@ -3148,8 +3384,9 @@ const estimateDamageForTiming = (
   if (entry.effects && entry.effects.length > 0) {
     if (spendContext.skipAll || spendContext.skipDamage) return 0;
     const snapshot = snapshotStatuses(state);
-    const source = state.players[entry.playedBy];
-    const target = state.players[entry.targetId];
+    const source = getMatchCharacter(state, entry.sourceId);
+    const target = getMatchCharacter(state, entry.targetId);
+    if (!source || !target) return 0;
     const sourceCharacter = getCharacterById(characters, source.characterId);
     const targetCharacter = getCharacterById(characters, target.characterId);
     let total = 0;
@@ -3160,7 +3397,7 @@ const estimateDamageForTiming = (
         !isConditionMet(
           effect.condition,
           snapshot,
-          entry.playedBy,
+          entry.sourceId,
           entry.targetId,
           sourceCharacter,
           targetCharacter
@@ -3207,8 +3444,8 @@ const resolveUse = (
   characters: Character[],
   options?: { cancelled?: boolean; powerOverride?: number }
 ) => {
-  const source = state.players[entry.playedBy];
-  const target = state.players[entry.targetId];
+  const source = getMatchCharacter(state, entry.sourceId);
+  const target = getMatchCharacter(state, entry.targetId);
   if (!source || !target) return;
 
   const power =
@@ -3236,7 +3473,7 @@ const resolveUse = (
         targetText.includes("enemy") &&
         !targetText.includes("all") &&
         !targetText.includes("random") &&
-        entry.targetId !== entry.playedBy
+        entry.targetId !== entry.sourceId
       ) {
         const targetCharacter = getCharacterById(characters, target.characterId);
         const cover = getActiveStatusState(target, "Cover", targetCharacter);
@@ -3266,7 +3503,7 @@ const resolveUse = (
   if (!cancelled && isHit && getActionType(entry.types) === "attack") {
     const sourceCharacter = getCharacterById(characters, source.characterId);
     const bankai = getActiveStatusState(source, "Bankai: Tensa Zangetsu", sourceCharacter);
-    const flags = state.turnFlags[entry.playedBy];
+    const flags = source.turnFlags;
     if (bankai && !flags.bankaiHitUsed) {
       applyStatusDelta(source, "Reiatsu", 1, undefined, sourceCharacter);
       flags.bankaiHitUsed = true;
@@ -3277,15 +3514,13 @@ const resolveUse = (
   if (!cancelled) {
     state.afterUseWindow = {
       lastUsedBy: entry.playedBy,
-      lastUsedCharacterId: source.characterId,
+      lastUsedCharacterId: source.id,
       validForAction: (state.actionId ?? 0) + 1,
     };
   }
 
   if (target.hp <= 0) {
-    state.winnerId = source.id;
-    state.phase = "finished";
-    addLog(state, `${source.name} wins the match.`);
+    handleDefeat(state, target.id, `${target.name} is defeated.`);
   }
 };
 
@@ -3299,21 +3534,23 @@ const getModifiedEntryPower = (
   if (entry.rolledPower === undefined) {
     entry.rolledPower = base;
   }
-  const player = state.players[entry.playedBy];
-  const character = getCharacterById(characters, player.characterId);
-  return applyPowerModifiers(base, player, character, actionType);
+  const source = getMatchCharacter(state, entry.sourceId);
+  if (!source) return base;
+  const character = getCharacterById(characters, source.characterId);
+  return applyPowerModifiers(base, source, character, actionType);
 };
 
 const finalizeEntryCard = (state: MatchState, entry: StackEntry, characters: Character[]) => {
   if (!entry.cardInstance) return;
-  const player = state.players[entry.playedBy];
-  const card = findCard(characters, player.characterId, entry.cardSlot);
+  const team = getTeamForCharacter(state, entry.sourceId);
+  if (!team) return;
+  const card = findCard(characters, entry.cardInstance.characterId, entry.cardSlot);
   if (!card) return;
   const lifecycle = getLifecycleKeywords(card.effect, card.effects);
   if (lifecycle.exhaust) {
-    player.exhausted.push(entry.cardInstance);
+    team.exhausted.push(entry.cardInstance);
   } else {
-    player.discard.push(entry.cardInstance);
+    team.discard.push(entry.cardInstance);
   }
 };
 
@@ -3419,8 +3656,9 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
           "on_use",
           characters
         );
-        const attackTarget = state.players[attack.targetId];
-        const damageAfterShield = Math.max(attackDamage - attackTarget.shield, 0);
+        const attackTarget = getMatchCharacter(state, attack.targetId);
+        const targetShield = attackTarget?.shield ?? 0;
+        const damageAfterShield = Math.max(attackDamage - targetShield, 0);
         if (damageAfterShield === 0) {
           attackIsHit = false;
           defenseReuse = true;
@@ -3514,13 +3752,14 @@ const findCard = (characters: Character[], characterId: string, cardSlot: string
 const resolveCardTransforms = (
   card: Card,
   state: MatchState,
-  sourceId: PlayerId,
-  targetId: PlayerId,
+  sourceId: MatchCharacterId,
+  targetId: MatchCharacterId,
   characters: Character[]
 ) => {
   if (!card.transforms?.length) return card;
-  const source = state.players[sourceId];
-  const target = state.players[targetId];
+  const source = getMatchCharacter(state, sourceId);
+  const target = getMatchCharacter(state, targetId);
+  if (!source || !target) return card;
   const sourceCharacter = getCharacterById(characters, source.characterId);
   const targetCharacter = getCharacterById(characters, target.characterId);
   const snapshot = snapshotStatuses(state);
@@ -3549,16 +3788,28 @@ const nextOccupiedZone = (state: MatchState) => {
 
 export const createMatchState = (
   characters: Character[],
-  players: { id: PlayerId; name: string; characterId: string }[],
+  players: { id: PlayerId; name: string; characterIds: string[] }[],
   options: MatchOptions = {}
 ): MatchState => {
   const [first, second] = players;
   if (!first || !second) {
     throw new Error("Two players required.");
   }
+  if (first.characterIds.length !== defaultLineSize || second.characterIds.length !== defaultLineSize) {
+    throw new Error("Each player must select three characters.");
+  }
+  if (
+    new Set(first.characterIds).size !== first.characterIds.length ||
+    new Set(second.characterIds).size !== second.characterIds.length
+  ) {
+    throw new Error("Duplicate characters are not allowed on the same team.");
+  }
 
   const rosterIds = new Set(characters.map((entry) => entry.id));
-  if (!rosterIds.has(first.characterId) || !rosterIds.has(second.characterId)) {
+  if (
+    !first.characterIds.every((id) => rosterIds.has(id)) ||
+    !second.characterIds.every((id) => rosterIds.has(id))
+  ) {
     throw new Error("Character selection is invalid.");
   }
 
@@ -3581,46 +3832,73 @@ export const createMatchState = (
       slow: { zone: "slow", cards: [], passCount: 0 },
     },
     lineSize: defaultLineSize,
-    positions: { p1: defaultPosition, p2: defaultPosition },
     players: {
       p1: {
         id: "p1",
         name: first.name,
-        characterId: first.characterId,
-        hp: 100,
-        shield: 0,
         energy: 5,
         ultimate: 0,
-        statuses: {},
         deck: [],
         hand: [],
         discard: [],
         exhausted: [],
-        resourceMax: {},
+        defeated: [],
+        characters: first.characterIds.map((characterId, index) => {
+          const data = getCharacterById(characters, characterId);
+          const displayName = data ? `${data.name} ${data.version}`.trim() : characterId;
+          return {
+            id: buildMatchCharacterId("p1", characterId),
+            characterId,
+            name: displayName,
+            hp: 100,
+            shield: 0,
+            statuses: {},
+            resourceMax: {},
+            position: index,
+            defeated: false,
+            turnFlags: {
+              bankaiHitUsed: false,
+              kyuubiCloneUsed: false,
+              gamabuntaUsed: false,
+            },
+          };
+        }),
       },
       p2: {
         id: "p2",
         name: second.name,
-        characterId: second.characterId,
-        hp: 100,
-        shield: 0,
         energy: 5,
         ultimate: 0,
-        statuses: {},
         deck: [],
         hand: [],
         discard: [],
         exhausted: [],
-        resourceMax: {},
+        defeated: [],
+        characters: second.characterIds.map((characterId, index) => {
+          const data = getCharacterById(characters, characterId);
+          const displayName = data ? `${data.name} ${data.version}`.trim() : characterId;
+          return {
+            id: buildMatchCharacterId("p2", characterId),
+            characterId,
+            name: displayName,
+            hp: 100,
+            shield: 0,
+            statuses: {},
+            resourceMax: {},
+            position: index,
+            defeated: false,
+            turnFlags: {
+              bankaiHitUsed: false,
+              kyuubiCloneUsed: false,
+              gamabuntaUsed: false,
+            },
+          };
+        }),
       },
     },
     playLocks: { p1: [], p2: [] },
     log: [],
-    pendingTurnStartGains: { p1: [], p2: [] },
-    turnFlags: {
-      p1: { bankaiHitUsed: false, kyuubiCloneUsed: false, gamabuntaUsed: false },
-      p2: { bankaiHitUsed: false, kyuubiCloneUsed: false, gamabuntaUsed: false },
-    },
+    pendingTurnStartGains: {},
     nextCardInstanceId: 1,
     rng,
     transcript,
@@ -3628,10 +3906,14 @@ export const createMatchState = (
 
   buildStartingZones(state, "p1", characters);
   buildStartingZones(state, "p2", characters);
-  const p1Character = getCharacterById(characters, state.players.p1.characterId);
-  const p2Character = getCharacterById(characters, state.players.p2.characterId);
-  if (p1Character) applyStartingStatuses(state, "p1", p1Character);
-  if (p2Character) applyStartingStatuses(state, "p2", p2Character);
+  state.players.p1.characters.forEach((member) => {
+    const character = getCharacterById(characters, member.characterId);
+    if (character) applyStartingStatuses(member, character);
+  });
+  state.players.p2.characters.forEach((member) => {
+    const character = getCharacterById(characters, member.characterId);
+    if (character) applyStartingStatuses(member, character);
+  });
 
   addLog(state, `Turn 1 begins. ${state.players.p1.name} has initiative.`);
   applyTurnStartEffects(state, "p1", characters, { resolveStun: true });
@@ -3663,27 +3945,48 @@ export const applyAction = (
   }
 
   if (action.type === "play_card") {
-    const player = next.players[action.playerId];
-    const sourceCharacter = getCharacterById(characters, player.characterId);
+    const team = next.players[action.playerId];
     let card: Card | null = null;
     let cardInstance: CardInstance | null = null;
     let cardInstanceIndex = -1;
+    let sourceMember: MatchCharacter | null = null;
 
     if (action.cardInstanceId) {
-      cardInstanceIndex = player.hand.findIndex(
+      cardInstanceIndex = team.hand.findIndex(
         (instance) => instance.id === action.cardInstanceId
       );
       if (cardInstanceIndex === -1) {
         return finalize("Card not in hand.");
       }
-      cardInstance = player.hand[cardInstanceIndex] ?? null;
+      cardInstance = team.hand[cardInstanceIndex] ?? null;
       if (!cardInstance) return finalize("Card not found.");
-      card = findCard(characters, player.characterId, cardInstance.cardSlot);
+      sourceMember = getMatchCharacter(next, cardInstance.ownerId);
+      if (!sourceMember) return finalize("Card source not found.");
+      card = findCard(characters, cardInstance.characterId, cardInstance.cardSlot);
     } else if (action.cardSlot) {
-      card = findCard(characters, player.characterId, action.cardSlot);
+      if (action.sourceId) {
+        sourceMember = getMatchCharacter(next, action.sourceId);
+        const ownerTeam = sourceMember ? getTeamForCharacter(next, sourceMember.id) : null;
+        if (!sourceMember || ownerTeam?.id !== action.playerId) {
+          return finalize("Card source not found.");
+        }
+      } else {
+        const matches = team.characters.filter((member) =>
+          Boolean(findCard(characters, member.characterId, action.cardSlot!))
+        );
+        if (matches.length > 1) {
+          return finalize("Card slot is ambiguous. Specify the source character.");
+        }
+        sourceMember = matches[0] ?? null;
+      }
+      if (!sourceMember) return finalize("Card source not found.");
+      card = findCard(characters, sourceMember.characterId, action.cardSlot);
     }
 
-    if (!card) return finalize("Card not found.");
+    if (!card || !sourceMember) return finalize("Card not found.");
+    if (sourceMember.defeated) {
+      return finalize("That character is defeated.");
+    }
     if (hasCombatRoundLock(next, action.playerId)) {
       return finalize("Cannot play cards this combat round.");
     }
@@ -3691,36 +3994,41 @@ export const applyAction = (
       return finalize("Card must be played from hand.");
     }
 
-    const initialTargetId = pickTargetId(card, action.playerId, next, characters);
+    const initialTargetId = action.targetId ?? pickTargetId(card, sourceMember.id, next, characters);
     const resolvedCard = resolveCardTransforms(
       card,
       next,
-      action.playerId,
+      sourceMember.id,
       initialTargetId,
       characters
     );
 
     const outOfTurnAllowed =
       action.playerId !== next.activePlayerId &&
-      canPlayAfterUse(next, action.playerId, resolvedCard, characters);
+      canPlayAfterUse(next, action.playerId, resolvedCard, sourceMember.id, characters);
     if (action.playerId !== next.activePlayerId && !outOfTurnAllowed) {
       return finalize("Not your turn.");
     }
 
-    if (getActiveStatusState(player, "Deflate", sourceCharacter)) {
+    const sourceCharacter = getCharacterById(characters, sourceMember.characterId);
+    if (!sourceCharacter) {
+      return finalize("Character not found.");
+    }
+
+    if (getActiveStatusState(sourceMember, "Deflate", sourceCharacter)) {
       return finalize("This character is Deflated and cannot play cards.");
     }
 
     const typeSet = new Set(resolvedCard.types.map(normalizeTag));
     const actionType = getActionType(resolvedCard.types);
-    if (getActiveStatusState(player, "Disarm", sourceCharacter) && typeSet.has("physical")) {
+    if (getActiveStatusState(sourceMember, "Disarm", sourceCharacter) && typeSet.has("physical")) {
       return finalize("Disarm prevents playing Physical cards.");
     }
-    if (getActiveStatusState(player, "Silence", sourceCharacter) && typeSet.has("magical")) {
+    if (getActiveStatusState(sourceMember, "Silence", sourceCharacter) && typeSet.has("magical")) {
       return finalize("Silence prevents playing Magical cards.");
     }
     if (
-      getActiveStatusState(player, "Seal", sourceCharacter) &&
+      getActiveStatusState(sourceMember, "Seal", sourceCharacter) &&
       (actionType === "special" || typeSet.has("special"))
     ) {
       return finalize("Seal prevents playing Special cards.");
@@ -3768,11 +4076,23 @@ export const applyAction = (
       xValue = action.xValue ?? 0;
     }
 
-    const targetId = pickTargetId(resolvedCard, action.playerId, next, characters);
+    const legalTargets = getLegalTargets(resolvedCard, sourceMember.id, next, characters);
+    if (!legalTargets.length) {
+      return finalize("No legal targets.");
+    }
+    const targetId = action.targetId && legalTargets.includes(action.targetId)
+      ? action.targetId
+      : legalTargets.includes(initialTargetId)
+        ? initialTargetId
+        : legalTargets[0];
+    if (!legalTargets.includes(targetId)) {
+      return finalize("Illegal target.");
+    }
+
     const restrictionError = getUseRestrictionError(
       resolvedCard,
       next,
-      action.playerId,
+      sourceMember.id,
       targetId,
       characters
     );
@@ -3790,23 +4110,24 @@ export const applyAction = (
     const isAfterUse =
       next.afterUseWindow && next.afterUseWindow.validForAction === next.actionId;
     const isFollowUpPlay =
-      Boolean(isAfterUse) && next.afterUseWindow?.lastUsedBy === action.playerId;
+      Boolean(isAfterUse) && next.afterUseWindow?.lastUsedCharacterId === sourceMember.id;
     const followUpAdjustment = isFollowUpPlay
       ? getFollowUpCostAdjustment(resolvedCard.effect)
       : 0;
     const adjustedTotals = getAdjustedCostTotals(
-      player,
+      team,
+      sourceMember,
       sourceCharacter,
       cost,
       xValue,
       cardInstance,
       followUpAdjustment
     );
-    if (player.energy < adjustedTotals.energy || player.ultimate < adjustedTotals.ultimate) {
+    if (team.energy < adjustedTotals.energy || team.ultimate < adjustedTotals.ultimate) {
       return finalize("Insufficient resources.");
     }
 
-    const effectiveSpeed = getEffectiveSpeed(resolvedCard.speed, player, sourceCharacter);
+    const effectiveSpeed = getEffectiveSpeed(resolvedCard.speed, sourceMember, sourceCharacter);
     const legalZones = getLegalZonesForSpeed(effectiveSpeed);
     if (!legalZones.includes(action.zone)) {
       return finalize("Illegal zone for card speed.");
@@ -3819,13 +4140,13 @@ export const applyAction = (
     }
 
     if (cardInstance && cardInstanceIndex >= 0) {
-      cardInstance = player.hand.splice(cardInstanceIndex, 1)[0] ?? null;
+      cardInstance = team.hand.splice(cardInstanceIndex, 1)[0] ?? null;
     }
 
-    player.energy -= adjustedTotals.energy;
-    player.ultimate -= adjustedTotals.ultimate;
+    team.energy -= adjustedTotals.energy;
+    team.ultimate -= adjustedTotals.ultimate;
     if (adjustedTotals.energy > 0) {
-      player.ultimate += adjustedTotals.energy;
+      team.ultimate += adjustedTotals.energy;
     }
 
     if (!next.activeZone) {
@@ -3851,6 +4172,7 @@ export const applyAction = (
       types: resolvedCard.types,
       speed: effectiveSpeed,
       playedBy: action.playerId,
+      sourceId: sourceMember.id,
       targetId,
       targetText: resolvedCard.target,
       xValue,
@@ -3863,7 +4185,7 @@ export const applyAction = (
     if (resolvedCard.name !== card.name) {
       addLog(next, `${card.name} becomes ${resolvedCard.name}.`);
     }
-    addLog(next, `${player.name} plays ${resolvedCard.name} in the ${zoneLabel(action.zone)} Zone.`);
+    addLog(next, `${sourceMember.name} plays ${resolvedCard.name} in the ${zoneLabel(action.zone)} Zone.`);
     applyCardPlayedStatusRules(next, entry, adjustedTotals.energy, characters);
     if (next.phase === "finished") {
       return finalize();

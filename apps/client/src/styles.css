@@ -118,6 +118,23 @@ button {
   color: var(--ua-muted);
 }
 
+.ua-movement {
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--ua-border);
+  border-radius: 12px;
+  background: var(--ua-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ua-movement__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .ua-help-row {
   display: flex;
   flex-wrap: wrap;
@@ -879,6 +896,16 @@ button {
   gap: 8px;
 }
 
+.ua-modal__note {
+  font-size: 0.8rem;
+  color: var(--ua-muted);
+}
+
+.ua-modal__subnote {
+  font-size: 0.75rem;
+  color: var(--ua-muted);
+}
+
 .ua-modal__zone-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -953,6 +980,73 @@ button {
   font-size: 0.72rem;
   font-weight: 600;
   text-align: center;
+}
+
+.ua-scry-list,
+.ua-seek-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ua-search-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ua-scry-item,
+.ua-seek-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--ua-border);
+  background: #faf8f5;
+}
+
+.ua-scry-name,
+.ua-seek-name {
+  font-weight: 600;
+}
+
+.ua-scry-meta,
+.ua-seek-meta {
+  font-size: 0.75rem;
+  color: var(--ua-muted);
+}
+
+.ua-scry-order {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ua-scry-order-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--ua-border);
+}
+
+.ua-scry-order-item:last-child {
+  border-bottom: none;
+}
+
+.ua-scry-order-controls {
+  display: flex;
+  gap: 6px;
+}
+
+.ua-seek-controls,
+.ua-search-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .ua-footer {

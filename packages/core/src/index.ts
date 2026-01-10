@@ -38,6 +38,7 @@ export type CardInstance = {
 
 type EntryKeywords = {
   evade?: boolean;
+  counter?: boolean;
   reuse?: boolean;
   followUp?: boolean;
   assistAttack?: boolean;
@@ -85,9 +86,17 @@ export type StackEntry = {
   targetText?: string;
   xValue: number;
   choiceIndex?: number;
+  redirectTargetId?: MatchCharacterId;
+  scryDiscardIds?: string[];
+  scryOrderIds?: string[];
+  seekTakeIds?: string[];
+  searchPickId?: string;
+  pushDirection?: "left" | "right";
   rolledPower?: number;
   mitigationText?: string[];
   cancelledBeforeUse?: boolean;
+  negated?: boolean;
+  redirected?: boolean;
   cardInstanceId?: string;
   cardInstance?: CardInstance;
   spentResources?: Record<string, number>;
@@ -102,7 +111,7 @@ export type ZoneState = {
 
 export type MatchState = {
   turn: number;
-  phase: "combat" | "finished";
+  phase: "movement" | "combat" | "finished";
   actionId: number;
   activePlayerId: PlayerId;
   initiativePlayerId: PlayerId;
@@ -110,6 +119,7 @@ export type MatchState = {
   pausedZones: ZoneName[];
   zones: Record<ZoneName, ZoneState>;
   lineSize: number;
+  movementPassCount: number;
   players: Record<PlayerId, MatchTeam>;
   playLocks: Record<PlayerId, { source: string; duration: "combat_round" }[]>;
   log: string[];
@@ -121,6 +131,11 @@ export type MatchState = {
   afterUseWindow?: {
     lastUsedBy: PlayerId;
     lastUsedCharacterId: MatchCharacterId;
+    validForAction: number;
+  };
+  counterWindow?: {
+    by: PlayerId;
+    targetId: MatchCharacterId;
     validForAction: number;
   };
 };
@@ -138,6 +153,18 @@ export type Action =
       targetId?: MatchCharacterId;
       xValue?: number;
       choiceIndex?: number;
+      redirectTargetId?: MatchCharacterId;
+      scryDiscardIds?: string[];
+      scryOrderIds?: string[];
+      seekTakeIds?: string[];
+      searchPickId?: string;
+      pushDirection?: "left" | "right";
+    }
+  | {
+      type: "move_swap";
+      playerId: PlayerId;
+      firstId: MatchCharacterId;
+      secondId: MatchCharacterId;
     }
   | { type: "pass"; playerId: PlayerId }
   | { type: "end_turn"; playerId: PlayerId }
@@ -368,14 +395,16 @@ const parseStatusLineValue = (line: string, label: string) => {
   return match ? Number(match[1]) : null;
 };
 
-const parseUniqueStatusDefinition = (status: Character["statusEffects"][number]) => {
+type UniqueStatusDefinition = NonNullable<Character["statusEffects"]>[number];
+
+const parseUniqueStatusDefinition = (status: UniqueStatusDefinition) => {
   let potencyMax: number | undefined;
   let countMax: number | undefined;
   let stackMax: number | undefined;
   let valueMax: number | undefined;
   let baseValue: number | undefined;
 
-  status.lines.forEach((line) => {
+  status.lines.forEach((line: string) => {
     if (/potency/i.test(line)) {
       const value = parseStatusLineValue(line, "Potency");
       if (value !== null) potencyMax = value;
@@ -600,6 +629,53 @@ const trySwapAllies = (
   second.position = firstPos;
   return true;
 };
+
+const moveCharacterBySwapping = (
+  state: MatchState,
+  targetId: MatchCharacterId,
+  direction: number,
+  steps: number,
+  characters: Character[]
+) => {
+  if (steps <= 0 || direction === 0) return 0;
+  const team = getTeamForCharacter(state, targetId);
+  const target = getMatchCharacter(state, targetId);
+  if (!team || !target) return 0;
+
+  const positions: number[] = [];
+  for (let step = 0; step <= steps; step += 1) {
+    const pos = target.position + direction * step;
+    if (!isValidPosition(pos, state.lineSize)) break;
+    positions.push(pos);
+  }
+
+  const blocked = positions.some((pos) => {
+    const member = team.characters.find((candidate) => candidate.position === pos);
+    return member ? !canMoveCharacter(state, member.id, characters) : false;
+  });
+  if (blocked) {
+    addLog(state, "A rooted character cannot be moved or swapped.");
+    return 0;
+  }
+
+  let moved = 0;
+  for (let step = 0; step < steps; step += 1) {
+    const nextPos = target.position + direction;
+    if (!isValidPosition(nextPos, state.lineSize)) break;
+    const occupant = team.characters.find((member) => member.position === nextPos);
+    if (occupant) {
+      occupant.position = target.position;
+      target.position = nextPos;
+    } else {
+      target.position = nextPos;
+    }
+    moved += 1;
+  }
+  return moved;
+};
+
+const unusedMovementHelpers = { areOpposed, tryMoveCharacter, moveCharacterBySwapping };
+void unusedMovementHelpers;
 
 const applyStatusDelta = (
   target: MatchCharacter,
@@ -845,6 +921,8 @@ const isZoneFaster = (candidate: ZoneName, current: ZoneName) =>
 const normalizeText = (value: string) =>
   value.replace(/[()]/g, "").replace(/\s+/g, " ").trim();
 
+const normalizeLine = (value: string) => value.replace(/\s+/g, " ").trim();
+
 const parseXExpression = (value: string, xValue: number) => {
   const cleaned = normalizeText(value).toLowerCase();
   if (cleaned === "x") return xValue;
@@ -978,7 +1056,6 @@ const getFollowUpCostAdjustment = (lines: string[]) => {
 };
 
 const getAdjustedCostTotals = (
-  team: MatchTeam,
   member: MatchCharacter,
   character: Character | null,
   cost: CostBreakdown,
@@ -1078,6 +1155,243 @@ const pickTargetId = (
   return sourceId;
 };
 
+const hasTypeTag = (types: string[], tag: string) =>
+  types.some((type) => normalizeTag(type) === normalizeTag(tag));
+
+const isSingleTargetEntry = (entry: StackEntry) => {
+  const targetText = entry.targetText?.toLowerCase() ?? "";
+  const normalized = targetText.replace(/\s+/g, " ").trim();
+  if (!targetText) return false;
+  if (/\brandom\b/.test(normalized) || /\ball\b/.test(normalized)) return false;
+  if (hasTypeTag(entry.types, "aoe") || hasTypeTag(entry.types, "area")) return false;
+  return (
+    targetText.includes("enemy") || targetText.includes("ally") || targetText.includes("self")
+  );
+};
+
+const isLegalTargetForEntry = (
+  state: MatchState,
+  entry: StackEntry,
+  targetId: MatchCharacterId
+) => {
+  const target = getMatchCharacter(state, targetId);
+  if (!target || target.defeated) return false;
+  const sourceTeam = getTeamForCharacter(state, entry.sourceId);
+  const targetTeam = getTeamForCharacter(state, targetId);
+  if (!sourceTeam || !targetTeam) return false;
+  const targetText = entry.targetText?.toLowerCase() ?? "";
+  if (targetText.includes("self")) return targetId === entry.sourceId;
+  if (targetText.includes("ally")) return sourceTeam.id === targetTeam.id;
+  if (targetText.includes("enemy")) return sourceTeam.id !== targetTeam.id;
+  return true;
+};
+
+const parseCoverScope = (statusName: string) => {
+  const normalized = normalizeText(statusName).toLowerCase();
+  if (normalized.includes("adjacent")) return "adjacent";
+  if (normalized.includes("all")) return "all";
+  return "all";
+};
+
+type RedirectCandidate = {
+  targetId: MatchCharacterId;
+  source: "cover" | "redirect";
+  status?: string;
+};
+
+const getCoverRedirectCandidates = (
+  state: MatchState,
+  entry: StackEntry,
+  characters: Character[]
+) => {
+  if (!isSingleTargetEntry(entry)) return [] as RedirectCandidate[];
+  if (getActionType(entry.types) !== "attack") return [] as RedirectCandidate[];
+  const target = getMatchCharacter(state, entry.targetId);
+  if (!target) return [] as RedirectCandidate[];
+  const targetTeam = getTeamForCharacter(state, entry.targetId);
+  if (!targetTeam) return [] as RedirectCandidate[];
+  const candidates: RedirectCandidate[] = [];
+
+  targetTeam.characters.forEach((member) => {
+    if (member.defeated || member.id === entry.targetId) return;
+    const character = getCharacterById(characters, member.characterId);
+    const statuses = Object.keys(member.statuses).filter((status) =>
+      normalizeText(status).toLowerCase().startsWith("cover")
+    );
+    statuses.forEach((status) => {
+      const active = getActiveStatusState(member, status, character);
+      if (!active || active.value <= 0) return;
+      const scope = parseCoverScope(status);
+      if (scope === "adjacent" && !areAdjacent(member.position, target.position)) return;
+      if (!isLegalTargetForEntry(state, entry, member.id)) return;
+      candidates.push({ targetId: member.id, source: "cover", status });
+    });
+  });
+
+  candidates.sort((left, right) => {
+    const leftMember = getMatchCharacter(state, left.targetId);
+    const rightMember = getMatchCharacter(state, right.targetId);
+    const leftPos = leftMember ? leftMember.position : 0;
+    const rightPos = rightMember ? rightMember.position : 0;
+    if (leftPos !== rightPos) return leftPos - rightPos;
+    if (left.targetId !== right.targetId) {
+      return left.targetId.localeCompare(right.targetId);
+    }
+    return (left.status ?? "").localeCompare(right.status ?? "");
+  });
+
+  return candidates;
+};
+
+const parseRedirectLine = (line: string) => {
+  const normalized = normalizeLine(line);
+  const match = normalized.match(/^Redirect\s*\(([^)]+)\)/i);
+  if (!match) return null;
+  return match[1].trim();
+};
+
+const resolveRedirectTarget = (
+  state: MatchState,
+  entry: StackEntry,
+  spec: string
+) => {
+  const normalized = normalizeText(spec).toLowerCase();
+  const sourceTeam = getTeamForCharacter(state, entry.sourceId);
+  if (!sourceTeam) return null;
+  const enemyTeam = state.players[getOpponentId(sourceTeam.id)];
+
+  if (normalized.includes("self")) return entry.sourceId;
+  if (normalized.includes("target")) return entry.targetId;
+  if (normalized.includes("ally")) {
+    const allies = sourceTeam.characters
+      .filter((member) => !member.defeated)
+      .sort((left, right) => left.position - right.position);
+    return allies[0]?.id ?? null;
+  }
+  if (normalized.includes("enemy") || normalized.includes("opponent")) {
+    const enemies = enemyTeam.characters
+      .filter((member) => !member.defeated)
+      .sort((left, right) => left.position - right.position);
+    return enemies[0]?.id ?? null;
+  }
+
+  return null;
+};
+
+const getRedirectSpec = (effectText: string[]) => {
+  const segments = getTimedTextSegments(effectText);
+  for (const segment of segments) {
+    const spec = parseRedirectLine(segment.text);
+    if (spec) return spec;
+  }
+  return null;
+};
+
+const getRedirectCandidates = (
+  state: MatchState,
+  entry: StackEntry,
+  characters: Character[]
+) => {
+  if (!isSingleTargetEntry(entry)) return [] as RedirectCandidate[];
+  const candidates: RedirectCandidate[] = [];
+  candidates.push(...getCoverRedirectCandidates(state, entry, characters));
+  const redirectSpec = getRedirectSpec(entry.effectText);
+  if (redirectSpec) {
+    const redirectTargetId = resolveRedirectTarget(state, entry, redirectSpec);
+    if (redirectTargetId && isLegalTargetForEntry(state, entry, redirectTargetId)) {
+      candidates.push({ targetId: redirectTargetId, source: "redirect" });
+    }
+  }
+  return candidates;
+};
+
+const hasNegateText = (entry: StackEntry) =>
+  entry.effectText.some((line) => /^Negate\b/i.test(normalizeText(line)));
+
+const getBounceCount = (effectText: string[]) => {
+  let count = 0;
+  effectText.forEach((line) => {
+    const match = line.match(/\bBounce\s+(\d+)/i);
+    if (match) {
+      const value = Number(match[1]);
+      if (!Number.isNaN(value)) {
+        count = value;
+      }
+    }
+  });
+  return count > 0 ? count : 1;
+};
+
+const lineMentionsAll = (effectText: string[], keyword: string) =>
+  effectText.some((line) => new RegExp(`\\ball\\s+${keyword}\\b`, "i").test(line));
+
+const getAdjacentTargets = (state: MatchState, targetId: MatchCharacterId) => {
+  const target = getMatchCharacter(state, targetId);
+  const team = getTeamForCharacter(state, targetId);
+  if (!target || !team) return [];
+  const positions = getAdjacentPositions(target.position, state.lineSize);
+  return team.characters
+    .filter((member) => !member.defeated && positions.includes(member.position))
+    .map((member) => member.id);
+};
+
+const getAreaTargetsForEntry = (state: MatchState, entry: StackEntry) => {
+  const sourceTeam = getTeamForCharacter(state, entry.sourceId);
+  if (!sourceTeam) return [entry.targetId];
+  const enemyTeam = state.players[getOpponentId(sourceTeam.id)];
+  const allies = sourceTeam.characters.filter((member) => !member.defeated);
+  const enemies = enemyTeam.characters.filter((member) => !member.defeated);
+  const targetText = entry.targetText?.toLowerCase() ?? "";
+  const isAoe = hasTypeTag(entry.types, "aoe");
+  const isSplash = hasTypeTag(entry.types, "splash");
+  const isBounce = hasTypeTag(entry.types, "bounce");
+  const effectAllEnemies = lineMentionsAll(entry.effectText, "enemies");
+  const effectAllAllies = lineMentionsAll(entry.effectText, "allies");
+
+  let baseTargets: MatchCharacterId[] = [entry.targetId];
+  if (targetText.includes("all enemies")) {
+    baseTargets = enemies.map((member) => member.id);
+  } else if (targetText.includes("all allies")) {
+    baseTargets = allies.map((member) => member.id);
+  } else if (isAoe && (targetText.includes("enemy") || effectAllEnemies)) {
+    baseTargets = enemies.map((member) => member.id);
+  } else if (isAoe && (targetText.includes("ally") || effectAllAllies)) {
+    baseTargets = allies.map((member) => member.id);
+  } else if (isAoe && targetText.includes("self") && effectAllEnemies) {
+    baseTargets = enemies.map((member) => member.id);
+  } else if (isAoe && targetText.includes("self") && effectAllAllies) {
+    baseTargets = allies.map((member) => member.id);
+  }
+
+  if (!baseTargets.length) {
+    return [];
+  }
+
+  const targets = [...baseTargets];
+  if (baseTargets.length === 1) {
+    if (isSplash) {
+      const splashTargets = getAdjacentTargets(state, baseTargets[0]);
+      splashTargets.forEach((targetId) => {
+        if (!targets.includes(targetId)) {
+          targets.push(targetId);
+        }
+      });
+    }
+    if (isBounce) {
+      const bounceTargets = getAdjacentTargets(state, baseTargets[0]);
+      if (bounceTargets.length) {
+        const bounceCount = getBounceCount(entry.effectText);
+        for (let index = 0; index < bounceCount; index += 1) {
+          const picked = bounceTargets[nextInt(state.rng, 0, bounceTargets.length - 1)];
+          if (picked) targets.push(picked);
+        }
+      }
+    }
+  }
+
+  return targets;
+};
+
 const getCharacterById = (characters: Character[], characterId: string) =>
   characters.find((item) => item.id === characterId) ?? null;
 
@@ -1115,6 +1429,193 @@ const drawToHandSize = (
   if (needed > 0) {
     drawCards(state, playerId, needed);
   }
+};
+
+const matchesSearchCriteria = (card: Card, criteria: string) => {
+  const normalized = normalizeText(criteria).toLowerCase();
+  const nameMatch = normalized.match(/named\s+(.+)/i) ?? normalized.match(/"([^"]+)"/);
+  const nameCriteria = nameMatch ? normalizeText(nameMatch[1]).toLowerCase() : null;
+  if (nameCriteria) {
+    return normalizeText(card.name).toLowerCase() === nameCriteria;
+  }
+
+  const tagKeys = [
+    "basic",
+    "technique",
+    "ultimate",
+    "attack",
+    "defense",
+    "special",
+    "physical",
+    "magical",
+    "melee",
+    "ranged",
+  ];
+  const tags = tagKeys.filter((tag) => normalized.includes(tag));
+  if (tags.length) {
+    return tags.every((tag) => hasTypeTag(card.types, tag));
+  }
+
+  const cleaned = normalized.replace(/\b(a|an|the|card|cards)\b/g, "").trim();
+  if (!cleaned) return true;
+  return normalizeText(card.name).toLowerCase().includes(cleaned);
+};
+
+const scryTopCards = (
+  state: MatchState,
+  playerId: PlayerId,
+  count: number,
+  discardIds?: string[],
+  orderIds?: string[]
+) => {
+  const team = state.players[playerId];
+  const available = Math.min(count, team.deck.length);
+  if (available <= 0) return;
+  const peeked = team.deck.splice(team.deck.length - available, available);
+  const peekedTopFirst = [...peeked].reverse();
+  const discardSet = new Set(discardIds ?? []);
+  const discarded: CardInstance[] = [];
+  const remaining: CardInstance[] = [];
+
+  peekedTopFirst.forEach((instance) => {
+    if (discardSet.has(instance.id)) {
+      discarded.push(instance);
+    } else {
+      remaining.push(instance);
+    }
+  });
+
+  let ordered = remaining;
+  if (orderIds && orderIds.length === remaining.length) {
+    const byId = new Map(remaining.map((instance) => [instance.id, instance]));
+    const used = new Set<string>();
+    const nextOrder: CardInstance[] = [];
+    let valid = true;
+    orderIds.forEach((id) => {
+      const instance = byId.get(id);
+      if (!instance || used.has(id)) {
+        valid = false;
+        return;
+      }
+      used.add(id);
+      nextOrder.push(instance);
+    });
+    if (valid && nextOrder.length === remaining.length) {
+      ordered = nextOrder;
+    }
+  }
+
+  if (discarded.length) {
+    team.discard.push(...discarded);
+  }
+  const orderedBottomFirst = [...ordered].reverse();
+  team.deck.push(...orderedBottomFirst);
+  addLog(state, `${team.name} scries ${available} card(s).`);
+};
+
+const seekTopCards = (
+  state: MatchState,
+  playerId: PlayerId,
+  count: number,
+  criteria: string,
+  take: number,
+  characters: Character[],
+  takeIds?: string[]
+) => {
+  const team = state.players[playerId];
+  const available = Math.min(count, team.deck.length);
+  if (available <= 0) return;
+  const peeked = team.deck.splice(team.deck.length - available, available);
+  const peekedTopFirst = [...peeked].reverse();
+  const kept: CardInstance[] = [];
+  const discarded: CardInstance[] = [];
+  const explicitTake = takeIds !== undefined;
+  const picked: CardInstance[] = [];
+  const availableMatches = new Set<string>();
+
+  peekedTopFirst.forEach((instance) => {
+    const card = findCard(characters, instance.characterId, instance.cardSlot);
+    if (card && matchesSearchCriteria(card, criteria)) {
+      availableMatches.add(instance.id);
+    }
+  });
+
+  if (explicitTake) {
+    takeIds?.forEach((id) => {
+      if (picked.length >= take) return;
+      if (!availableMatches.has(id)) return;
+      const instance = peekedTopFirst.find((candidate) => candidate.id === id);
+      if (instance && !picked.some((candidate) => candidate.id === id)) {
+        picked.push(instance);
+      }
+    });
+  }
+
+  peekedTopFirst.forEach((instance) => {
+    const card = findCard(characters, instance.characterId, instance.cardSlot);
+    const matches = card && matchesSearchCriteria(card, criteria);
+    if (explicitTake) {
+      if (picked.some((candidate) => candidate.id === instance.id)) {
+        kept.push(instance);
+      } else {
+        discarded.push(instance);
+      }
+      return;
+    }
+    if (kept.length < take && matches) {
+      kept.push(instance);
+    } else {
+      discarded.push(instance);
+    }
+  });
+
+  team.hand.push(...kept);
+  team.discard.push(...discarded);
+  addLog(
+    state,
+    `${team.name} seeks ${available} card(s) and takes ${kept.length}.`
+  );
+};
+
+const searchDeck = (
+  state: MatchState,
+  playerId: PlayerId,
+  criteria: string,
+  characters: Character[],
+  pickId?: string
+) => {
+  const team = state.players[playerId];
+  let foundIndex = -1;
+  let foundCard: Card | null = null;
+  if (pickId) {
+    const index = team.deck.findIndex((instance) => instance.id === pickId);
+    if (index !== -1) {
+      const instance = team.deck[index];
+      const card = instance ? findCard(characters, instance.characterId, instance.cardSlot) : null;
+      if (card && matchesSearchCriteria(card, criteria)) {
+        foundIndex = index;
+        foundCard = card;
+      }
+    }
+  }
+  for (let index = team.deck.length - 1; index >= 0; index -= 1) {
+    if (foundIndex !== -1) break;
+    const instance = team.deck[index];
+    const card = instance ? findCard(characters, instance.characterId, instance.cardSlot) : null;
+    if (card && matchesSearchCriteria(card, criteria)) {
+      foundIndex = index;
+      foundCard = card;
+      break;
+    }
+  }
+  if (foundIndex === -1) {
+    addLog(state, `${team.name} searches the draw pile but finds nothing.`);
+    return;
+  }
+  const [picked] = team.deck.splice(foundIndex, 1);
+  if (picked) team.hand.push(picked);
+  shuffle(team.deck, state.rng);
+  addLog(state, `${team.name} searches and finds ${foundCard?.name ?? "a card"}.`);
 };
 
 const applyPrepareAdjustments = (
@@ -1235,12 +1736,15 @@ const applyStartingStatuses = (member: MatchCharacter, character: Character) => 
   });
 };
 
-const createCardsInHand = (
+type CreateDestination = "hand" | "discard";
+
+const createCardsAtDestination = (
   state: MatchState,
   characterId: MatchCharacterId,
   cardName: string,
   count: number,
-  characters: Character[]
+  characters: Character[],
+  destination: CreateDestination
 ) => {
   const member = getMatchCharacter(state, characterId);
   if (!member) return;
@@ -1254,9 +1758,24 @@ const createCardsInHand = (
   if (!match) return;
   for (let i = 0; i < count; i += 1) {
     const instance = createCardInstance(state, member, match.slot);
-    team.hand.push(instance);
+    if (destination === "hand") {
+      team.hand.push(instance);
+    } else {
+      team.discard.push(instance);
+    }
   }
-  addLog(state, `${member.name} creates ${count} ${match.name}.`);
+  const destinationLabel = destination === "hand" ? "hand" : "discard pile";
+  addLog(state, `${member.name} creates ${count} ${match.name} in the ${destinationLabel}.`);
+};
+
+const createCardsInHand = (
+  state: MatchState,
+  characterId: MatchCharacterId,
+  cardName: string,
+  count: number,
+  characters: Character[]
+) => {
+  createCardsAtDestination(state, characterId, cardName, count, characters, "hand");
 };
 
 const getEquippedWeaponStatus = (member: MatchCharacter, character: Character | null) => {
@@ -1318,7 +1837,6 @@ const switchEquipment = (
 
 const applyStagnate = (
   state: MatchState,
-  entry: StackEntry,
   amount: number,
   characters: Character[],
   targetId: MatchCharacterId
@@ -1446,16 +1964,76 @@ const parseDrawFromLine = (line: string) => {
   return baseMatch ? Number(baseMatch[1]) : null;
 };
 
+const parseScryLine = (line: string, xValue: number) => {
+  const normalized = normalizeText(line);
+  const match = normalized.match(/Scry\s+(\d+|X)/i);
+  if (!match) return null;
+  const token = match[1].toLowerCase();
+  const count = token === "x" ? xValue : Number(token);
+  return Number.isNaN(count) ? null : count;
+};
+
+const parseSearchLine = (line: string) => {
+  const normalized = normalizeText(line);
+  const match = normalized.match(/Search(?:\s+your\s+draw\s+pile)?\s+for\s+(.+)/i);
+  if (!match) return null;
+  const criteria = match[1].trim().replace(/\.$/, "");
+  return criteria || null;
+};
+
+const parseSeekLine = (line: string, xValue: number) => {
+  const normalized = normalizeLine(line);
+  const match = normalized.match(/Seek\s+(\d+|X)\s*\((.+)\)/i);
+  if (!match) return null;
+  const token = match[1].toLowerCase();
+  const count = token === "x" ? xValue : Number(token);
+  if (Number.isNaN(count)) return null;
+  const parts = match[2].split(",");
+  const criteria = parts[0]?.trim();
+  const takeRaw = parts[1]?.trim();
+  const take = takeRaw ? Number(takeRaw) : 1;
+  if (!criteria || Number.isNaN(take)) return null;
+  return { count, criteria, take };
+};
+
+const parsePushPullLine = (line: string, xValue: number) => {
+  const normalized = normalizeText(line);
+  const match = normalized.match(/^(Push|Pull)\s+(\d+|X)/i);
+  if (!match) return null;
+  const kind = match[1].toLowerCase() as "push" | "pull";
+  const token = match[2].toLowerCase();
+  const amount = token === "x" ? xValue : Number(token);
+  if (Number.isNaN(amount)) return null;
+  return { kind, amount };
+};
+
+const isSwapLine = (line: string) => /^Swap\b/i.test(normalizeText(line));
+
 const parseCreateFromLine = (line: string) => {
   const normalized = normalizeText(line);
   const match = normalized.match(
-    /Create\s+(\d+)\s+(.+?)\s+in\s+(?:this character's\s+)?hand/i
+    /Create\s+(\d+)\s+(.+?)(?:\s+in\s+(?:this character's\s+)?(hand|discard(?:\s+pile)?))?/i
   );
   if (!match) return null;
   const count = Number(match[1]);
   const cardName = match[2].trim().replace(/\.$/, "");
   if (!cardName || Number.isNaN(count) || count <= 0) return null;
-  return { count, cardName };
+  const destinationToken = match[3]?.toLowerCase();
+  const destination: CreateDestination =
+    destinationToken && destinationToken.includes("hand") ? "hand" : "discard";
+  return { count, cardName, destination };
+};
+
+const getCreateDestination = (effectText: string[], cardName: string): CreateDestination => {
+  const normalizedName = cardName.trim().toLowerCase();
+  for (const line of effectText) {
+    const parsed = parseCreateFromLine(line);
+    if (!parsed) continue;
+    if (parsed.cardName.trim().toLowerCase() === normalizedName) {
+      return parsed.destination;
+    }
+  }
+  return "discard";
 };
 
 const isReloadLine = (line: string) =>
@@ -1473,6 +2051,15 @@ type SpendInstruction = {
   allowPartial: boolean;
   gateAll: boolean;
   gateDamage: boolean;
+};
+
+type PurgeKind = "cleanse" | "dispel" | "purge";
+
+type PurgeInstruction = {
+  kind: PurgeKind;
+  amount?: number;
+  status?: string;
+  all: boolean;
 };
 
 const parseSpendInstruction = (line: string, xValue: number): SpendInstruction | null => {
@@ -1519,6 +2106,103 @@ const parseSpendInflictLine = (line: string) => {
   return { resource, spendAmount, statusAmount, status };
 };
 
+const parsePurgeLine = (line: string): PurgeInstruction | null => {
+  const normalized = normalizeText(line);
+  const allMatch = normalized.match(/^(Cleanse|Dispel|Purge)\s+All(?:\s+(\d+))?/i);
+  if (allMatch) {
+    const amount = allMatch[2] ? Number(allMatch[2]) : undefined;
+    return {
+      kind: allMatch[1].toLowerCase() as PurgeKind,
+      amount: Number.isNaN(amount) ? undefined : amount,
+      all: true,
+    };
+  }
+
+  const singleMatch = normalized.match(/^(Cleanse|Dispel|Purge)(?:\s+(\d+))?\s+([^.,]+)/i);
+  if (!singleMatch) return null;
+  const amount = singleMatch[2] ? Number(singleMatch[2]) : undefined;
+  const status = singleMatch[3].split(/ and |, /i)[0].trim().replace(/\.$/, "");
+  if (!status) return null;
+  return {
+    kind: singleMatch[1].toLowerCase() as PurgeKind,
+    amount: Number.isNaN(amount) ? undefined : amount,
+    status,
+    all: false,
+  };
+};
+
+const getStatusDisposition = (status: string) => {
+  const global = globalStatusMap.get(normalizeStatusName(status));
+  if (!global) return "unique";
+  return global.type?.toLowerCase() ?? "neutral";
+};
+
+const shouldPurgeStatus = (kind: PurgeKind, disposition: string) => {
+  if (disposition === "unique" || disposition === "neutral") return false;
+  if (kind === "cleanse") return disposition === "negative";
+  if (kind === "dispel") return disposition === "positive";
+  return disposition === "negative" || disposition === "positive";
+};
+
+const applyPurgeInstruction = (
+  state: MatchState,
+  source: MatchCharacter,
+  target: MatchCharacter,
+  instruction: PurgeInstruction,
+  characters: Character[]
+) => {
+  if (target.defeated) return;
+  const targetCharacter = getCharacterById(characters, target.characterId);
+  const effectTarget = instruction.all
+    ? instruction.kind === "cleanse"
+      ? "all negative statuses"
+      : instruction.kind === "dispel"
+        ? "all positive statuses"
+        : "all positive and negative statuses"
+    : instruction.status ?? "all statuses";
+  let affected = 0;
+
+  const applyStatusChange = (status: string) => {
+    const disposition = getStatusDisposition(status);
+    if (!shouldPurgeStatus(instruction.kind, disposition)) return;
+    if (instruction.amount === undefined) {
+      const current = target.statuses[status];
+      if (!current || !isStatusActive(current, getStatusDefinition(status, targetCharacter))) {
+        return;
+      }
+      expireStatus(target, status);
+      affected += 1;
+      return;
+    }
+    const reduced = reduceStatusValue(
+      target,
+      status,
+      instruction.amount,
+      undefined,
+      {},
+      targetCharacter
+    );
+    if (reduced !== null) {
+      affected += 1;
+    }
+  };
+
+  if (instruction.all) {
+    Object.keys(target.statuses).forEach((status) => applyStatusChange(status));
+  } else if (instruction.status) {
+    applyStatusChange(instruction.status);
+  }
+
+  if (affected > 0) {
+    const verb = instruction.kind.charAt(0).toUpperCase() + instruction.kind.slice(1);
+    const amountLabel = instruction.amount !== undefined ? ` ${instruction.amount}` : "";
+    addLog(
+      state,
+      `${source.name} ${verb}s${amountLabel} ${effectTarget} on ${target.name}.`
+    );
+  }
+};
+
 type SpendContext = {
   skipAll: boolean;
   skipDamage: boolean;
@@ -1562,6 +2246,7 @@ type MitigationRule =
 
 type KeywordFlags = {
   evade: boolean;
+  counter: boolean;
   reuse: boolean;
   followUp: boolean;
   assistAttack: boolean;
@@ -1626,6 +2311,7 @@ const getTimedTextSegments = (lines: string[]) => {
 const getKeywordFlags = (lines: string[]): KeywordFlags => {
   const flags: KeywordFlags = {
     evade: false,
+    counter: false,
     reuse: false,
     followUp: false,
     assistAttack: false,
@@ -1633,6 +2319,7 @@ const getKeywordFlags = (lines: string[]): KeywordFlags => {
   lines.forEach((line) => {
     const normalized = line.trim().replace(/\.$/, "").toLowerCase();
     if (normalized === "evade") flags.evade = true;
+    if (normalized === "counter") flags.counter = true;
     if (normalized === "reuse") flags.reuse = true;
     if (normalized === "follow-up") flags.followUp = true;
     if (normalized === "assist attack") flags.assistAttack = true;
@@ -1642,6 +2329,7 @@ const getKeywordFlags = (lines: string[]): KeywordFlags => {
 
 const keywordFlagMap: Record<string, keyof KeywordFlags> = {
   evade: "evade",
+  counter: "counter",
   reuse: "reuse",
   "follow-up": "followUp",
   "follow up": "followUp",
@@ -1661,6 +2349,7 @@ const getEntryKeywordFlags = (entry: StackEntry): KeywordFlags => {
   const extra = entry.grantedKeywords;
   return {
     evade: base.evade || Boolean(extra?.evade),
+    counter: base.counter || Boolean(extra?.counter),
     reuse: base.reuse || Boolean(extra?.reuse),
     followUp: base.followUp || Boolean(extra?.followUp),
     assistAttack: base.assistAttack || Boolean(extra?.assistAttack),
@@ -1955,7 +2644,6 @@ const getMitigationAmount = (damage: number, rule: MitigationRule) => {
 
 const canPlayAfterUse = (
   state: MatchState,
-  playerId: PlayerId,
   card: Card,
   sourceId: MatchCharacterId,
   characters?: Character[]
@@ -2542,6 +3230,7 @@ const advanceTurn = (state: MatchState, characters: Character[]) => {
     state.activePlayerId = state.initiativePlayerId;
     state.pausedZones = [];
     state.activeZone = null;
+    state.movementPassCount = 0;
     clearCombatRoundLocks(state);
 
     Object.values(state.zones).forEach((zone) => {
@@ -2563,6 +3252,8 @@ const advanceTurn = (state: MatchState, characters: Character[]) => {
     applyTurnStartEffects(state, otherPlayer, characters, { resolveStun: false });
 
     if (!skipInitiative) {
+      state.phase = "movement";
+      addLog(state, "Movement Round begins.");
       return;
     }
 
@@ -2615,9 +3306,9 @@ const isConditionMet = (
   targetCharacter: Character | null
 ) => {
   if (!condition) return true;
-  const threshold = condition.min ?? 1;
   switch (condition.kind) {
     case "self_has_status": {
+      const threshold = condition.min ?? 1;
       const state = getSnapshotStatusState(snapshot, sourceId, condition.status);
       const definition = getStatusDefinition(condition.status, sourceCharacter);
       return isStatusActive(state, definition) && getStatusPrimaryValue(state, definition) >= threshold;
@@ -2628,6 +3319,7 @@ const isConditionMet = (
       return !isStatusActive(state, definition);
     }
     case "target_has_status": {
+      const threshold = condition.min ?? 1;
       const state = getSnapshotStatusState(snapshot, targetId, condition.status);
       const definition = getStatusDefinition(condition.status, targetCharacter);
       return isStatusActive(state, definition) && getStatusPrimaryValue(state, definition) >= threshold;
@@ -2708,6 +3400,7 @@ const resolveStructuredEffectList = (
   isHit: boolean,
   characters: Character[],
   snapshot: StatusSnapshot,
+  areaTargets: MatchCharacterId[],
   source: MatchCharacter,
   target: MatchCharacter,
   sourceTeam: MatchTeam,
@@ -2716,12 +3409,53 @@ const resolveStructuredEffectList = (
   targetCharacter: Character | null,
   spendContext: SpendContext
 ) => {
+  const targets = areaTargets.length ? areaTargets : [entry.targetId];
+
   effects.forEach((effect) => {
     if (effect.timing !== timing) return;
     if (timing === "on_hit" && !isHit) return;
-    if (!isConditionMet(effect.condition, snapshot, entry.sourceId, entry.targetId, sourceCharacter, targetCharacter)) {
+
+    const isTargetScoped =
+      effect.type === "deal_damage" ||
+      effect.type === "inflict_status" ||
+      effect.type === "inflict_status_per_spent" ||
+      effect.type === "deal_damage_per_spent";
+    if (
+      !isTargetScoped &&
+      !isConditionMet(
+        effect.condition,
+        snapshot,
+        entry.sourceId,
+        entry.targetId,
+        sourceCharacter,
+        targetCharacter
+      )
+    ) {
       return;
     }
+
+    const forEachTarget = (
+      handler: (targetMember: MatchCharacter, targetDefinition: Character | null) => void
+    ) => {
+      targets.forEach((targetId) => {
+        const targetMember = getMatchCharacter(state, targetId);
+        if (!targetMember || targetMember.defeated) return;
+        const targetDefinition = getCharacterById(characters, targetMember.characterId);
+        if (
+          !isConditionMet(
+            effect.condition,
+            snapshot,
+            entry.sourceId,
+            targetId,
+            sourceCharacter,
+            targetDefinition
+          )
+        ) {
+          return;
+        }
+        handler(targetMember, targetDefinition);
+      });
+    };
 
     switch (effect.type) {
       case "deal_damage": {
@@ -2731,15 +3465,17 @@ const resolveStructuredEffectList = (
           effect.hits === undefined ? 1 : resolveEffectScalar(effect.hits, entry.xValue);
         const total = amount * hits;
         if (total <= 0) break;
-        const applied = applyDamage(
-          state,
-          target,
-          total,
-          entry.types,
-          targetCharacter,
-          entry.mitigationText
-        );
-        addLog(state, `${source.name} deals ${applied} damage to ${target.name}.`);
+        forEachTarget((targetMember, targetDefinition) => {
+          const applied = applyDamage(
+            state,
+            targetMember,
+            total,
+            entry.types,
+            targetDefinition,
+            entry.mitigationText
+          );
+          addLog(state, `${source.name} deals ${applied} damage to ${targetMember.name}.`);
+        });
         break;
       }
       case "gain_shield": {
@@ -2766,7 +3502,7 @@ const resolveStructuredEffectList = (
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         if (amount <= 0) break;
         if (effect.status === "Stagnate") {
-          applyStagnate(state, entry, amount, characters, source.id);
+          applyStagnate(state, amount, characters, source.id);
         } else {
           applyStatusDelta(source, effect.status, amount, effect.stat, sourceCharacter);
           addLog(state, `${source.name} gains ${amount} ${effect.status}.`);
@@ -2776,12 +3512,14 @@ const resolveStructuredEffectList = (
       case "inflict_status": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         if (amount <= 0) break;
-        if (effect.status === "Stagnate") {
-          applyStagnate(state, entry, amount, characters, entry.targetId);
-        } else {
-          applyStatusDelta(target, effect.status, amount, effect.stat, targetCharacter);
-          addLog(state, `${target.name} gains ${amount} ${effect.status}.`);
-        }
+        forEachTarget((targetMember, targetDefinition) => {
+          if (effect.status === "Stagnate") {
+            applyStagnate(state, amount, characters, targetMember.id);
+          } else {
+            applyStatusDelta(targetMember, effect.status, amount, effect.stat, targetDefinition);
+            addLog(state, `${targetMember.name} gains ${amount} ${effect.status}.`);
+          }
+        });
         break;
       }
       case "gain_status_per_spent": {
@@ -2812,8 +3550,10 @@ const resolveStructuredEffectList = (
               : 0;
         const total = perSpend * spent;
         if (total <= 0) break;
-        applyStatusDelta(target, effect.status, total, effect.stat, targetCharacter);
-        addLog(state, `${target.name} gains ${total} ${effect.status}.`);
+        forEachTarget((targetMember, targetDefinition) => {
+          applyStatusDelta(targetMember, effect.status, total, effect.stat, targetDefinition);
+          addLog(state, `${targetMember.name} gains ${total} ${effect.status}.`);
+        });
         break;
       }
       case "set_status": {
@@ -2856,15 +3596,17 @@ const resolveStructuredEffectList = (
           spentByStatus > 0 ? spentByStatus : /ammo/i.test(effect.status) ? spendContext.ammoSpent : 0;
         const total = amount * spent;
         if (total <= 0) break;
-        const applied = applyDamage(
-          state,
-          target,
-          total,
-          entry.types,
-          targetCharacter,
-          entry.mitigationText
-        );
-        addLog(state, `${source.name} deals ${applied} damage to ${target.name}.`);
+        forEachTarget((targetMember, targetDefinition) => {
+          const applied = applyDamage(
+            state,
+            targetMember,
+            total,
+            entry.types,
+            targetDefinition,
+            entry.mitigationText
+          );
+          addLog(state, `${source.name} deals ${applied} damage to ${targetMember.name}.`);
+        });
         break;
       }
       case "draw_cards": {
@@ -2880,7 +3622,8 @@ const resolveStructuredEffectList = (
         const count = Math.floor(amount);
         if (count <= 0) break;
         const recipientId = resolveEffectTargetCharacterId(effect.target, entry);
-        createCardsInHand(state, recipientId, effect.cardName, count, characters);
+        const destination = getCreateDestination(entry.effectText, effect.cardName);
+        createCardsAtDestination(state, recipientId, effect.cardName, count, characters, destination);
         break;
       }
       case "block_play": {
@@ -2910,6 +3653,7 @@ const resolveStructuredEffectList = (
           isHit,
           characters,
           snapshot,
+          areaTargets,
           source,
           target,
           sourceTeam,
@@ -2951,6 +3695,7 @@ const resolveStructuredEffects = (
   isHit: boolean,
   characters: Character[],
   snapshot: StatusSnapshot,
+  areaTargets: MatchCharacterId[],
   spendContext: SpendContext
 ) => {
   if (!entry.effects) return;
@@ -2972,6 +3717,7 @@ const resolveStructuredEffects = (
     isHit,
     characters,
     snapshot,
+    areaTargets,
     source,
     target,
     sourceTeam,
@@ -3152,9 +3898,13 @@ const resolveTextMetaEffects = (
   entry: StackEntry,
   timing: Effect["timing"],
   characters: Character[],
-  spendContext: SpendContext
+  spendContext: SpendContext,
+  areaTargets: MatchCharacterId[]
 ) => {
   if (spendContext.skipAll) return;
+  const source = getMatchCharacter(state, entry.sourceId);
+  const sourceTeam = getTeamForCharacter(state, entry.sourceId);
+  if (!source || !sourceTeam) return;
   const segments = getTimedTextSegments(entry.effectText);
   const options = getTextChoiceOptions(entry.effectText);
   const normalizedOptions = options.map((option) => normalizeText(option).toLowerCase());
@@ -3186,6 +3936,7 @@ const resolveTextMetaEffects = (
     entry.choiceIndex,
     "create_card"
   );
+  const targets = areaTargets.length ? areaTargets : [entry.targetId];
 
   segments.forEach((segment) => {
     if (segment.timing !== timing) return;
@@ -3198,15 +3949,48 @@ const resolveTextMetaEffects = (
 
     const create = hasCreateEffect ? null : parseCreateFromLine(line);
     if (create) {
-      createCardsInHand(state, entry.sourceId, create.cardName, create.count, characters);
+      createCardsAtDestination(
+        state,
+        entry.sourceId,
+        create.cardName,
+        create.count,
+        characters,
+        create.destination
+      );
     }
 
     const drawCount = hasDrawEffect ? null : parseDrawFromLine(line);
     if (drawCount && drawCount > 0) {
-      const sourceTeam = getTeamForCharacter(state, entry.sourceId);
-      if (sourceTeam) {
-        drawCards(state, sourceTeam.id, drawCount);
-      }
+      drawCards(state, sourceTeam.id, drawCount);
+    }
+
+    const scryCount = parseScryLine(line, entry.xValue);
+    if (scryCount && scryCount > 0) {
+      scryTopCards(
+        state,
+        sourceTeam.id,
+        scryCount,
+        entry.scryDiscardIds,
+        entry.scryOrderIds
+      );
+    }
+
+    const seek = parseSeekLine(line, entry.xValue);
+    if (seek && seek.count > 0) {
+      seekTopCards(
+        state,
+        sourceTeam.id,
+        seek.count,
+        seek.criteria,
+        seek.take,
+        characters,
+        entry.seekTakeIds
+      );
+    }
+
+    const searchCriteria = parseSearchLine(line);
+    if (searchCriteria) {
+      searchDeck(state, sourceTeam.id, searchCriteria, characters, entry.searchPickId);
     }
 
     if (!hasReloadEffect && isReloadLine(line)) {
@@ -3218,6 +4002,54 @@ const resolveTextMetaEffects = (
       switchEquipment(state, entry.sourceId, switchEquip, characters);
     }
 
+    const pushPull = parsePushPullLine(line, entry.xValue);
+    if (pushPull && pushPull.amount > 0) {
+      targets.forEach((targetId) => {
+        const target = getMatchCharacter(state, targetId);
+        if (!target || target.defeated) return;
+        let direction = 0;
+      if (pushPull.kind === "push") {
+        if (target.position > source.position) direction = 1;
+        else if (target.position < source.position) direction = -1;
+        else if (entry.pushDirection) direction = entry.pushDirection === "right" ? 1 : -1;
+        else direction = target.position < state.lineSize - 1 ? 1 : -1;
+      } else {
+        if (target.position > source.position) direction = -1;
+        else if (target.position < source.position) direction = 1;
+      }
+      if (direction === 0) return;
+        const moved = moveCharacterBySwapping(
+          state,
+          targetId,
+          direction,
+          pushPull.amount,
+          characters
+        );
+        if (moved > 0) {
+          const verb = pushPull.kind === "push" ? "pushes" : "pulls";
+          addLog(state, `${source.name} ${verb} ${target.name} ${moved} space(s).`);
+        }
+      });
+    }
+
+    if (isSwapLine(line)) {
+      const target = getMatchCharacter(state, entry.targetId);
+      if (!target || target.defeated) return;
+      const targetTeam = getTeamForCharacter(state, entry.targetId);
+      if (!targetTeam || targetTeam.id !== sourceTeam.id) return;
+      if (
+        !canMoveCharacter(state, source.id, characters) ||
+        !canMoveCharacter(state, target.id, characters)
+      ) {
+        addLog(state, "A rooted character cannot be moved or swapped.");
+        return;
+      }
+      const sourcePosition = source.position;
+      source.position = target.position;
+      target.position = sourcePosition;
+      addLog(state, `${source.name} swaps positions with ${target.name}.`);
+    }
+
     const xConditionalMatch = normalized.match(
       /If X is (\d+),\s*inflict\s+(\d+)\s+([^.,]+)/i
     );
@@ -3226,11 +4058,13 @@ const resolveTextMetaEffects = (
       const amount = Number(xConditionalMatch[2]);
       const status = xConditionalMatch[3].split(/ and |, /i)[0].trim();
       if (!Number.isNaN(xTarget) && entry.xValue === xTarget && amount > 0 && status) {
-        const target = getMatchCharacter(state, entry.targetId);
-        if (!target || target.defeated) return;
-        const targetCharacter = getCharacterById(characters, target.characterId);
-        applyStatusDelta(target, status, amount, undefined, targetCharacter);
-        addLog(state, `${target.name} gains ${amount} ${status}.`);
+        targets.forEach((targetId) => {
+          const target = getMatchCharacter(state, targetId);
+          if (!target || target.defeated) return;
+          const targetCharacter = getCharacterById(characters, target.characterId);
+          applyStatusDelta(target, status, amount, undefined, targetCharacter);
+          addLog(state, `${target.name} gains ${amount} ${status}.`);
+        });
       }
     }
   });
@@ -3243,17 +4077,27 @@ const resolveTextEffectsForTiming = (
   timing: Effect["timing"],
   isHit: boolean,
   characters: Character[],
-  spendContext: SpendContext
+  spendContext: SpendContext,
+  areaTargets: MatchCharacterId[]
 ) => {
   if (timing === "on_hit" && !isHit) return;
   if (spendContext.skipAll) return;
   const source = getMatchCharacter(state, entry.sourceId);
-  const target = getMatchCharacter(state, entry.targetId);
-  if (!source || !target) return;
+  if (!source) return;
   const sourceTeam = getTeamForCharacter(state, entry.sourceId);
   if (!sourceTeam) return;
   const sourceCharacter = getCharacterById(characters, source.characterId);
-  const targetCharacter = getCharacterById(characters, target.characterId);
+  const targets = areaTargets.length ? areaTargets : [entry.targetId];
+  const forEachTarget = (
+    handler: (targetMember: MatchCharacter, targetDefinition: Character | null) => void
+  ) => {
+    targets.forEach((targetId) => {
+      const targetMember = getMatchCharacter(state, targetId);
+      if (!targetMember || targetMember.defeated) return;
+      const targetDefinition = getCharacterById(characters, targetMember.characterId);
+      handler(targetMember, targetDefinition);
+    });
+  };
   const segments = getTimedTextSegments(entry.effectText);
   const options = getTextChoiceOptions(entry.effectText);
   const normalizedOptions = options.map((option) => normalizeText(option).toLowerCase());
@@ -3286,18 +4130,20 @@ const resolveTextEffectsForTiming = (
           ? damage * ammoSpent
           : damage;
       if (totalDamage > 0) {
-        const applied = applyDamage(
-          state,
-          target,
-          totalDamage,
-          entry.types,
-          targetCharacter,
-          entry.mitigationText
-        );
-        addLog(
-          state,
-          `${source.name} deals ${applied} damage to ${target.name}.`
-        );
+        forEachTarget((targetMember, targetDefinition) => {
+          const applied = applyDamage(
+            state,
+            targetMember,
+            totalDamage,
+            entry.types,
+            targetDefinition,
+            entry.mitigationText
+          );
+          addLog(
+            state,
+            `${source.name} deals ${applied} damage to ${targetMember.name}.`
+          );
+        });
       }
     }
 
@@ -3321,24 +4167,45 @@ const resolveTextEffectsForTiming = (
     const spendInflict = parseSpendInflictLine(line);
     const statusChange = spendInflict ? null : parseStatusChange(line);
     if (statusChange && statusChange.amount > 0) {
-      if (!spendContext.skipAll) {
-        const recipient = statusChange.type === "inflict" ? target : source;
-        const recipientCharacter =
-          statusChange.type === "inflict" ? targetCharacter : sourceCharacter;
-        if (recipient.defeated) return;
-        if (statusChange.status === "Stagnate") {
-          applyStagnate(state, entry, statusChange.amount, characters, recipient.id);
-        } else {
-          applyStatusDelta(
-            recipient,
-            statusChange.status,
-            statusChange.amount,
-            undefined,
-            recipientCharacter
-          );
-          addLog(state, `${recipient.name} gains ${statusChange.amount} ${statusChange.status}.`);
-        }
+      if (statusChange.type === "inflict") {
+        forEachTarget((targetMember, targetDefinition) => {
+          if (statusChange.status === "Stagnate") {
+            applyStagnate(state, statusChange.amount, characters, targetMember.id);
+          } else {
+            applyStatusDelta(
+              targetMember,
+              statusChange.status,
+              statusChange.amount,
+              undefined,
+              targetDefinition
+            );
+            addLog(
+              state,
+              `${targetMember.name} gains ${statusChange.amount} ${statusChange.status}.`
+            );
+          }
+        });
+        return;
       }
+      if (statusChange.status === "Stagnate") {
+        applyStagnate(state, statusChange.amount, characters, source.id);
+      } else {
+        applyStatusDelta(
+          source,
+          statusChange.status,
+          statusChange.amount,
+          undefined,
+          sourceCharacter
+        );
+        addLog(state, `${source.name} gains ${statusChange.amount} ${statusChange.status}.`);
+      }
+    }
+
+    const purge = parsePurgeLine(line);
+    if (purge) {
+      forEachTarget((targetMember) => {
+        applyPurgeInstruction(state, source, targetMember, purge, characters);
+      });
     }
 
   });
@@ -3352,25 +4219,53 @@ const resolveEffectsForTiming = (
   isHit: boolean,
   characters: Character[]
 ) => {
+  if (entry.negated) return;
   const source = getMatchCharacter(state, entry.sourceId);
   const target = getMatchCharacter(state, entry.targetId);
   if (!source || !target) return;
   const sourceCharacter = getCharacterById(characters, source.characterId);
-  const targetCharacter = getCharacterById(characters, target.characterId);
+  const areaTargets = getAreaTargetsForEntry(state, entry);
   const spendContext = resolveSpendContext(state, entry, timing, characters);
-  resolveTextMetaEffects(state, entry, timing, characters, spendContext);
+  resolveTextMetaEffects(state, entry, timing, characters, spendContext, areaTargets);
 
   if (entry.effects && entry.effects.length > 0) {
     const snapshot = snapshotStatuses(state);
     if (!spendContext.skipAll) {
-      resolveStructuredEffects(state, entry, power, timing, isHit, characters, snapshot, spendContext);
+      resolveStructuredEffects(
+        state,
+        entry,
+        power,
+        timing,
+        isHit,
+        characters,
+        snapshot,
+        areaTargets,
+        spendContext
+      );
     }
   } else {
-    resolveTextEffectsForTiming(state, entry, power, timing, isHit, characters, spendContext);
+    resolveTextEffectsForTiming(
+      state,
+      entry,
+      power,
+      timing,
+      isHit,
+      characters,
+      spendContext,
+      areaTargets
+    );
   }
 
   pruneStatuses(source, sourceCharacter);
-  pruneStatuses(target, targetCharacter);
+  const prunedTargets = new Set(areaTargets);
+  prunedTargets.add(entry.targetId);
+  prunedTargets.delete(source.id);
+  prunedTargets.forEach((targetId) => {
+    const targetMember = getMatchCharacter(state, targetId);
+    if (!targetMember) return;
+    const targetDefinition = getCharacterById(characters, targetMember.characterId);
+    pruneStatuses(targetMember, targetDefinition);
+  });
 };
 
 const estimateDamageForTiming = (
@@ -3380,6 +4275,7 @@ const estimateDamageForTiming = (
   timing: Effect["timing"],
   characters: Character[]
 ) => {
+  if (entry.negated) return 0;
   const spendContext = resolveSpendContext(state, entry, timing, characters, { preview: true });
   if (entry.effects && entry.effects.length > 0) {
     if (spendContext.skipAll || spendContext.skipDamage) return 0;
@@ -3447,6 +4343,8 @@ const resolveUse = (
   const source = getMatchCharacter(state, entry.sourceId);
   const target = getMatchCharacter(state, entry.targetId);
   if (!source || !target) return;
+  entry.redirected = false;
+  const originalTargetId = entry.targetId;
 
   const power =
     options?.powerOverride ??
@@ -3465,34 +4363,63 @@ const resolveUse = (
     }
   }
 
+  if (entry.negated) {
+    addLog(state, `${source.name}'s ${entry.cardName} is negated.`);
+    entry.negated = false;
+    return;
+  }
+
   if (!cancelled) {
-    addLog(state, `${source.name} uses ${entry.cardName}.`);
-    if (getActionType(entry.types) === "attack") {
-      const targetText = entry.targetText?.toLowerCase() ?? "";
-      if (
-        targetText.includes("enemy") &&
-        !targetText.includes("all") &&
-        !targetText.includes("random") &&
-        entry.targetId !== entry.sourceId
-      ) {
-        const targetCharacter = getCharacterById(characters, target.characterId);
-        const cover = getActiveStatusState(target, "Cover", targetCharacter);
-        if (cover && cover.value > 0) {
-          applyStatusStatDelta(target, "Cover", -1, "value", targetCharacter);
-          addLog(state, `${target.name} uses Cover to redirect the attack.`);
+    if (!entry.redirected) {
+      const redirectCandidates = getRedirectCandidates(state, entry, characters);
+      const preferred = entry.redirectTargetId
+        ? redirectCandidates.find((candidate) => candidate.targetId === entry.redirectTargetId) ??
+          null
+        : null;
+      const chosen = preferred ?? redirectCandidates[0] ?? null;
+      if (chosen && chosen.targetId !== entry.targetId) {
+        const redirectTarget = getMatchCharacter(state, chosen.targetId);
+        const previousTarget = getMatchCharacter(state, entry.targetId);
+        entry.targetId = chosen.targetId;
+        entry.redirected = true;
+        if (chosen.source === "cover" && redirectTarget && chosen.status) {
+          const redirectCharacter = getCharacterById(characters, redirectTarget.characterId);
+          if (redirectCharacter) {
+            applyStatusStatDelta(
+              redirectTarget,
+              chosen.status,
+              -1,
+              "value",
+              redirectCharacter
+            );
+            addLog(
+              state,
+              `${redirectTarget.name} uses Cover to redirect the attack from ${previousTarget?.name ?? "an ally"}.`
+            );
+          }
+        } else if (redirectTarget) {
+          addLog(
+            state,
+            `${source.name} redirects ${entry.cardName} from ${previousTarget?.name ?? "the target"} to ${redirectTarget.name}.`
+          );
         }
       }
     }
+
+    addLog(state, `${source.name} uses ${entry.cardName}.`);
     resolveEffectsForTiming(state, entry, power, "before_use", isHit, characters);
     resolveEffectsForTiming(state, entry, power, "on_use", isHit, characters);
     if (isHit) {
       resolveEffectsForTiming(state, entry, power, "on_hit", true, characters);
       if (getActionType(entry.types) === "attack") {
-        const targetCharacter = getCharacterById(characters, target.characterId);
-        const thorns = getActiveStatusState(target, "Thorns", targetCharacter);
-        if (thorns && thorns.potency > 0) {
-          const sourceCharacter = getCharacterById(characters, source.characterId);
-          applyStatusDamage(state, source.id, thorns.potency, "Thorns", sourceCharacter);
+        const hitTarget = getMatchCharacter(state, entry.targetId);
+        if (hitTarget) {
+          const targetCharacter = getCharacterById(characters, hitTarget.characterId);
+          const thorns = getActiveStatusState(hitTarget, "Thorns", targetCharacter);
+          if (thorns && thorns.potency > 0) {
+            const sourceCharacter = getCharacterById(characters, source.characterId);
+            applyStatusDamage(state, source.id, thorns.potency, "Thorns", sourceCharacter);
+          }
         }
       }
     }
@@ -3509,6 +4436,10 @@ const resolveUse = (
       flags.bankaiHitUsed = true;
       addLog(state, `${source.name} gains 1 Reiatsu from Bankai.`);
     }
+  }
+
+  if (entry.targetId !== originalTargetId) {
+    entry.targetId = originalTargetId;
   }
 
   if (!cancelled) {
@@ -3592,6 +4523,17 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
     const rightPower = getModifiedEntryPower(state, right, rightType, characters);
     const leftPower = getModifiedEntryPower(state, left, leftType, characters);
 
+    const rightNegates = !right.negated && hasNegateText(right);
+    const leftNegates = !left.negated && hasNegateText(left);
+    if (rightNegates && !left.negated) {
+      left.negated = true;
+      addLog(state, `${right.cardName} negates ${left.cardName}.`);
+    }
+    if (leftNegates && !right.negated) {
+      right.negated = true;
+      addLog(state, `${left.cardName} negates ${right.cardName}.`);
+    }
+
     resolveEffectsForTiming(state, right, rightPower, "before_clash", false, characters);
     resolveEffectsForTiming(state, left, leftPower, "before_clash", false, characters);
 
@@ -3642,13 +4584,15 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
 
       const defenseCancelled = Boolean(defense.cancelledBeforeUse);
       const defenseKeywords = defenseCancelled
-        ? { evade: false, reuse: false, followUp: false, assistAttack: false }
+        ? { evade: false, counter: false, reuse: false, followUp: false, assistAttack: false }
         : getEntryKeywordFlags(defense);
       const attackKeywords = getEntryKeywordFlags(attack);
       let attackIsHit = true;
       let defenseReuse = false;
 
-      if (defenseKeywords.evade) {
+      const requiresZeroDamageCheck = defenseKeywords.evade || defenseKeywords.counter;
+      let damageAfterShield: number | null = null;
+      if (requiresZeroDamageCheck) {
         const attackDamage = estimateDamageForTiming(
           state,
           attack,
@@ -3658,10 +4602,24 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
         );
         const attackTarget = getMatchCharacter(state, attack.targetId);
         const targetShield = attackTarget?.shield ?? 0;
-        const damageAfterShield = Math.max(attackDamage - targetShield, 0);
-        if (damageAfterShield === 0) {
-          attackIsHit = false;
-          defenseReuse = true;
+        damageAfterShield = Math.max(attackDamage - targetShield, 0);
+      }
+
+      if (defenseKeywords.evade && damageAfterShield === 0) {
+        attackIsHit = false;
+        defenseReuse = true;
+      }
+
+      if (!defenseCancelled && defenseKeywords.counter && damageAfterShield === 0) {
+        const defender = getMatchCharacter(state, defense.sourceId);
+        const attacker = getMatchCharacter(state, attack.sourceId);
+        if (defender && attacker) {
+          state.counterWindow = {
+            by: defense.playedBy,
+            targetId: attacker.id,
+            validForAction: (state.actionId ?? 0) + 1,
+          };
+          addLog(state, `${defender.name} can Counter ${attacker.name}.`);
         }
       }
 
@@ -3820,7 +4778,7 @@ export const createMatchState = (
 
   const state: MatchState = {
     turn: 1,
-    phase: "combat",
+    phase: "movement",
     actionId: 0,
     initiativePlayerId: "p1",
     activePlayerId: "p1",
@@ -3832,6 +4790,7 @@ export const createMatchState = (
       slow: { zone: "slow", cards: [], passCount: 0 },
     },
     lineSize: defaultLineSize,
+    movementPassCount: 0,
     players: {
       p1: {
         id: "p1",
@@ -3918,6 +4877,7 @@ export const createMatchState = (
   addLog(state, `Turn 1 begins. ${state.players.p1.name} has initiative.`);
   applyTurnStartEffects(state, "p1", characters, { resolveStun: true });
   applyTurnStartEffects(state, "p2", characters, { resolveStun: false });
+  addLog(state, "Movement Round begins.");
   return state;
 };
 
@@ -3929,6 +4889,9 @@ export const applyAction = (
   if (state.phase === "finished") return { state };
   const next = cloneState(state);
   next.actionId = (next.actionId ?? 0) + 1;
+  if (next.counterWindow && next.counterWindow.validForAction < next.actionId) {
+    next.counterWindow = undefined;
+  }
 
   const finalize = (error?: string) => {
     recordTranscriptEntry(next, action, error);
@@ -3945,6 +4908,9 @@ export const applyAction = (
   }
 
   if (action.type === "play_card") {
+    if (next.phase === "movement") {
+      return finalize("Movement Round in progress.");
+    }
     const team = next.players[action.playerId];
     let card: Card | null = null;
     let cardInstance: CardInstance | null = null;
@@ -4003,9 +4969,15 @@ export const applyAction = (
       characters
     );
 
+    const counterWindow =
+      next.counterWindow && next.counterWindow.validForAction === next.actionId
+        ? next.counterWindow
+        : null;
+    const isOutOfTurn = action.playerId !== next.activePlayerId;
+    const counterAllowed = Boolean(isOutOfTurn && counterWindow && counterWindow.by === action.playerId);
     const outOfTurnAllowed =
-      action.playerId !== next.activePlayerId &&
-      canPlayAfterUse(next, action.playerId, resolvedCard, sourceMember.id, characters);
+      isOutOfTurn &&
+      (counterAllowed || canPlayAfterUse(next, resolvedCard, sourceMember.id, characters));
     if (action.playerId !== next.activePlayerId && !outOfTurnAllowed) {
       return finalize("Not your turn.");
     }
@@ -4038,20 +5010,22 @@ export const applyAction = (
       resolvedCard.effects?.filter((effect) => effect.type === "choose") ?? [];
     const textChoices = choiceEffects.length ? [] : getTextChoiceOptions(resolvedCard.effect);
     if (choiceEffects.length) {
-      if (action.choiceIndex === undefined || !Number.isInteger(action.choiceIndex)) {
+      const choiceIndex = action.choiceIndex;
+      if (choiceIndex === undefined || !Number.isInteger(choiceIndex)) {
         return finalize("Choice required.");
       }
       const invalidChoice = choiceEffects.some(
-        (effect) => action.choiceIndex < 0 || action.choiceIndex >= effect.options.length
+        (effect) => choiceIndex < 0 || choiceIndex >= effect.options.length
       );
       if (invalidChoice) {
         return finalize("Invalid choice.");
       }
     } else if (textChoices.length) {
-      if (action.choiceIndex === undefined || !Number.isInteger(action.choiceIndex)) {
+      const choiceIndex = action.choiceIndex;
+      if (choiceIndex === undefined || !Number.isInteger(choiceIndex)) {
         return finalize("Choice required.");
       }
-      if (action.choiceIndex < 0 || action.choiceIndex >= textChoices.length) {
+      if (choiceIndex < 0 || choiceIndex >= textChoices.length) {
         return finalize("Invalid choice.");
       }
     }
@@ -4080,11 +5054,16 @@ export const applyAction = (
     if (!legalTargets.length) {
       return finalize("No legal targets.");
     }
-    const targetId = action.targetId && legalTargets.includes(action.targetId)
-      ? action.targetId
-      : legalTargets.includes(initialTargetId)
-        ? initialTargetId
-        : legalTargets[0];
+    const forcedCounterTarget = counterAllowed ? counterWindow?.targetId : null;
+    if (forcedCounterTarget && !legalTargets.includes(forcedCounterTarget)) {
+      return finalize("Counter must target the attacker.");
+    }
+    const targetId = forcedCounterTarget
+      ?? (action.targetId && legalTargets.includes(action.targetId)
+        ? action.targetId
+        : legalTargets.includes(initialTargetId)
+          ? initialTargetId
+          : legalTargets[0]);
     if (!legalTargets.includes(targetId)) {
       return finalize("Illegal target.");
     }
@@ -4115,7 +5094,6 @@ export const applyAction = (
       ? getFollowUpCostAdjustment(resolvedCard.effect)
       : 0;
     const adjustedTotals = getAdjustedCostTotals(
-      team,
       sourceMember,
       sourceCharacter,
       cost,
@@ -4177,6 +5155,12 @@ export const applyAction = (
       targetText: resolvedCard.target,
       xValue,
       choiceIndex: action.choiceIndex,
+      redirectTargetId: action.redirectTargetId,
+      scryDiscardIds: action.scryDiscardIds,
+      scryOrderIds: action.scryOrderIds,
+      seekTakeIds: action.seekTakeIds,
+      searchPickId: action.searchPickId,
+      pushDirection: action.pushDirection,
       cardInstanceId: cardInstance?.id,
       cardInstance: cardInstance ?? undefined,
     };
@@ -4201,7 +5185,51 @@ export const applyAction = (
     return finalize();
   }
 
+  if (action.type === "move_swap") {
+    if (next.phase !== "movement") {
+      return finalize("Movement Round is not active.");
+    }
+    const team = next.players[action.playerId];
+    if (team.energy < 1) {
+      return finalize("Insufficient energy for a movement swap.");
+    }
+    const first = team.characters.find((member) => member.id === action.firstId);
+    const second = team.characters.find((member) => member.id === action.secondId);
+    if (!first || !second) {
+      return finalize("Movement swap targets must be allied characters.");
+    }
+    if (!areAdjacent(first.position, second.position)) {
+      return finalize("Movement swaps require adjacent allies.");
+    }
+
+    team.energy -= 1;
+    addLog(next, `${team.name} spends 1 Energy to attempt a swap.`);
+    const swapped = trySwapAllies(next, action.playerId, first.id, second.id, characters);
+    if (swapped) {
+      addLog(next, `${first.name} swaps positions with ${second.name}.`);
+    }
+
+    next.movementPassCount = 0;
+    next.activePlayerId = getOpponentId(action.playerId);
+    return finalize();
+  }
+
   if (action.type === "pass") {
+    if (next.phase === "movement") {
+      const player = next.players[action.playerId];
+      next.movementPassCount += 1;
+      addLog(next, `${player.name} passes movement priority.`);
+      if (next.movementPassCount >= 2) {
+        next.phase = "combat";
+        next.movementPassCount = 0;
+        next.activePlayerId = next.initiativePlayerId;
+        addLog(next, "Movement Round ends.");
+      } else {
+        next.activePlayerId = getOpponentId(action.playerId);
+      }
+      return finalize();
+    }
+
     if (!next.activeZone) {
       return finalize("No active zone to pass.");
     }
@@ -4234,6 +5262,9 @@ export const applyAction = (
   }
 
   if (action.type === "end_turn") {
+    if (next.phase === "movement") {
+      return finalize("Cannot end the turn during the Movement Round.");
+    }
     if (action.playerId !== next.initiativePlayerId) {
       return finalize("Only the initiative player can end the turn.");
     }

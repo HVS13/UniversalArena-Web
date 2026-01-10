@@ -5,6 +5,7 @@ import {
   exportTranscript,
   replayTranscript,
   type Action,
+  type MatchCharacterId,
   type MatchState,
   type PlayerId,
   type ZoneName,
@@ -17,6 +18,10 @@ type GoldenResult = {
 };
 
 const goldenSeed = 424242;
+const movementPassActions = [
+  { action: { type: "pass", playerId: "p1" } },
+  { action: { type: "pass", playerId: "p2" } },
+] as const;
 
 const fillerIds = ["filler-1", "filler-2"] as const;
 
@@ -214,6 +219,18 @@ const createSeededState = (
     enableTranscript: true,
   });
 
+const completeMovementRound = (state: MatchState, characters: Character[]) => {
+  if (state.phase !== "movement") return state;
+  let updated = applyOrThrow(state, { type: "pass", playerId: state.activePlayerId }, characters);
+  updated = applyOrThrow(updated, { type: "pass", playerId: updated.activePlayerId }, characters);
+  return updated;
+};
+
+const createSeededCombatState = (
+  characters: Character[],
+  players: { id: PlayerId; name: string; characterIds: string[] }[]
+) => completeMovementRound(createSeededState(characters, players), characters);
+
 const applyOrThrow = (
   state: MatchState,
   action: Action,
@@ -276,6 +293,20 @@ const playFromHand = (
   return { type: "play_card" as const, playerId, cardInstanceId, zone };
 };
 
+const playFromHandAtTarget = (
+  state: MatchState,
+  playerId: PlayerId,
+  cardSlot: string,
+  zone: ZoneName,
+  targetId: MatchCharacterId
+) => {
+  const cardInstanceId = ensureCardInHand(state, playerId, cardSlot);
+  if (!cardInstanceId) {
+    throw new Error(`Missing card instance for ${playerId} slot ${cardSlot}.`);
+  }
+  return { type: "play_card" as const, playerId, cardInstanceId, zone, targetId };
+};
+
 const snapshotStatuses = (state: MatchState, playerId: PlayerId, names: string[]) => {
   const primary = getPrimary(state, playerId);
   return Object.fromEntries(
@@ -295,6 +326,11 @@ const snapshotStatuses = (state: MatchState, playerId: PlayerId, names: string[]
     })
   );
 };
+
+const snapshotPositions = (state: MatchState, playerId: PlayerId) =>
+  Object.fromEntries(
+    state.players[playerId].characters.map((member) => [member.id, member.position])
+  );
 
 const countCardSlots = (player: MatchState["players"][PlayerId]) => {
   const counts: Record<string, number> = {};
@@ -361,6 +397,7 @@ const runInterruptChainTest = (): GoldenResult => {
     seed: goldenSeed,
     enableTranscript: true,
   });
+  state = completeMovementRound(state, characters);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "slow"), characters);
   state = applyOrThrow(state, playFromHand(state, "p2", "2", "normal"), characters);
@@ -379,6 +416,7 @@ const runInterruptChainTest = (): GoldenResult => {
       seed: goldenSeed,
       players: goldenPlayers,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "slow", hasCardInstance: true } },
         { action: { type: "play_card", playerId: "p2", zone: "normal", hasCardInstance: true } },
         { action: { type: "play_card", playerId: "p1", zone: "fast", hasCardInstance: true } },
@@ -407,7 +445,7 @@ const runInterruptChainTest = (): GoldenResult => {
 
 const runCancelledAlwaysTest = (): GoldenResult => {
   const characters = goldenCharacters();
-  let state = createSeededState(characters, goldenPlayers);
+  let state = createSeededCombatState(characters, goldenPlayers);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "4", "normal"), characters);
   state = applyOrThrow(state, playFromHand(state, "p2", "4", "normal"), characters);
@@ -438,6 +476,7 @@ const runCancelledAlwaysTest = (): GoldenResult => {
       seed: goldenSeed,
       players: goldenPlayers,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
         { action: { type: "play_card", playerId: "p2", zone: "normal", hasCardInstance: true } },
         { action: { type: "pass", playerId: "p1" } },
@@ -558,7 +597,7 @@ const runCannotPlayTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   state = applyOrThrow(state, playFromHand(state, "p2", "1", "fast"), characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
@@ -683,7 +722,7 @@ const runTimingWindowsTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   const afterPlay = snapshotStatuses(state, "p1", [
@@ -733,6 +772,7 @@ const runTimingWindowsTest = (): GoldenResult => {
       seed: goldenSeed,
       players,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
         { action: { type: "play_card", playerId: "p2", zone: "normal", hasCardInstance: true } },
         { action: { type: "pass", playerId: "p1" } },
@@ -832,7 +872,7 @@ const runStatusExpiryTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
@@ -875,6 +915,7 @@ const runStatusExpiryTest = (): GoldenResult => {
       seed: goldenSeed,
       players,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
         { action: { type: "pass", playerId: "p2" } },
         { action: { type: "pass", playerId: "p1" } },
@@ -966,7 +1007,7 @@ const runCostSpeedModifierTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "fast"), characters);
 
   const snapshot = {
@@ -989,6 +1030,7 @@ const runCostSpeedModifierTest = (): GoldenResult => {
       seed: goldenSeed,
       players,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "fast", hasCardInstance: true } },
       ],
     },
@@ -1079,7 +1121,7 @@ const runMitigationStackingTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
@@ -1097,6 +1139,7 @@ const runMitigationStackingTest = (): GoldenResult => {
       seed: goldenSeed,
       players,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
         { action: { type: "pass", playerId: "p2" } },
         { action: { type: "pass", playerId: "p1" } },
@@ -1196,7 +1239,7 @@ const runSpendFlowTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
   const cardInstanceId = ensureCardInHand(state, "p1", "1");
   if (!cardInstanceId) {
     return { label: "Spend and hand flow stays consistent", ok: false, details: "Card missing." };
@@ -1233,6 +1276,7 @@ const runSpendFlowTest = (): GoldenResult => {
       seed: goldenSeed,
       players,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
         { action: { type: "pass", playerId: "p2" } },
         { action: { type: "pass", playerId: "p1" } },
@@ -1377,7 +1421,7 @@ const runHealingReductionTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
@@ -1432,6 +1476,7 @@ const runHealingReductionTest = (): GoldenResult => {
       seed: goldenSeed,
       players,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
         { action: { type: "pass", playerId: "p2" } },
         { action: { type: "pass", playerId: "p1" } },
@@ -1532,7 +1577,7 @@ const runThornsOnHitTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "slow"), characters);
   state = applyOrThrow(state, playFromHand(state, "p2", "1", "fast"), characters);
@@ -1559,6 +1604,7 @@ const runThornsOnHitTest = (): GoldenResult => {
       seed: goldenSeed,
       players,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "slow", hasCardInstance: true } },
         { action: { type: "play_card", playerId: "p2", zone: "fast", hasCardInstance: true } },
         { action: { type: "pass", playerId: "p1" } },
@@ -1747,7 +1793,7 @@ const runTurnEndDecayTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
@@ -1794,6 +1840,7 @@ const runTurnEndDecayTest = (): GoldenResult => {
       seed: goldenSeed,
       players,
       actions: [
+        ...movementPassActions,
         { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
         { action: { type: "pass", playerId: "p2" } },
         { action: { type: "pass", playerId: "p1" } },
@@ -1833,6 +1880,1769 @@ const runTurnEndDecayTest = (): GoldenResult => {
   } catch (error) {
     return {
       label: "Turn End decay applies to newly added statuses",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runCreatedCardDestinationTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Creator", characterIds: withFillersIds("create-a") },
+    { id: "p2" as const, name: "Witness", characterIds: withFillersIds("create-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "create-a",
+      name: "Create Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Created card default destination coverage.",
+      art: "create-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Forge Token",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Create 1 Test Token."],
+          effects: [
+            {
+              timing: "on_use",
+              type: "create_card",
+              cardName: "Test Token",
+              count: { kind: "flat", value: 1 },
+            },
+          ],
+        },
+      ],
+      createdCards: [
+        {
+          slot: "token",
+          name: "Test Token",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Basic", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Innate."],
+        },
+      ],
+    },
+    {
+      id: "create-b",
+      name: "Create Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Created card target dummy.",
+      art: "create-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+  const createdInDiscard = state.players.p1.discard.filter((card) => card.cardSlot === "token")
+    .length;
+  const createdInHand = state.players.p1.hand.some((card) => card.cardSlot === "token");
+  const snapshot = {
+    createdInDiscard,
+    createdInHand,
+    transcript: snapshotTranscript(state),
+  };
+  const expected = {
+    createdInDiscard: 1,
+    createdInHand: false,
+    transcript: {
+      version: 2,
+      seed: goldenSeed,
+      players,
+      actions: [
+        ...movementPassActions,
+        { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
+        { action: { type: "pass", playerId: "p2" } },
+        { action: { type: "pass", playerId: "p1" } },
+      ],
+    },
+  };
+
+  const replayState = runReplaySnapshot(characters, state);
+  const replaySnapshot = {
+    createdInDiscard: replayState.players.p1.discard.filter(
+      (card) => card.cardSlot === "token"
+    ).length,
+    createdInHand: replayState.players.p1.hand.some((card) => card.cardSlot === "token"),
+  };
+  const expectedReplay = {
+    createdInDiscard: expected.createdInDiscard,
+    createdInHand: expected.createdInHand,
+  };
+
+  try {
+    assertSnapshot("Created card destination snapshot", snapshot, expected);
+    assertSnapshot("Created card destination replay", replaySnapshot, expectedReplay);
+    return { label: "Created cards default to discard when no destination is specified", ok: true };
+  } catch (error) {
+    return {
+      label: "Created cards default to discard when no destination is specified",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runNegatedTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Striker", characterIds: withFillersIds("negate-a") },
+    { id: "p2" as const, name: "Guard", characterIds: withFillersIds("negate-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "negate-a",
+      name: "Negate Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Negated coverage.",
+      art: "negate-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Heavy Strike",
+          cost: "0 Energy",
+          power: "8-8",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+        },
+      ],
+    },
+    {
+      id: "negate-b",
+      name: "Negate Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Negated coverage.",
+      art: "negate-bravo.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Negating Guard",
+          cost: "0 Energy",
+          power: "8-8",
+          types: ["Basic", "Defense", "Physical"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Negate.", "Gain Power Shield."],
+          effects: [{ timing: "on_use", type: "gain_shield", amount: { kind: "power" } }],
+        },
+      ],
+    },
+  ];
+
+  const seededCharacters = withFillers(characters);
+  let state = createSeededCombatState(seededCharacters, players);
+  state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
+  state = applyOrThrow(state, playFromHand(state, "p2", "1", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+
+  const snapshot = {
+    negatedLog: state.log.some((line) => line.includes("negates")),
+    p2Hp: state.players.p2.characters[0]?.hp ?? 0,
+    p2Shield: state.players.p2.characters[0]?.shield ?? 0,
+    transcript: snapshotTranscript(state),
+  };
+  const expected = {
+    negatedLog: true,
+    p2Hp: 100,
+    p2Shield: 8,
+    transcript: {
+      version: 2,
+      seed: goldenSeed,
+      players,
+      actions: [
+        ...movementPassActions,
+        { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
+        { action: { type: "play_card", playerId: "p2", zone: "normal", hasCardInstance: true } },
+        { action: { type: "pass", playerId: "p1" } },
+        { action: { type: "pass", playerId: "p2" } },
+      ],
+    },
+  };
+
+  const replayState = runReplaySnapshot(characters, state);
+  const replaySnapshot = {
+    negatedLog: replayState.log.some((line) => line.includes("negates")),
+    p2Hp: replayState.players.p2.characters[0]?.hp ?? 0,
+    p2Shield: replayState.players.p2.characters[0]?.shield ?? 0,
+  };
+  const expectedReplay = {
+    negatedLog: expected.negatedLog,
+    p2Hp: expected.p2Hp,
+    p2Shield: expected.p2Shield,
+  };
+
+  try {
+    assertSnapshot("Negated snapshot", snapshot, expected);
+    assertSnapshot("Negated replay", replaySnapshot, expectedReplay);
+    return { label: "Negated cards skip all effects", ok: true };
+  } catch (error) {
+    return { label: "Negated cards skip all effects", ok: false, details: String(error) };
+  }
+};
+
+const runRedirectTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Redirector", characterIds: withFillersIds("redirect-a") },
+    { id: "p2" as const, name: "Witness", characterIds: withFillersIds("redirect-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "redirect-a",
+      name: "Redirect Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Redirect coverage.",
+      art: "redirect-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Redirect Blessing",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "1 Ally",
+          speed: "Normal",
+          effect: ["Before Use: Redirect (Self).", "Gain 1 Strength."],
+          effects: [
+            {
+              timing: "on_use",
+              type: "inflict_status",
+              status: "Strength",
+              amount: { kind: "flat", value: 1 },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: "redirect-b",
+      name: "Redirect Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Redirect coverage.",
+      art: "redirect-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  const seededCharacters = withFillers(characters);
+  let state = createSeededCombatState(seededCharacters, players);
+  const allyTarget = state.players.p1.characters[1]?.id ?? state.players.p1.characters[0].id;
+  state = applyOrThrow(
+    state,
+    playFromHandAtTarget(state, "p1", "1", "normal", allyTarget),
+    seededCharacters
+  );
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, seededCharacters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, seededCharacters);
+
+  const snapshot = {
+    redirectLog: state.log.some((line) => line.includes("redirects")),
+    sourceStrength: snapshotStatuses(state, "p1", ["Strength"]),
+    allyStrength: Object.fromEntries(
+      state.players.p1.characters.slice(1).map((member) => [
+        member.id,
+        member.statuses["Strength"]?.potency ?? 0,
+      ])
+    ),
+    transcript: snapshotTranscript(state),
+  };
+  const expected = {
+    redirectLog: true,
+    sourceStrength: {
+      Strength: { potency: 1, count: 1, stack: 0, value: 0 },
+    },
+    allyStrength: Object.fromEntries(
+      state.players.p1.characters.slice(1).map((member) => [member.id, 0])
+    ),
+    transcript: {
+      version: 2,
+      seed: goldenSeed,
+      players,
+      actions: [
+        ...movementPassActions,
+        { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
+        { action: { type: "pass", playerId: "p2" } },
+        { action: { type: "pass", playerId: "p1" } },
+      ],
+    },
+  };
+
+  const replayState = runReplaySnapshot(characters, state);
+  const replaySnapshot = {
+    redirectLog: replayState.log.some((line) => line.includes("redirects")),
+    sourceStrength: snapshotStatuses(replayState, "p1", ["Strength"]),
+  };
+  const expectedReplay = {
+    redirectLog: expected.redirectLog,
+    sourceStrength: expected.sourceStrength,
+  };
+
+  try {
+    assertSnapshot("Redirect snapshot", snapshot, expected);
+    assertSnapshot("Redirect replay", replaySnapshot, expectedReplay);
+    return { label: "Redirect retargets single-target effects when legal", ok: true };
+  } catch (error) {
+    return {
+      label: "Redirect retargets single-target effects when legal",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runRedirectChoiceTest = (): GoldenResult => {
+  const players = [
+    {
+      id: "p1" as const,
+      name: "Attacker",
+      characterIds: ["redirect-choice-a", "redirect-choice-a-left", "redirect-choice-a-right"],
+    },
+    {
+      id: "p2" as const,
+      name: "Defenders",
+      characterIds: ["redirect-choice-b", "redirect-choice-b-left", "redirect-choice-b-right"],
+    },
+  ];
+  const characters: Character[] = [
+    {
+      id: "redirect-choice-a",
+      name: "Redirect Choice Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Redirect choice coverage.",
+      art: "redirect-choice-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Cover Breaker",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal 5 damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "flat", value: 5 } }],
+        },
+      ],
+    },
+    {
+      id: "redirect-choice-b",
+      name: "Redirect Choice Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Redirect choice coverage.",
+      art: "redirect-choice-bravo.png",
+      innates: [],
+      cards: [],
+    },
+    {
+      id: "redirect-choice-a-left",
+      name: "Redirect Choice Ally Left",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Redirect choice ally slot.",
+      art: "redirect-choice-ally-left.png",
+      innates: [],
+      cards: [],
+    },
+    {
+      id: "redirect-choice-a-right",
+      name: "Redirect Choice Ally Right",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Redirect choice ally slot.",
+      art: "redirect-choice-ally-right.png",
+      innates: [],
+      cards: [],
+    },
+    {
+      id: "redirect-choice-b-left",
+      name: "Redirect Choice Cover Left",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Redirect choice cover slot.",
+      art: "redirect-choice-cover-left.png",
+      innates: [],
+      cards: [],
+    },
+    {
+      id: "redirect-choice-b-right",
+      name: "Redirect Choice Cover Right",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Redirect choice cover slot.",
+      art: "redirect-choice-cover-right.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  const target = state.players.p2.characters[0];
+  const coverLeft = state.players.p2.characters[1];
+  const coverRight = state.players.p2.characters[2];
+  coverLeft.statuses["Cover"] = valueStatus(1);
+  coverRight.statuses["Cover"] = valueStatus(1);
+
+  const cardInstanceId = ensureCardInHand(state, "p1", "1");
+  if (!cardInstanceId) {
+    throw new Error("Missing card instance for redirect choice test.");
+  }
+  state = applyOrThrow(
+    state,
+    {
+      type: "play_card",
+      playerId: "p1",
+      cardInstanceId,
+      zone: "normal",
+      targetId: target.id,
+      redirectTargetId: coverRight.id,
+    },
+    characters
+  );
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+  const finalTarget = state.players.p2.characters[0];
+  const finalCoverLeft = state.players.p2.characters[1];
+  const finalCoverRight = state.players.p2.characters[2];
+  const snapshot = {
+    redirectLog: state.log.some((line) => line.includes("uses Cover to redirect")),
+    targetHp: finalTarget?.hp ?? 0,
+    coverLeftStatus: finalCoverLeft?.statuses["Cover"]?.value ?? 0,
+    coverRightStatus: finalCoverRight?.statuses["Cover"]?.value ?? 0,
+    coverLeftHp: finalCoverLeft?.hp ?? 0,
+    coverRightHp: finalCoverRight?.hp ?? 0,
+  };
+  const expected = {
+    redirectLog: true,
+    targetHp: 100,
+    coverLeftStatus: 1,
+    coverRightStatus: 0,
+    coverLeftHp: 100,
+    coverRightHp: 95,
+  };
+
+  try {
+    assertSnapshot("Redirect choice snapshot", snapshot, expected);
+    return { label: "Redirect choice honors the selected Cover target", ok: true };
+  } catch (error) {
+    return {
+      label: "Redirect choice honors the selected Cover target",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runDeckManipulationTest = (): GoldenResult => {
+  const basePlayers = [
+    { id: "p1" as const, name: "Decker", characterIds: withFillersIds("deck-a") },
+    { id: "p2" as const, name: "Watcher", characterIds: withFillersIds("deck-b") },
+  ];
+
+  const setDeckOrder = (state: MatchState, playerId: PlayerId, slots: string[]) => {
+    const deck = [...state.players[playerId].deck];
+    const ordered: typeof deck = [];
+    slots.forEach((slot) => {
+      const index = deck.findIndex((card) => card.cardSlot === slot);
+      if (index >= 0) {
+        ordered.push(deck.splice(index, 1)[0]);
+      }
+    });
+    state.players[playerId].deck = [...ordered, ...deck];
+  };
+
+  const scryCharacters: Character[] = [
+    {
+      id: "deck-a",
+      name: "Deck Scryer",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Scry coverage.",
+      art: "deck-scry.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Scry Action",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Scry 2."],
+        },
+        {
+          slot: "2",
+          name: "Attack A",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "3",
+          name: "Attack B",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "4",
+          name: "Attack C",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "5",
+          name: "Attack D",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+      ],
+    },
+    {
+      id: "deck-b",
+      name: "Deck Witness",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Deck coverage.",
+      art: "deck-witness.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let scryState = createSeededCombatState(scryCharacters, basePlayers);
+  scryState.players.p1.deck.push(...scryState.players.p1.hand);
+  scryState.players.p1.hand = [];
+  ensureCardInHand(scryState, "p1", "1");
+  setDeckOrder(scryState, "p1", ["2", "3", "4", "5"]);
+  const scryBeforeDeck = scryState.players.p1.deck.map((card) => card.cardSlot);
+  scryState = applyOrThrow(scryState, playFromHand(scryState, "p1", "1", "normal"), scryCharacters);
+  scryState = applyOrThrow(scryState, { type: "pass", playerId: "p2" }, scryCharacters);
+  scryState = applyOrThrow(scryState, { type: "pass", playerId: "p1" }, scryCharacters);
+  const scryAfterDeck = scryState.players.p1.deck.map((card) => card.cardSlot);
+
+  const seekCharacters: Character[] = [
+    {
+      id: "deck-a",
+      name: "Deck Seeker",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Seek coverage.",
+      art: "deck-seek.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Seek Action",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Seek 3 (Attack, 2)."],
+        },
+        {
+          slot: "2",
+          name: "Attack A",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "3",
+          name: "Attack B",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "4",
+          name: "Guard",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Defense", "Physical"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Gain Power Shield."],
+        },
+        {
+          slot: "5",
+          name: "Special C",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Innate."],
+        },
+      ],
+    },
+    {
+      id: "deck-b",
+      name: "Deck Witness",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Deck coverage.",
+      art: "deck-witness.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let seekState = createSeededCombatState(seekCharacters, basePlayers);
+  seekState.players.p1.deck.push(...seekState.players.p1.hand);
+  seekState.players.p1.hand = [];
+  ensureCardInHand(seekState, "p1", "1");
+  setDeckOrder(seekState, "p1", ["4", "2", "3", "5"]);
+  seekState = applyOrThrow(seekState, playFromHand(seekState, "p1", "1", "normal"), seekCharacters);
+  seekState = applyOrThrow(seekState, { type: "pass", playerId: "p2" }, seekCharacters);
+  seekState = applyOrThrow(seekState, { type: "pass", playerId: "p1" }, seekCharacters);
+  const seekHandSlots = seekState.players.p1.hand.map((card) => card.cardSlot).sort();
+  const seekDiscardSlots = seekState.players.p1.discard
+    .map((card) => card.cardSlot)
+    .filter((slot) => slot !== "1")
+    .sort();
+  const seekDeckSlots = seekState.players.p1.deck.map((card) => card.cardSlot);
+
+  const searchCharacters: Character[] = [
+    {
+      id: "deck-a",
+      name: "Deck Searcher",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Search coverage.",
+      art: "deck-search.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Search Action",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Search your draw pile for Defense."],
+        },
+        {
+          slot: "2",
+          name: "Defense Card",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Defense", "Physical"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Gain Power Shield."],
+        },
+        {
+          slot: "3",
+          name: "Attack A",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "4",
+          name: "Special C",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Innate."],
+        },
+        {
+          slot: "5",
+          name: "Attack B",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+      ],
+    },
+    {
+      id: "deck-b",
+      name: "Deck Witness",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Deck coverage.",
+      art: "deck-witness.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let searchState = createSeededCombatState(searchCharacters, basePlayers);
+  searchState.players.p1.deck.push(...searchState.players.p1.hand);
+  searchState.players.p1.hand = [];
+  ensureCardInHand(searchState, "p1", "1");
+  setDeckOrder(searchState, "p1", ["3", "2", "4", "5"]);
+  searchState = applyOrThrow(searchState, playFromHand(searchState, "p1", "1", "normal"), searchCharacters);
+  searchState = applyOrThrow(searchState, { type: "pass", playerId: "p2" }, searchCharacters);
+  searchState = applyOrThrow(searchState, { type: "pass", playerId: "p1" }, searchCharacters);
+  const searchHandSlots = searchState.players.p1.hand.map((card) => card.cardSlot).sort();
+  const searchDeckSlots = searchState.players.p1.deck.map((card) => card.cardSlot).sort();
+
+  const snapshot = {
+    scryBeforeDeck,
+    scryAfterDeck,
+    seekHandSlots,
+    seekDiscardSlots,
+    seekDeckSlots,
+    searchHandSlots,
+    searchDeckSlots,
+  };
+  const expected = {
+    scryBeforeDeck: ["2", "3", "4", "5"],
+    scryAfterDeck: ["2", "3", "4", "5"],
+    seekHandSlots: ["2", "3"],
+    seekDiscardSlots: ["5"],
+    seekDeckSlots: ["4"],
+    searchHandSlots: ["2"],
+    searchDeckSlots: ["3", "4", "5"],
+  };
+
+  try {
+    assertSnapshot("Deck manipulation snapshot", snapshot, expected);
+    return { label: "Scry/Seek/Search manipulate the deck deterministically", ok: true };
+  } catch (error) {
+    return {
+      label: "Scry/Seek/Search manipulate the deck deterministically",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runScryChoiceTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Scryer", characterIds: withFillersIds("scry-choice-a") },
+    { id: "p2" as const, name: "Watcher", characterIds: withFillersIds("scry-choice-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "scry-choice-a",
+      name: "Scry Choice Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Scry choice coverage.",
+      art: "scry-choice-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Scry Options",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Scry 3."],
+        },
+        {
+          slot: "2",
+          name: "Attack A",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "3",
+          name: "Attack B",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "4",
+          name: "Attack C",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "5",
+          name: "Attack D",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+      ],
+    },
+    {
+      id: "scry-choice-b",
+      name: "Scry Choice Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Scry choice coverage.",
+      art: "scry-choice-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  state.players.p1.deck.push(...state.players.p1.hand);
+  state.players.p1.hand = [];
+  ensureCardInHand(state, "p1", "1");
+  const orderedSlots = ["2", "3", "4", "5"];
+  const deckMap = new Map(state.players.p1.deck.map((card) => [card.cardSlot, card]));
+  state.players.p1.deck = orderedSlots
+    .map((slot) => deckMap.get(slot))
+    .filter((card): card is NonNullable<typeof card> => Boolean(card));
+
+  const slot3 = deckMap.get("3");
+  const slot4 = deckMap.get("4");
+  const slot5 = deckMap.get("5");
+  if (!slot3 || !slot4 || !slot5) {
+    throw new Error("Missing scry choice deck cards.");
+  }
+
+  const cardInstanceId = ensureCardInHand(state, "p1", "1");
+  if (!cardInstanceId) {
+    throw new Error("Missing card instance for scry choice test.");
+  }
+  state = applyOrThrow(
+    state,
+    {
+      type: "play_card",
+      playerId: "p1",
+      cardInstanceId,
+      zone: "normal",
+      scryDiscardIds: [slot4.id],
+      scryOrderIds: [slot5.id, slot3.id],
+    },
+    characters
+  );
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+  const snapshot = {
+    deckSlots: state.players.p1.deck.map((card) => card.cardSlot),
+    discardSlots: state.players.p1.discard.map((card) => card.cardSlot).sort(),
+  };
+  const expected = {
+    deckSlots: ["2", "3", "5"],
+    discardSlots: ["1", "4"],
+  };
+
+  try {
+    assertSnapshot("Scry choice snapshot", snapshot, expected);
+    return { label: "Scry choice applies discard and reorder selections", ok: true };
+  } catch (error) {
+    return {
+      label: "Scry choice applies discard and reorder selections",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runSeekChoiceTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Seeker", characterIds: withFillersIds("seek-choice-a") },
+    { id: "p2" as const, name: "Watcher", characterIds: withFillersIds("seek-choice-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "seek-choice-a",
+      name: "Seek Choice Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Seek choice coverage.",
+      art: "seek-choice-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Seek Options",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Seek 3 (Attack, 2)."],
+        },
+        {
+          slot: "2",
+          name: "Attack A",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "3",
+          name: "Attack B",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+        {
+          slot: "4",
+          name: "Guard",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Defense", "Physical"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Gain Power Shield."],
+        },
+        {
+          slot: "5",
+          name: "Attack C",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+      ],
+    },
+    {
+      id: "seek-choice-b",
+      name: "Seek Choice Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Seek choice coverage.",
+      art: "seek-choice-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  state.players.p1.deck.push(...state.players.p1.hand);
+  state.players.p1.hand = [];
+  ensureCardInHand(state, "p1", "1");
+
+  const orderedSlots = ["2", "4", "3", "5"];
+  const deckMap = new Map(state.players.p1.deck.map((card) => [card.cardSlot, card]));
+  state.players.p1.deck = orderedSlots
+    .map((slot) => deckMap.get(slot))
+    .filter((card): card is NonNullable<typeof card> => Boolean(card));
+
+  const slot5 = deckMap.get("5");
+  if (!slot5) {
+    throw new Error("Missing seek choice deck cards.");
+  }
+
+  const cardInstanceId = ensureCardInHand(state, "p1", "1");
+  if (!cardInstanceId) {
+    throw new Error("Missing card instance for seek choice test.");
+  }
+  state = applyOrThrow(
+    state,
+    {
+      type: "play_card",
+      playerId: "p1",
+      cardInstanceId,
+      zone: "normal",
+      seekTakeIds: [slot5.id],
+    },
+    characters
+  );
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+  const snapshot = {
+    handSlots: state.players.p1.hand.map((card) => card.cardSlot).sort(),
+    discardSlots: state.players.p1.discard.map((card) => card.cardSlot).sort(),
+    deckSlots: state.players.p1.deck.map((card) => card.cardSlot).sort(),
+  };
+  const expected = {
+    handSlots: ["5"],
+    discardSlots: ["1", "3", "4"],
+    deckSlots: ["2"],
+  };
+
+  try {
+    assertSnapshot("Seek choice snapshot", snapshot, expected);
+    return { label: "Seek choice honors the selected take list", ok: true };
+  } catch (error) {
+    return {
+      label: "Seek choice honors the selected take list",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runSearchChoiceTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Searcher", characterIds: withFillersIds("search-choice-a") },
+    { id: "p2" as const, name: "Watcher", characterIds: withFillersIds("search-choice-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "search-choice-a",
+      name: "Search Choice Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Search choice coverage.",
+      art: "search-choice-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Search Options",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Search your draw pile for Defense."],
+        },
+        {
+          slot: "2",
+          name: "Defense A",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Defense", "Physical"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Gain Power Shield."],
+        },
+        {
+          slot: "3",
+          name: "Defense B",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Defense", "Physical"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Gain Power Shield."],
+        },
+        {
+          slot: "4",
+          name: "Attack A",
+          cost: "0 Energy",
+          power: "5-5",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+        },
+      ],
+    },
+    {
+      id: "search-choice-b",
+      name: "Search Choice Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Search choice coverage.",
+      art: "search-choice-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  state.players.p1.deck.push(...state.players.p1.hand);
+  state.players.p1.hand = [];
+  ensureCardInHand(state, "p1", "1");
+
+  const orderedSlots = ["2", "3", "4"];
+  const deckMap = new Map(state.players.p1.deck.map((card) => [card.cardSlot, card]));
+  state.players.p1.deck = orderedSlots
+    .map((slot) => deckMap.get(slot))
+    .filter((card): card is NonNullable<typeof card> => Boolean(card));
+
+  const slot3 = deckMap.get("3");
+  if (!slot3) {
+    throw new Error("Missing search choice deck cards.");
+  }
+
+  const cardInstanceId = ensureCardInHand(state, "p1", "1");
+  if (!cardInstanceId) {
+    throw new Error("Missing card instance for search choice test.");
+  }
+  state = applyOrThrow(
+    state,
+    {
+      type: "play_card",
+      playerId: "p1",
+      cardInstanceId,
+      zone: "normal",
+      searchPickId: slot3.id,
+    },
+    characters
+  );
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+  const snapshot = {
+    handSlots: state.players.p1.hand.map((card) => card.cardSlot).sort(),
+    deckSlots: state.players.p1.deck.map((card) => card.cardSlot).sort(),
+  };
+  const expected = {
+    handSlots: ["3"],
+    deckSlots: ["2", "4"],
+  };
+
+  try {
+    assertSnapshot("Search choice snapshot", snapshot, expected);
+    return { label: "Search choice honors the selected card", ok: true };
+  } catch (error) {
+    return {
+      label: "Search choice honors the selected card",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runPositioningTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Mover", characterIds: withFillersIds("move-a") },
+    { id: "p2" as const, name: "Targets", characterIds: withFillersIds("move-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "move-a",
+      name: "Move Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Push/Pull/Swap coverage.",
+      art: "move-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Push Line",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Push 1."],
+        },
+        {
+          slot: "2",
+          name: "Pull Line",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Pull 1."],
+        },
+        {
+          slot: "3",
+          name: "Swap Allies",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "1 Ally",
+          speed: "Normal",
+          effect: ["Swap."],
+        },
+      ],
+    },
+    {
+      id: "move-b",
+      name: "Move Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Push/Pull/Swap coverage.",
+      art: "move-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let pushState = createSeededCombatState(characters, players);
+  const pushTarget = pushState.players.p2.characters[1]?.id ?? pushState.players.p2.characters[0].id;
+  pushState = applyOrThrow(
+    pushState,
+    playFromHandAtTarget(pushState, "p1", "1", "normal", pushTarget),
+    characters
+  );
+  pushState = applyOrThrow(pushState, { type: "pass", playerId: "p2" }, characters);
+  pushState = applyOrThrow(pushState, { type: "pass", playerId: "p1" }, characters);
+  const pushPositions = snapshotPositions(pushState, "p2");
+
+  let pullState = createSeededCombatState(characters, players);
+  const pullTarget = pullState.players.p2.characters[2]?.id ?? pullState.players.p2.characters[0].id;
+  pullState = applyOrThrow(
+    pullState,
+    playFromHandAtTarget(pullState, "p1", "2", "normal", pullTarget),
+    characters
+  );
+  pullState = applyOrThrow(pullState, { type: "pass", playerId: "p2" }, characters);
+  pullState = applyOrThrow(pullState, { type: "pass", playerId: "p1" }, characters);
+  const pullPositions = snapshotPositions(pullState, "p2");
+
+  let swapState = createSeededCombatState(characters, players);
+  const swapTarget = swapState.players.p1.characters[2]?.id ?? swapState.players.p1.characters[0].id;
+  swapState = applyOrThrow(
+    swapState,
+    playFromHandAtTarget(swapState, "p1", "3", "normal", swapTarget),
+    characters
+  );
+  swapState = applyOrThrow(swapState, { type: "pass", playerId: "p2" }, characters);
+  swapState = applyOrThrow(swapState, { type: "pass", playerId: "p1" }, characters);
+  const swapPositions = snapshotPositions(swapState, "p1");
+
+  const pushTargetId = pushState.players.p2.characters[1]?.id ?? pushState.players.p2.characters[0].id;
+  const pushSwapId = pushState.players.p2.characters[2]?.id ?? pushState.players.p2.characters[0].id;
+  const pullTargetId = pullState.players.p2.characters[2]?.id ?? pullState.players.p2.characters[0].id;
+  const pullSwapId = pullState.players.p2.characters[1]?.id ?? pullState.players.p2.characters[0].id;
+  const swapSourceId = swapState.players.p1.characters[0]?.id ?? "";
+  const swapTargetId = swapState.players.p1.characters[2]?.id ?? "";
+
+  const expected = {
+    push: {
+      [pushTargetId]: 2,
+      [pushSwapId]: 1,
+    },
+    pull: {
+      [pullTargetId]: 1,
+      [pullSwapId]: 2,
+    },
+    swap: {
+      [swapSourceId]: 2,
+      [swapTargetId]: 0,
+    },
+  };
+
+  const snapshot = {
+    pushPositions,
+    pullPositions,
+    swapPositions,
+  };
+
+  const expectedSnapshot = {
+    pushPositions: { ...pushPositions, ...expected.push },
+    pullPositions: { ...pullPositions, ...expected.pull },
+    swapPositions: { ...swapPositions, ...expected.swap },
+  };
+
+  try {
+    assertSnapshot("Positioning snapshot", snapshot, expectedSnapshot);
+    return { label: "Push/Pull/Swap move characters along the line", ok: true };
+  } catch (error) {
+    return {
+      label: "Push/Pull/Swap move characters along the line",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runPushDirectionChoiceTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Mover", characterIds: withFillersIds("push-choice-a") },
+    { id: "p2" as const, name: "Targets", characterIds: withFillersIds("push-choice-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "push-choice-a",
+      name: "Push Choice Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Push choice coverage.",
+      art: "push-choice-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Forced Push",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Push 1."],
+        },
+      ],
+    },
+    {
+      id: "push-choice-b",
+      name: "Push Choice Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Push choice coverage.",
+      art: "push-choice-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  const target = state.players.p2.characters[0];
+  const cardInstanceId = ensureCardInHand(state, "p1", "1");
+  if (!cardInstanceId) {
+    throw new Error("Missing card instance for push choice test.");
+  }
+
+  state = applyOrThrow(
+    state,
+    {
+      type: "play_card",
+      playerId: "p1",
+      cardInstanceId,
+      zone: "normal",
+      targetId: target.id,
+      pushDirection: "right",
+    },
+    characters
+  );
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+  const snapshot = {
+    positions: snapshotPositions(state, "p2"),
+  };
+  const expected = {
+    positions: {
+      [state.players.p2.characters[0].id]: 1,
+      [state.players.p2.characters[1].id]: 0,
+      [state.players.p2.characters[2].id]: 2,
+    },
+  };
+
+  try {
+    assertSnapshot("Push direction snapshot", snapshot, expected);
+    return { label: "Push direction choice moves opposed targets as selected", ok: true };
+  } catch (error) {
+    return {
+      label: "Push direction choice moves opposed targets as selected",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runCounterTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Aggressor", characterIds: withFillersIds("counter-a") },
+    { id: "p2" as const, name: "Defender", characterIds: withFillersIds("counter-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "counter-a",
+      name: "Counter Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Counter coverage.",
+      art: "counter-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Heavy Strike",
+          cost: "0 Energy",
+          power: "8-8",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+        },
+      ],
+    },
+    {
+      id: "counter-b",
+      name: "Counter Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Counter coverage.",
+      art: "counter-bravo.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Counter Guard",
+          cost: "0 Energy",
+          power: "8-8",
+          types: ["Basic", "Defense", "Physical"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Counter.", "Gain Power Shield."],
+          effects: [{ timing: "on_use", type: "gain_shield", amount: { kind: "power" } }],
+        },
+        {
+          slot: "2",
+          name: "Counter Slash",
+          cost: "0 Energy",
+          power: "7-7",
+          types: ["Basic", "Attack", "Physical"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal Power damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+        },
+      ],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
+  state = applyOrThrow(state, playFromHand(state, "p2", "1", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+
+  state = applyOrThrow(state, playFromHand(state, "p2", "2", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+
+  const snapshot = {
+    counterLog: state.log.some((line) => line.includes("can Counter")),
+    p1Hp: state.players.p1.characters[0]?.hp ?? 0,
+    transcript: snapshotTranscript(state),
+  };
+  const expected = {
+    counterLog: true,
+    p1Hp: 93,
+    transcript: {
+      version: 2,
+      seed: goldenSeed,
+      players,
+      actions: [
+        ...movementPassActions,
+        { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
+        { action: { type: "play_card", playerId: "p2", zone: "normal", hasCardInstance: true } },
+        { action: { type: "pass", playerId: "p1" } },
+        { action: { type: "pass", playerId: "p2" } },
+        { action: { type: "play_card", playerId: "p2", zone: "normal", hasCardInstance: true } },
+        { action: { type: "pass", playerId: "p1" } },
+        { action: { type: "pass", playerId: "p2" } },
+      ],
+    },
+  };
+
+  const replayState = runReplaySnapshot(characters, state);
+  const replaySnapshot = {
+    counterLog: replayState.log.some((line) => line.includes("can Counter")),
+    p1Hp: replayState.players.p1.characters[0]?.hp ?? 0,
+  };
+  const expectedReplay = {
+    counterLog: expected.counterLog,
+    p1Hp: expected.p1Hp,
+  };
+
+  try {
+    assertSnapshot("Counter snapshot", snapshot, expected);
+    assertSnapshot("Counter replay", replaySnapshot, expectedReplay);
+    return { label: "Counter allows an out-of-turn response targeting the attacker", ok: true };
+  } catch (error) {
+    return {
+      label: "Counter allows an out-of-turn response targeting the attacker",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
+const runPurgeKeywordTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Purifier", characterIds: withFillersIds("purge-a") },
+    { id: "p2" as const, name: "Witness", characterIds: withFillersIds("purge-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "purge-a",
+      name: "Purge Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Cleanse/Dispel/Purge coverage.",
+      art: "purge-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Scorch Self",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Inflict 3 Burn."],
+        },
+        {
+          slot: "2",
+          name: "Strengthen",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Gain 2 Strength."],
+        },
+        {
+          slot: "3",
+          name: "Cleanse Burn",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Cleanse 2 Burn."],
+        },
+        {
+          slot: "4",
+          name: "Dispel Light",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Dispel All."],
+        },
+        {
+          slot: "5",
+          name: "Purge Ashes",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Special"],
+          target: "Self",
+          speed: "Normal",
+          effect: ["Purge All."],
+        },
+      ],
+    },
+    {
+      id: "purge-b",
+      name: "Purge Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Cleanse/Dispel/Purge coverage.",
+      art: "purge-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  const afterBurn = snapshotStatuses(state, "p1", ["Burn", "Strength"]);
+
+  state = applyOrThrow(state, playFromHand(state, "p1", "2", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  const afterStrength = snapshotStatuses(state, "p1", ["Burn", "Strength"]);
+
+  state = applyOrThrow(state, playFromHand(state, "p1", "3", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  const afterCleanse = snapshotStatuses(state, "p1", ["Burn", "Strength"]);
+
+  state = applyOrThrow(state, playFromHand(state, "p1", "4", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  const afterDispel = snapshotStatuses(state, "p1", ["Burn", "Strength"]);
+
+  state = applyOrThrow(state, playFromHand(state, "p1", "5", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  const afterPurge = snapshotStatuses(state, "p1", ["Burn", "Strength"]);
+
+  const playPassSequence = [
+    { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
+    { action: { type: "pass", playerId: "p2" } },
+    { action: { type: "pass", playerId: "p1" } },
+  ] as const;
+
+  const snapshot = {
+    afterBurn,
+    afterStrength,
+    afterCleanse,
+    afterDispel,
+    afterPurge,
+    transcript: snapshotTranscript(state),
+  };
+  const expected = {
+    afterBurn: {
+      Burn: { potency: 3, count: 1, stack: 0, value: 0 },
+      Strength: { potency: 0, count: 0, stack: 0, value: 0 },
+    },
+    afterStrength: {
+      Burn: { potency: 3, count: 1, stack: 0, value: 0 },
+      Strength: { potency: 2, count: 1, stack: 0, value: 0 },
+    },
+    afterCleanse: {
+      Burn: { potency: 1, count: 1, stack: 0, value: 0 },
+      Strength: { potency: 2, count: 1, stack: 0, value: 0 },
+    },
+    afterDispel: {
+      Burn: { potency: 1, count: 1, stack: 0, value: 0 },
+      Strength: { potency: 0, count: 0, stack: 0, value: 0 },
+    },
+    afterPurge: {
+      Burn: { potency: 0, count: 0, stack: 0, value: 0 },
+      Strength: { potency: 0, count: 0, stack: 0, value: 0 },
+    },
+    transcript: {
+      version: 2,
+      seed: goldenSeed,
+      players,
+      actions: [
+        ...movementPassActions,
+        ...playPassSequence,
+        ...playPassSequence,
+        ...playPassSequence,
+        ...playPassSequence,
+        ...playPassSequence,
+      ],
+    },
+  };
+
+  const replayState = runReplaySnapshot(characters, state);
+  const replaySnapshot = {
+    afterPurge: snapshotStatuses(replayState, "p1", ["Burn", "Strength"]),
+  };
+  const expectedReplay = {
+    afterPurge: expected.afterPurge,
+  };
+
+  try {
+    assertSnapshot("Cleanse/Dispel/Purge snapshot", snapshot, expected);
+    assertSnapshot("Cleanse/Dispel/Purge replay", replaySnapshot, expectedReplay);
+    return { label: "Cleanse/Dispel/Purge reduce only the intended status types", ok: true };
+  } catch (error) {
+    return {
+      label: "Cleanse/Dispel/Purge reduce only the intended status types",
       ok: false,
       details: String(error),
     };
@@ -1917,7 +3727,7 @@ const runDeckReshuffleTest = (): GoldenResult => {
     },
   ];
 
-  let state = createSeededState(characters, players);
+  let state = createSeededCombatState(characters, players);
   state = applyOrThrow(state, { type: "end_turn", playerId: "p1" }, characters);
 
   const shuffleLogs = state.log.filter((entry) =>
@@ -1968,6 +3778,181 @@ const runDeckReshuffleTest = (): GoldenResult => {
       ok: false,
       details: String(error),
     };
+  }
+};
+
+const runAoeMultiTargetTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Caster", characterIds: withFillersIds("aoe-a") },
+    { id: "p2" as const, name: "Targets", characterIds: withFillersIds("aoe-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "aoe-a",
+      name: "AoE Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "AoE targeting coverage.",
+      art: "aoe-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "AoE Blast",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Attack", "Magical", "AoE"],
+          target: "All Enemies",
+          speed: "Normal",
+          effect: ["Deal 7 damage."],
+          effects: [
+            { timing: "on_use", type: "deal_damage", amount: { kind: "flat", value: 7 } },
+          ],
+        },
+      ],
+    },
+    {
+      id: "aoe-b",
+      name: "AoE Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "AoE target dummy.",
+      art: "aoe-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+  const snapshot = {
+    p2Hp: state.players.p2.characters.map((member) => member.hp),
+    transcript: snapshotTranscript(state),
+  };
+  const expected = {
+    p2Hp: [93, 93, 93],
+    transcript: {
+      version: 2,
+      seed: goldenSeed,
+      players,
+      actions: [
+        ...movementPassActions,
+        { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
+        { action: { type: "pass", playerId: "p2" } },
+        { action: { type: "pass", playerId: "p1" } },
+      ],
+    },
+  };
+
+  const replayState = runReplaySnapshot(characters, state);
+  const replaySnapshot = {
+    p2Hp: replayState.players.p2.characters.map((member) => member.hp),
+  };
+  const expectedReplay = { p2Hp: expected.p2Hp };
+
+  try {
+    assertSnapshot("AoE snapshot", snapshot, expected);
+    assertSnapshot("AoE replay", replaySnapshot, expectedReplay);
+    return { label: "AoE hits all legal targets", ok: true };
+  } catch (error) {
+    return { label: "AoE hits all legal targets", ok: false, details: String(error) };
+  }
+};
+
+const runSplashAdjacencyTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Splash", characterIds: withFillersIds("splash-a") },
+    { id: "p2" as const, name: "Targets", characterIds: withFillersIds("splash-b") },
+  ];
+  const characters: Character[] = [
+    {
+      id: "splash-a",
+      name: "Splash Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Splash adjacency coverage.",
+      art: "splash-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Splash Strike",
+          cost: "0 Energy",
+          power: "-",
+          types: ["Technique", "Attack", "Physical", "Splash"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Deal 8 damage."],
+          effects: [
+            { timing: "on_use", type: "deal_damage", amount: { kind: "flat", value: 8 } },
+          ],
+        },
+      ],
+    },
+    {
+      id: "splash-b",
+      name: "Splash Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Splash target dummy.",
+      art: "splash-bravo.png",
+      innates: [],
+      cards: [],
+    },
+  ];
+
+  let state = createSeededCombatState(characters, players);
+  const targetId = state.players.p2.characters[0].id;
+  state = applyOrThrow(
+    state,
+    playFromHandAtTarget(state, "p1", "1", "normal", targetId),
+    characters
+  );
+  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+  const snapshot = {
+    p2Hp: state.players.p2.characters.map((member) => member.hp),
+    transcript: snapshotTranscript(state),
+  };
+  const expected = {
+    p2Hp: [92, 92, 100],
+    transcript: {
+      version: 2,
+      seed: goldenSeed,
+      players,
+      actions: [
+        ...movementPassActions,
+        { action: { type: "play_card", playerId: "p1", zone: "normal", hasCardInstance: true } },
+        { action: { type: "pass", playerId: "p2" } },
+        { action: { type: "pass", playerId: "p1" } },
+      ],
+    },
+  };
+
+  const replayState = runReplaySnapshot(characters, state);
+  const replaySnapshot = {
+    p2Hp: replayState.players.p2.characters.map((member) => member.hp),
+  };
+  const expectedReplay = { p2Hp: expected.p2Hp };
+
+  try {
+    assertSnapshot("Splash snapshot", snapshot, expected);
+    assertSnapshot("Splash replay", replaySnapshot, expectedReplay);
+    return { label: "Splash hits adjacent targets", ok: true };
+  } catch (error) {
+    return { label: "Splash hits adjacent targets", ok: false, details: String(error) };
   }
 };
 
@@ -2135,6 +4120,20 @@ export const runGoldenTests = () => [
   runHealingReductionTest(),
   runThornsOnHitTest(),
   runTurnEndDecayTest(),
+  runCreatedCardDestinationTest(),
+  runNegatedTest(),
+  runRedirectTest(),
+  runRedirectChoiceTest(),
+  runDeckManipulationTest(),
+  runScryChoiceTest(),
+  runSeekChoiceTest(),
+  runSearchChoiceTest(),
+  runPositioningTest(),
+  runPushDirectionChoiceTest(),
+  runCounterTest(),
+  runPurgeKeywordTest(),
+  runAoeMultiTargetTest(),
+  runSplashAdjacencyTest(),
   runDeckReshuffleTest(),
   runTransformTargetExclusionTest(),
 ];

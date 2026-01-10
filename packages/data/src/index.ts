@@ -21,6 +21,8 @@ export type {
   Effect,
   EffectAmount,
   EffectCondition,
+  EffectScalar,
+  EffectTarget,
   EffectTiming,
   Innate,
   Keyword,

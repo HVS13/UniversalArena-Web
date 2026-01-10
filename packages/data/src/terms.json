@@ -4,7 +4,7 @@
       "section": "Resources",
       "id": "term-energy",
       "name": "Energy",
-      "definition": "The resource used to play cards. By default, at Turn Start each player sets Energy to 5; effects can modify this and there is no Energy cap."
+      "definition": "The shared team resource used to play cards. By default, at Turn Start each team sets Energy to 5; effects can modify this and there is no Energy cap."
     },
     {
       "section": "Resources",
@@ -92,6 +92,12 @@
     },
     {
       "section": "Card Flow",
+      "id": "term-hand",
+      "name": "Hand",
+      "definition": "Your team's shared hand of cards. Any character may play cards from the shared hand as long as they can legally play that card. See FAQ: faq.md#faq-shared-hand-energy."
+    },
+    {
+      "section": "Card Flow",
       "id": "term-played",
       "name": "Played",
       "definition": "A card is played when it is placed in a legal zone after paying its cost and selecting legal targets."
@@ -149,6 +155,18 @@
       "id": "term-role",
       "name": "Role",
       "definition": "A character archetype tag used to communicate playstyle. See roles: roles.md."
+    },
+    {
+      "section": "Characters",
+      "id": "term-defeated",
+      "name": "Defeated",
+      "definition": "A character is defeated when their HP reaches 0. Defeated characters cannot be targeted or play cards, and their cards are removed from play. The match ends when all characters on a team are defeated."
+    },
+    {
+      "section": "Characters",
+      "id": "term-resurrection",
+      "name": "Resurrection",
+      "definition": "An effect that returns a defeated character to play. The effect must explicitly state how it restores that character; otherwise the character remains defeated."
     },
     {
       "section": "Combat",

@@ -65,6 +65,53 @@ type UltimateEntry = {
   character: Character;
 };
 
+type RedirectOption = {
+  id: MatchCharacterId;
+  label: string;
+  source: "cover" | "redirect";
+};
+
+type ScryState = {
+  cards: CardInstance[];
+  discardIds: string[];
+  orderIds: string[];
+};
+
+type SeekState = {
+  cards: CardInstance[];
+  takeIds?: string[];
+  take: number;
+  criteria: string;
+};
+
+type SearchState = {
+  options: { id: string; label: string }[];
+  pickId?: string;
+  criteria: string;
+};
+
+type PendingPlay = {
+  playerId: PlayerId;
+  card: Card;
+  cardInstanceId?: string;
+  sourceId: MatchCharacterId;
+  zones: ZoneName[];
+  zone: ZoneName;
+  xValue: number;
+  xRange?: { min: number; max: number } | null;
+  choices: { index: number; label: string }[];
+  choiceIndex: number;
+  targets: { id: MatchCharacterId; label: string }[];
+  targetId: MatchCharacterId;
+  redirectOptions: RedirectOption[];
+  redirectTargetId?: MatchCharacterId;
+  scry?: ScryState | null;
+  seek?: SeekState | null;
+  search?: SearchState | null;
+  needsPushDirection: boolean;
+  pushDirection?: "left" | "right";
+};
+
 const getCardBySlot = (character: Character | undefined, slot: string) => {
   if (!character) return undefined;
   const card = character.cards.find((entry) => entry.slot === slot);
@@ -361,7 +408,6 @@ const getFollowUpCostAdjustment = (card: Card) => {
 const getPlayableZones = (
   card: Card,
   state: MatchState,
-  playerId: PlayerId,
   member: TeamMember
 ): ZoneName[] => {
   const effectiveSpeed = getEffectiveSpeed(card.speed, member);
@@ -397,6 +443,327 @@ const getTextChoiceOptions = (card: Card) => {
     options.push(line);
   }
   return options;
+};
+
+const normalizeLine = (value: string) => value.replace(/\s+/g, " ").trim();
+
+const normalizeText = (value: string) => normalizeLine(value).replace(/\.$/, "");
+
+const getActiveEffectLines = (card: Card, choiceIndex: number) => {
+  const options = getTextChoiceOptions(card);
+  if (!options.length) return card.effect;
+  const normalizedOptions = options.map((option) => normalizeText(option).toLowerCase());
+  const normalizedChoice =
+    normalizedOptions[choiceIndex] ?? normalizedOptions[0] ?? "";
+  return card.effect.filter((line) => {
+    const normalized = normalizeText(line).toLowerCase();
+    if (normalized === "choose 1:") return false;
+    if (normalizedOptions.includes(normalized) && normalized !== normalizedChoice) {
+      return false;
+    }
+    return true;
+  });
+};
+
+const parseScryCount = (lines: string[], xValue: number) => {
+  for (const line of lines) {
+    const match = normalizeText(line).match(/Scry\s+(\d+|X)/i);
+    if (!match) continue;
+    const token = match[1].toLowerCase();
+    const count = token === "x" ? xValue : Number(token);
+    if (!Number.isNaN(count)) return count;
+  }
+  return null;
+};
+
+const parseSeekInfo = (lines: string[], xValue: number) => {
+  for (const line of lines) {
+    const match = normalizeLine(line).match(/Seek\s+(\d+|X)\s*\((.+)\)/i);
+    if (!match) continue;
+    const token = match[1].toLowerCase();
+    const count = token === "x" ? xValue : Number(token);
+    if (Number.isNaN(count)) continue;
+    const parts = match[2].split(",");
+    const criteria = parts[0]?.trim();
+    const takeRaw = parts[1]?.trim();
+    const take = takeRaw ? Number(takeRaw) : 1;
+    if (!criteria || Number.isNaN(take)) continue;
+    return { count, criteria, take };
+  }
+  return null;
+};
+
+const parseSearchCriteria = (lines: string[]) => {
+  for (const line of lines) {
+    const match = normalizeText(line).match(/Search(?:\s+your\s+draw\s+pile)?\s+for\s+(.+)/i);
+    if (!match) continue;
+    const criteria = match[1].trim().replace(/\.$/, "");
+    return criteria || null;
+  }
+  return null;
+};
+
+const parseRedirectSpec = (lines: string[]) => {
+  for (const line of lines) {
+    const match = normalizeLine(line).match(/^Redirect\s*\(([^)]+)\)/i);
+    if (match) return match[1].trim();
+  }
+  return null;
+};
+
+const parsePushAmount = (lines: string[], xValue: number) => {
+  for (const line of lines) {
+    const match = normalizeText(line).match(/^Push\s+(\d+|X)/i);
+    if (!match) continue;
+    const token = match[1].toLowerCase();
+    const amount = token === "x" ? xValue : Number(token);
+    if (!Number.isNaN(amount)) return amount;
+  }
+  return null;
+};
+
+const isSingleTargetCard = (card: Card) => {
+  const targetText = card.target.toLowerCase();
+  if (!targetText) return false;
+  if (targetText.includes("random") || targetText.includes("all")) return false;
+  if (card.types.some((type) => ["aoe", "area"].includes(type.toLowerCase()))) return false;
+  return (
+    targetText.includes("enemy") ||
+    targetText.includes("ally") ||
+    targetText.includes("self")
+  );
+};
+
+const getTopCards = (deck: CardInstance[], count: number) => {
+  if (count <= 0) return [];
+  return deck.slice(Math.max(0, deck.length - count)).reverse();
+};
+
+const matchesSearchCriteria = (card: Card, criteria: string) => {
+  const normalized = normalizeText(criteria).toLowerCase();
+  const nameMatch = normalized.match(/named\s+(.+)/i) ?? normalized.match(/"([^"]+)"/);
+  const nameCriteria = nameMatch ? normalizeText(nameMatch[1]).toLowerCase() : null;
+  if (nameCriteria) {
+    return normalizeText(card.name).toLowerCase() === nameCriteria;
+  }
+
+  const tagKeys = [
+    "basic",
+    "technique",
+    "ultimate",
+    "attack",
+    "defense",
+    "special",
+    "physical",
+    "magical",
+    "melee",
+    "ranged",
+  ];
+  const tags = tagKeys.filter((tag) => normalized.includes(tag));
+  if (tags.length) {
+    return tags.every((tag) => card.types.some((type) => type.toLowerCase() === tag));
+  }
+
+  const cleaned = normalized.replace(/\b(a|an|the|card|cards)\b/g, "").trim();
+  if (!cleaned) return true;
+  return normalizeText(card.name).toLowerCase().includes(cleaned);
+};
+
+const parseCoverScope = (statusName: string) => {
+  const normalized = normalizeText(statusName).toLowerCase();
+  return normalized.includes("adjacent") ? "adjacent" : "all";
+};
+
+const getRedirectSpecTargets = (
+  state: MatchState,
+  sourceId: MatchCharacterId,
+  targetId: MatchCharacterId,
+  spec: string
+) => {
+  const normalized = normalizeText(spec).toLowerCase();
+  const sourceEntry = getMemberById(state, sourceId);
+  if (!sourceEntry) return [];
+  const sourceTeam = sourceEntry.team;
+  const enemyTeam = state.players[sourceTeam.id === "p1" ? "p2" : "p1"];
+
+  if (normalized.includes("self")) return [sourceId];
+  if (normalized.includes("target")) return [targetId];
+  if (normalized.includes("ally")) {
+    return sourceTeam.characters.filter((member) => !member.defeated).map((member) => member.id);
+  }
+  if (normalized.includes("enemy") || normalized.includes("opponent")) {
+    return enemyTeam.characters.filter((member) => !member.defeated).map((member) => member.id);
+  }
+  return [];
+};
+
+const buildRedirectOptions = (
+  state: MatchState,
+  card: Card,
+  sourceId: MatchCharacterId,
+  targetId: MatchCharacterId,
+  choiceIndex: number
+) => {
+  if (!isSingleTargetCard(card)) return [];
+  const legalTargets = getLegalTargets(card, sourceId, state, roster);
+  if (!legalTargets.length) return [];
+  const legalSet = new Set(legalTargets);
+  const options: RedirectOption[] = [];
+  const lines = getActiveEffectLines(card, choiceIndex);
+  const isAttack = card.types.some((type) => type.toLowerCase() === "attack");
+
+  if (isAttack) {
+    const targetEntry = getMemberById(state, targetId);
+    if (targetEntry) {
+      const targetMember = targetEntry.member;
+      targetEntry.team.characters.forEach((member) => {
+        if (member.defeated || member.id === targetMember.id) return;
+        const statusNames = Object.keys(member.statuses).filter((status) =>
+          normalizeText(status).toLowerCase().startsWith("cover")
+        );
+        statusNames.forEach((status) => {
+          if (!isStatusActive(member.statuses[status])) return;
+          const scope = parseCoverScope(status);
+          if (scope === "adjacent" && Math.abs(member.position - targetMember.position) !== 1) {
+            return;
+          }
+          if (!legalSet.has(member.id)) return;
+          options.push({
+            id: member.id,
+            label: `${formatMemberLabel(state, member.id)} (Cover)`,
+            source: "cover",
+          });
+        });
+      });
+    }
+  }
+
+  const spec = parseRedirectSpec(lines);
+  if (spec) {
+    const candidates = getRedirectSpecTargets(state, sourceId, targetId, spec);
+    candidates.forEach((candidate) => {
+      if (!legalSet.has(candidate)) return;
+      options.push({
+        id: candidate,
+        label: `${formatMemberLabel(state, candidate)} (Redirect)`,
+        source: "redirect",
+      });
+    });
+  }
+
+  const deduped = new Map<MatchCharacterId, RedirectOption>();
+  options.forEach((option) => {
+    if (!deduped.has(option.id)) deduped.set(option.id, option);
+  });
+
+  return Array.from(deduped.values()).sort((left, right) =>
+    left.label.localeCompare(right.label)
+  );
+};
+
+const buildScryState = (
+  state: MatchState,
+  card: Card,
+  sourceId: MatchCharacterId,
+  xValue: number,
+  choiceIndex: number,
+  previous?: ScryState | null
+) => {
+  const lines = getActiveEffectLines(card, choiceIndex);
+  const count = parseScryCount(lines, xValue);
+  if (!count || count <= 0) return null;
+  const teamId = getTeamIdFromMatchCharacterId(sourceId);
+  if (!teamId) return null;
+  const cards = getTopCards(state.players[teamId].deck, count);
+  const cardIds = cards.map((instance) => instance.id);
+  let discardIds = previous?.discardIds?.filter((id) => cardIds.includes(id)) ?? [];
+  let orderIds =
+    previous?.orderIds?.filter((id) => cardIds.includes(id)) ?? [...cardIds];
+  const remainingIds = cardIds.filter((id) => !discardIds.includes(id));
+  orderIds = orderIds.filter((id) => remainingIds.includes(id));
+  if (orderIds.length !== remainingIds.length) {
+    orderIds = remainingIds;
+  }
+  return { cards, discardIds, orderIds };
+};
+
+const buildSeekState = (
+  state: MatchState,
+  card: Card,
+  sourceId: MatchCharacterId,
+  xValue: number,
+  choiceIndex: number,
+  previous?: SeekState | null
+) => {
+  const lines = getActiveEffectLines(card, choiceIndex);
+  const seek = parseSeekInfo(lines, xValue);
+  if (!seek || seek.count <= 0) return null;
+  const teamId = getTeamIdFromMatchCharacterId(sourceId);
+  if (!teamId) return null;
+  const cards = getTopCards(state.players[teamId].deck, seek.count);
+  const cardIds = cards.map((instance) => instance.id);
+  const takeIds = previous?.takeIds?.filter((id) => cardIds.includes(id));
+  return { cards, takeIds, take: seek.take, criteria: seek.criteria };
+};
+
+const buildSearchState = (
+  state: MatchState,
+  card: Card,
+  sourceId: MatchCharacterId,
+  choiceIndex: number,
+  previous?: SearchState | null
+) => {
+  const lines = getActiveEffectLines(card, choiceIndex);
+  const criteria = parseSearchCriteria(lines);
+  if (!criteria) return null;
+  const teamId = getTeamIdFromMatchCharacterId(sourceId);
+  if (!teamId) return null;
+  const instances = state.players[teamId].deck.filter((instance) => {
+    const found = getCardByInstance(instance);
+    return found ? matchesSearchCriteria(found, criteria) : false;
+  });
+  const grouped = new Map<string, { id: string; label: string; count: number }>();
+  instances.forEach((instance) => {
+    const cardEntry = getCardByInstance(instance);
+    const owner = getCharacter(roster, instance.characterId);
+    const ownerLabel = owner ? owner.name : instance.characterId;
+    const name = cardEntry?.name ?? instance.cardSlot;
+    const key = `${instance.cardSlot}-${instance.characterId}`;
+    const label = `${name} (${ownerLabel})`;
+    const entry = grouped.get(key);
+    if (entry) {
+      entry.count += 1;
+    } else {
+      grouped.set(key, { id: instance.id, label, count: 1 });
+    }
+  });
+  const options = Array.from(grouped.values()).map((entry) => ({
+    id: entry.id,
+    label: entry.count > 1 ? `${entry.label} x${entry.count}` : entry.label,
+  }));
+  options.sort((left, right) => left.label.localeCompare(right.label));
+  const pickId =
+    previous?.pickId && options.some((option) => option.id === previous.pickId)
+      ? previous.pickId
+      : undefined;
+  return { options, pickId, criteria };
+};
+
+const needsPushDirection = (
+  state: MatchState,
+  card: Card,
+  sourceId: MatchCharacterId,
+  targetId: MatchCharacterId,
+  xValue: number,
+  choiceIndex: number
+) => {
+  const lines = getActiveEffectLines(card, choiceIndex);
+  const amount = parsePushAmount(lines, xValue);
+  if (!amount || amount <= 0) return false;
+  const sourceEntry = getMemberById(state, sourceId);
+  const targetEntry = getMemberById(state, targetId);
+  if (!sourceEntry || !targetEntry) return false;
+  return sourceEntry.member.position === targetEntry.member.position;
 };
 
 const canReactAfterUse = (
@@ -615,20 +982,7 @@ const App = () => {
   const [selection, setSelection] = useState<SelectionState>(defaultSelection);
   const [matchState, setMatchState] = useState<MatchState | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [pendingPlay, setPendingPlay] = useState<{
-    playerId: PlayerId;
-    card: Card;
-    cardInstanceId?: string;
-    sourceId: MatchCharacterId;
-    zones: ZoneName[];
-    zone: ZoneName;
-    xValue: number;
-    xRange?: { min: number; max: number } | null;
-    choices: { index: number; label: string }[];
-    choiceIndex: number;
-    targets: { id: MatchCharacterId; label: string }[];
-    targetId: MatchCharacterId;
-  } | null>(null);
+  const [pendingPlay, setPendingPlay] = useState<PendingPlay | null>(null);
   const [inspectPile, setInspectPile] = useState<{
     playerId: PlayerId;
     pile: PileType;
@@ -661,6 +1015,99 @@ const App = () => {
     setMessage(result.error ?? null);
   };
 
+  const buildPendingMeta = (
+    base: Omit<
+      PendingPlay,
+      | "redirectOptions"
+      | "redirectTargetId"
+      | "scry"
+      | "seek"
+      | "search"
+      | "needsPushDirection"
+      | "pushDirection"
+    >,
+    previous?: PendingPlay | null
+  ): PendingPlay => {
+    const scry = buildScryState(
+      matchState!,
+      base.card,
+      base.sourceId,
+      base.xValue,
+      base.choiceIndex,
+      previous?.scry ?? undefined
+    );
+    const seek = buildSeekState(
+      matchState!,
+      base.card,
+      base.sourceId,
+      base.xValue,
+      base.choiceIndex,
+      previous?.seek ?? undefined
+    );
+    const search = buildSearchState(
+      matchState!,
+      base.card,
+      base.sourceId,
+      base.choiceIndex,
+      previous?.search ?? undefined
+    );
+    const redirectOptions = buildRedirectOptions(
+      matchState!,
+      base.card,
+      base.sourceId,
+      base.targetId,
+      base.choiceIndex
+    );
+    const redirectTargetId =
+      previous?.redirectTargetId &&
+      redirectOptions.some((option) => option.id === previous.redirectTargetId)
+        ? previous.redirectTargetId
+        : undefined;
+    const needsPush = needsPushDirection(
+      matchState!,
+      base.card,
+      base.sourceId,
+      base.targetId,
+      base.xValue,
+      base.choiceIndex
+    );
+    const pushDirection = needsPush ? previous?.pushDirection : undefined;
+    return {
+      ...base,
+      scry,
+      seek,
+      search,
+      redirectOptions,
+      redirectTargetId,
+      needsPushDirection: needsPush,
+      pushDirection,
+    };
+  };
+
+  const updatePendingPlay = (overrides: Partial<PendingPlay>) => {
+    setPendingPlay((prev) => {
+      if (!prev) return prev;
+      const merged = { ...prev, ...overrides };
+      return buildPendingMeta(
+        {
+          playerId: merged.playerId,
+          card: merged.card,
+          cardInstanceId: merged.cardInstanceId,
+          sourceId: merged.sourceId,
+          zones: merged.zones,
+          zone: merged.zone,
+          xValue: merged.xValue,
+          xRange: merged.xRange,
+          choices: merged.choices,
+          choiceIndex: merged.choiceIndex,
+          targets: merged.targets,
+          targetId: merged.targetId,
+        },
+        merged
+      );
+    });
+  };
+
   const handlePlayCard = (
     playerId: PlayerId,
     card: Card,
@@ -668,6 +1115,10 @@ const App = () => {
     cardInstanceId?: string
   ) => {
     if (!matchState) return;
+    if (matchState.phase === "movement") {
+      setMessage("Movement Round in progress.");
+      return;
+    }
     const team = matchState.players[playerId];
     const ownerEntry = getMemberById(matchState, sourceId);
     if (!ownerEntry || ownerEntry.teamId !== playerId) {
@@ -675,7 +1126,7 @@ const App = () => {
       return;
     }
     const member = ownerEntry.member;
-    const zones = getPlayableZones(card, matchState, playerId, member);
+    const zones = getPlayableZones(card, matchState, member);
     if (!zones.length) {
       setMessage("No legal zones available.");
       return;
@@ -703,7 +1154,7 @@ const App = () => {
       followUpAdjustment
     );
     const choices = getCardChoices(card);
-    const targets = getLegalTargets(card, sourceId, matchState, roster).map((targetId) => ({
+    let targets = getLegalTargets(card, sourceId, matchState, roster).map((targetId) => ({
       id: targetId,
       label: formatMemberLabel(matchState, targetId),
     }));
@@ -711,12 +1162,38 @@ const App = () => {
       setMessage("No legal targets.");
       return;
     }
+    const targetText = card.target.toLowerCase();
+    if (targetText.includes("all enemies") || targetText.includes("all allies")) {
+      targets = [targets[0]];
+    }
+    const basePending = {
+      playerId,
+      card,
+      cardInstanceId,
+      sourceId,
+      zones,
+      zone: zones[0],
+      xValue: xRange ? xRange.max : max,
+      xRange,
+      choices,
+      choiceIndex: 0,
+      targets,
+      targetId: targets[0].id,
+    };
+    const pendingWithMeta = buildPendingMeta(basePending, null);
+    const needsMetaModal =
+      Boolean(pendingWithMeta.scry) ||
+      Boolean(pendingWithMeta.seek) ||
+      Boolean(pendingWithMeta.search) ||
+      pendingWithMeta.redirectOptions.length > 1 ||
+      pendingWithMeta.needsPushDirection;
     const needsModal =
       zones.length > 1 ||
       cost.variable ||
       choices.length > 0 ||
       Boolean(xRange) ||
-      targets.length > 1;
+      targets.length > 1 ||
+      needsMetaModal;
     if (cost.variable && !baseAffordable) {
       setMessage("Insufficient resources.");
       return;
@@ -741,20 +1218,7 @@ const App = () => {
       });
       return;
     }
-    setPendingPlay({
-      playerId,
-      card,
-      cardInstanceId,
-      sourceId,
-      zones,
-      zone: zones[0],
-      xValue: xRange ? xRange.max : max,
-      xRange,
-      choices,
-      choiceIndex: 0,
-      targets,
-      targetId: targets[0].id,
-    });
+    setPendingPlay(pendingWithMeta);
   };
 
   const openPile = (playerId: PlayerId, pile: PileType) => {
@@ -777,8 +1241,106 @@ const App = () => {
       zone: pendingPlay.zone,
       xValue: pendingPlay.xValue,
       choiceIndex: pendingPlay.choices.length ? pendingPlay.choiceIndex : undefined,
+      redirectTargetId: pendingPlay.redirectTargetId,
+      scryDiscardIds: pendingPlay.scry?.discardIds,
+      scryOrderIds: pendingPlay.scry?.orderIds,
+      seekTakeIds: pendingPlay.seek?.takeIds,
+      searchPickId: pendingPlay.search?.pickId,
+      pushDirection: pendingPlay.pushDirection,
     });
     setPendingPlay(null);
+  };
+
+  const toggleScryDiscard = (cardId: string) => {
+    if (!pendingPlay?.scry) return;
+    const wasDiscarded = pendingPlay.scry.discardIds.includes(cardId);
+    const discardIds = wasDiscarded
+      ? pendingPlay.scry.discardIds.filter((id) => id !== cardId)
+      : [...pendingPlay.scry.discardIds, cardId];
+    let orderIds = pendingPlay.scry.orderIds.filter((id) => !discardIds.includes(id));
+    if (wasDiscarded && !orderIds.includes(cardId)) {
+      orderIds = [...orderIds, cardId];
+    }
+    updatePendingPlay({
+      scry: {
+        ...pendingPlay.scry,
+        discardIds,
+        orderIds,
+      },
+    });
+  };
+
+  const moveScryOrder = (cardId: string, direction: number) => {
+    if (!pendingPlay?.scry) return;
+    const orderIds = [...pendingPlay.scry.orderIds];
+    const index = orderIds.indexOf(cardId);
+    const nextIndex = index + direction;
+    if (index === -1 || nextIndex < 0 || nextIndex >= orderIds.length) return;
+    const [moved] = orderIds.splice(index, 1);
+    orderIds.splice(nextIndex, 0, moved);
+    updatePendingPlay({
+      scry: {
+        ...pendingPlay.scry,
+        orderIds,
+      },
+    });
+  };
+
+  const toggleSeekTake = (cardId: string) => {
+    if (!pendingPlay?.seek) return;
+    const current = pendingPlay.seek.takeIds ? [...pendingPlay.seek.takeIds] : [];
+    const index = current.indexOf(cardId);
+    if (index >= 0) {
+      current.splice(index, 1);
+    } else if (current.length < pendingPlay.seek.take) {
+      current.push(cardId);
+    }
+    updatePendingPlay({
+      seek: {
+        ...pendingPlay.seek,
+        takeIds: current,
+      },
+    });
+  };
+
+  const setSeekAuto = () => {
+    if (!pendingPlay?.seek) return;
+    updatePendingPlay({
+      seek: {
+        ...pendingPlay.seek,
+        takeIds: undefined,
+      },
+    });
+  };
+
+  const setSeekNone = () => {
+    if (!pendingPlay?.seek) return;
+    updatePendingPlay({
+      seek: {
+        ...pendingPlay.seek,
+        takeIds: [],
+      },
+    });
+  };
+
+  const setSearchPick = (pickId?: string) => {
+    if (!pendingPlay?.search) return;
+    updatePendingPlay({
+      search: {
+        ...pendingPlay.search,
+        pickId,
+      },
+    });
+  };
+
+  const setRedirectTarget = (targetId?: MatchCharacterId) => {
+    if (!pendingPlay) return;
+    updatePendingPlay({ redirectTargetId: targetId });
+  };
+
+  const setPushDirection = (direction?: "left" | "right") => {
+    if (!pendingPlay) return;
+    updatePendingPlay({ pushDirection: direction });
   };
 
   if (stage === "setup") {
@@ -901,6 +1463,7 @@ const App = () => {
   }
 
   const activeTeam = matchState.players[matchState.activePlayerId];
+  const isMovementRound = matchState.phase === "movement";
   const activeZoneLabel = matchState.activeZone ? zoneLabel(matchState.activeZone) : "None";
   const pausedZonesLabel = matchState.pausedZones.length
     ? matchState.pausedZones.map(zoneLabel).join(", ")
@@ -955,6 +1518,16 @@ const App = () => {
       ? "Order is hidden. Counts are grouped by card."
       : "Top is most recent. List shows actual order."
     : "";
+  const sortedMovementMembers = [...activeTeam.characters].sort(
+    (left, right) => left.position - right.position
+  );
+  const movementPairs = sortedMovementMembers
+    .slice(0, -1)
+    .map((member, index) => ({
+      left: member,
+      right: sortedMovementMembers[index + 1]!,
+    }))
+    .filter((pair) => pair.right.position - pair.left.position === 1);
   const cardFlowTip =
     "Played: placed in a legal zone after paying cost and choosing legal targets.\n" +
     "Used: the card's effects apply (default timing is On Use).\n" +
@@ -1117,7 +1690,7 @@ const App = () => {
                         </span>
                       </div>
                       <div className="ua-stack-card__meta">
-                        {sourceLabel} -> {targetLabel}
+                        {sourceLabel} {"->"} {targetLabel}
                       </div>
                       <div className="ua-stack-card__meta">
                         Speed: {entry.speed} | {entry.types.join(" / ")}
@@ -1306,7 +1879,8 @@ const App = () => {
               className="ua-button"
               disabled={
                 matchState.activePlayerId !== matchState.initiativePlayerId ||
-                matchState.activeZone !== null
+                matchState.activeZone !== null ||
+                matchState.phase !== "combat"
               }
               onClick={() =>
                 handleAction({ type: "end_turn", playerId: matchState.initiativePlayerId })
@@ -1317,8 +1891,35 @@ const App = () => {
           </div>
         </div>
         <p className="ua-zone-status">
-          Active Zone: {activeZoneLabel} | Paused Zones: {pausedZonesLabel}
+          Phase: {isMovementRound ? "Movement Round" : "Combat Round"} | Active Zone:{" "}
+          {activeZoneLabel} | Paused Zones: {pausedZonesLabel}
         </p>
+        {isMovementRound && (
+          <div className="ua-movement">
+            <p>Spend 1 Energy to swap adjacent allies, or pass.</p>
+            <div className="ua-movement__actions">
+              {movementPairs.map((pair) => (
+                <button
+                  key={`${pair.left.id}-${pair.right.id}`}
+                  className="ua-button ua-button--ghost"
+                  disabled={
+                    matchState.activePlayerId !== activeTeam.id || activeTeam.energy < 1
+                  }
+                  onClick={() =>
+                    handleAction({
+                      type: "move_swap",
+                      playerId: activeTeam.id,
+                      firstId: pair.left.id,
+                      secondId: pair.right.id,
+                    })
+                  }
+                >
+                  Swap {pair.left.name} {"<->"} {pair.right.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         {reactionNames.length > 0 && (
           <p className="ua-zone-status">
             Reaction window: {reactionNames.join(" / ")} can play Follow-Up or Assist Attack now.
@@ -1607,6 +2208,9 @@ const App = () => {
         <div className="ua-modal">
           <div className="ua-modal__content">
             <h3>Play {pendingPlay.card.name}</h3>
+            <p className="ua-modal__note">
+              Auto choices use deterministic defaults. Override only when you want a specific line of play.
+            </p>
             {pendingPlay.zones.length > 1 && (
               <div className="ua-modal__zones">
                 <p>Choose a zone:</p>
@@ -1615,11 +2219,7 @@ const App = () => {
                     <button
                       key={zone}
                       className={`ua-button ${pendingPlay.zone === zone ? "ua-button--primary" : ""}`}
-                      onClick={() =>
-                        setPendingPlay((prev) =>
-                          prev ? { ...prev, zone } : prev
-                        )
-                      }
+                      onClick={() => updatePendingPlay({ zone })}
                     >
                       {zoneLabel(zone)}
                     </button>
@@ -1635,11 +2235,7 @@ const App = () => {
                     <button
                       key={target.id}
                       className={`ua-button ${pendingPlay.targetId === target.id ? "ua-button--primary" : ""}`}
-                      onClick={() =>
-                        setPendingPlay((prev) =>
-                          prev ? { ...prev, targetId: target.id } : prev
-                        )
-                      }
+                      onClick={() => updatePendingPlay({ targetId: target.id })}
                     >
                       {target.label}
                     </button>
@@ -1655,15 +2251,198 @@ const App = () => {
                     <button
                       key={choice.index}
                       className={`ua-button ${pendingPlay.choiceIndex === choice.index ? "ua-button--primary" : ""}`}
-                      onClick={() =>
-                        setPendingPlay((prev) =>
-                          prev ? { ...prev, choiceIndex: choice.index } : prev
-                        )
-                      }
+                      onClick={() => updatePendingPlay({ choiceIndex: choice.index })}
                     >
                       {choice.label}
                     </button>
                   ))}
+                </div>
+              </div>
+            )}
+            {pendingPlay.redirectOptions.length > 1 && (
+              <div className="ua-modal__zones">
+                <p>Choose a redirect target (defender choice):</p>
+                <p className="ua-modal__subnote">Auto uses Cover first, then Redirect targets.</p>
+                <div className="ua-modal__zone-buttons">
+                  <button
+                    className={`ua-button ${!pendingPlay.redirectTargetId ? "ua-button--primary" : ""}`}
+                    onClick={() => setRedirectTarget(undefined)}
+                  >
+                    Auto
+                  </button>
+                  {pendingPlay.redirectOptions.map((option) => (
+                    <button
+                      key={option.id}
+                      className={`ua-button ${pendingPlay.redirectTargetId === option.id ? "ua-button--primary" : ""}`}
+                      onClick={() => setRedirectTarget(option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            {pendingPlay.needsPushDirection && (
+              <div className="ua-modal__zones">
+                <p>Push direction (opposed target):</p>
+                <p className="ua-modal__subnote">
+                  Auto chooses a valid direction along the target's team line.
+                </p>
+                <div className="ua-modal__zone-buttons">
+                  <button
+                    className={`ua-button ${!pendingPlay.pushDirection ? "ua-button--primary" : ""}`}
+                    onClick={() => setPushDirection(undefined)}
+                  >
+                    Auto
+                  </button>
+                  <button
+                    className={`ua-button ${pendingPlay.pushDirection === "left" ? "ua-button--primary" : ""}`}
+                    onClick={() => setPushDirection("left")}
+                  >
+                    Left
+                  </button>
+                  <button
+                    className={`ua-button ${pendingPlay.pushDirection === "right" ? "ua-button--primary" : ""}`}
+                    onClick={() => setPushDirection("right")}
+                  >
+                    Right
+                  </button>
+                </div>
+              </div>
+            )}
+            {pendingPlay.scry && pendingPlay.scry.cards.length > 0 && (
+              <div className="ua-modal__zones">
+                <p>Scry: discard any number, then reorder the rest.</p>
+                <p className="ua-modal__subnote">
+                  Kept cards are ordered top-first (drawn next).
+                </p>
+                <div className="ua-scry-list">
+                  {pendingPlay.scry.cards.map((instance) => {
+                    const cardEntry = getCardByInstance(instance);
+                    const owner = getCharacter(roster, instance.characterId);
+                    const ownerLabel = owner ? owner.name : instance.characterId;
+                    const label = cardEntry?.name ?? instance.cardSlot;
+                    const isDiscarded = pendingPlay.scry?.discardIds.includes(instance.id);
+                    return (
+                      <div key={instance.id} className="ua-scry-item">
+                        <div>
+                          <div className="ua-scry-name">{label}</div>
+                          <div className="ua-scry-meta">{ownerLabel}</div>
+                        </div>
+                        <button
+                          className={`ua-button ${isDiscarded ? "ua-button--primary" : ""}`}
+                          onClick={() => toggleScryDiscard(instance.id)}
+                        >
+                          {isDiscarded ? "Discarding" : "Keep"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                {pendingPlay.scry.orderIds.length > 1 && (
+                  <div className="ua-scry-order">
+                    <p>Order kept cards (top first):</p>
+                    {pendingPlay.scry.orderIds.map((cardId, index) => {
+                      const instance = pendingPlay.scry?.cards.find(
+                        (entry) => entry.id === cardId
+                      );
+                      if (!instance) return null;
+                      const cardEntry = getCardByInstance(instance);
+                      const label = cardEntry?.name ?? instance.cardSlot;
+                      return (
+                        <div key={cardId} className="ua-scry-order-item">
+                          <span>{index + 1}. {label}</span>
+                          <div className="ua-scry-order-controls">
+                            <button
+                              className="ua-button"
+                              onClick={() => moveScryOrder(cardId, -1)}
+                            >
+                              Up
+                            </button>
+                            <button
+                              className="ua-button"
+                              onClick={() => moveScryOrder(cardId, 1)}
+                            >
+                              Down
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+            {pendingPlay.seek && pendingPlay.seek.cards.length > 0 && (
+              <div className="ua-modal__zones">
+                <p>
+                  Seek ({pendingPlay.seek.criteria}, take up to {pendingPlay.seek.take}):
+                </p>
+                <p className="ua-modal__subnote">
+                  Selected:{" "}
+                  {pendingPlay.seek.takeIds ? pendingPlay.seek.takeIds.length : "Auto"} /
+                  {pendingPlay.seek.take}
+                </p>
+                <div className="ua-seek-list">
+                  {pendingPlay.seek.cards.map((instance) => {
+                    const cardEntry = getCardByInstance(instance);
+                    const owner = getCharacter(roster, instance.characterId);
+                    const ownerLabel = owner ? owner.name : instance.characterId;
+                    const label = cardEntry?.name ?? instance.cardSlot;
+                    const matches = cardEntry
+                      ? matchesSearchCriteria(cardEntry, pendingPlay.seek!.criteria)
+                      : false;
+                    const isSelected = pendingPlay.seek?.takeIds?.includes(instance.id) ?? false;
+                    return (
+                      <div key={instance.id} className="ua-seek-item">
+                        <div>
+                          <div className="ua-seek-name">{label}</div>
+                          <div className="ua-seek-meta">{ownerLabel}</div>
+                        </div>
+                        <button
+                          className={`ua-button ${isSelected ? "ua-button--primary" : ""}`}
+                          disabled={!matches}
+                          onClick={() => toggleSeekTake(instance.id)}
+                        >
+                          {matches ? (isSelected ? "Selected" : "Take") : "No match"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="ua-seek-controls">
+                  <button className="ua-button" onClick={setSeekAuto}>
+                    Auto
+                  </button>
+                  <button className="ua-button" onClick={setSeekNone}>
+                    Take none
+                  </button>
+                </div>
+              </div>
+            )}
+            {pendingPlay.search && (
+              <div className="ua-modal__zones">
+                <p>Search ({pendingPlay.search.criteria}):</p>
+                <p className="ua-modal__subnote">Auto picks the first matching card.</p>
+                {pendingPlay.search.options.length === 0 ? (
+                  <p>No matching cards in the draw pile.</p>
+                ) : (
+                  <div className="ua-search-list">
+                    {pendingPlay.search.options.map((option) => (
+                      <button
+                        key={option.id}
+                        className={`ua-button ${pendingPlay.search?.pickId === option.id ? "ua-button--primary" : ""}`}
+                        onClick={() => setSearchPick(option.id)}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="ua-search-controls">
+                  <button className="ua-button" onClick={() => setSearchPick(undefined)}>
+                    Auto
+                  </button>
                 </div>
               </div>
             )}
@@ -1682,9 +2461,7 @@ const App = () => {
                   max={pendingPlay.xRange ? pendingPlay.xRange.max : pendingPlay.xValue}
                   value={pendingPlay.xValue}
                   onChange={(event) =>
-                    setPendingPlay((prev) =>
-                      prev ? { ...prev, xValue: Number(event.target.value) || 0 } : prev
-                    )
+                    updatePendingPlay({ xValue: Number(event.target.value) || 0 })
                   }
                 />
               )}

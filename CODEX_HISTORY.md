@@ -66,3 +66,6 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-06: Added lifecycle tags in the rail/stack and event log (Played/Used/Cancelled) for clearer resolution status.
 - 2026-01-06: Added combat-round play locks (`block_play` effect), enforced "cannot play cards" in core, and covered it with a golden test.
 - 2026-01-07: Upgraded the core engine to 3v3 teams with shared deck/hand, per-character HP/status/defeat handling, and character-scoped targeting; updated the client UI for three-character team setup, per-character panels, owner-labeled hand cards, target selection, and transcript v2 golden snapshots.
+- 2026-01-10: Added action-level choice hooks for Redirect/Scry/Search/Seek/Push direction with deterministic fallback, and updated RULES_IMPLEMENTATION/README/TODO/AGENTS to reflect choice support.
+- 2026-01-10: Added UI prompts for Scry/Seek/Search choices, redirect selection, and opposed push direction, wiring the new action fields through the client modal.
+- 2026-01-11: Fixed the redirect choice golden test to use explicit 3v3 cover slots so Cover consumption/logging is exercised and the golden suite passes.

@@ -38,3 +38,4 @@ Historical context
 - Update the docs front-page "Last updated" stamp when shipping user-visible changes.
 - Transform priority uses the last matching entry in a card's `transforms` list.
 - Apply all healing through the core helper so Wound (flat) and Wither (percent) reductions always apply.
+- Core accepts optional action choice fields for Redirect/Scry/Search/Seek/Push direction; UI prompts now send choices with an Auto fallback.

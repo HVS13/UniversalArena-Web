@@ -18,6 +18,7 @@
 - DONE: Audit remaining status/keyword effects; no current cards use unimplemented keywords.
 - DONE: regression test ensures transform-target cards are not dealt into the deck/hand.
 - DONE: Enforced combat-round "cannot play cards" via structured `block_play` + golden test.
+- Track remaining core gaps in `RULES_IMPLEMENTATION.md` as new mechanics land.
 
 ## UI/UX
 - DONE: Active Zone banner with "why can't I play here" tooltip.
@@ -30,6 +31,7 @@
 - DONE: Label the active hand with player name to reduce hot-seat confusion.
 - DONE: Add clearer card lifecycle indicators in the rail/stack and log (Played/Used/Cancelled tags).
 - DONE: Team setup for three characters, per-character panels, and target selection UI for multi-legal targets.
+- DONE: Add choice prompts for Scry/Seek/Search, Redirect (defender selection), and opposed Push direction.
 
 ## Multiplayer
 - Add relay server and client sync (room codes, reconnect, host authority) only after 1-3 are complete.
@@ -37,7 +39,7 @@
 ## Tooling
 - DONE: golden test runner for core engine (seeded replay + transcript snapshot).
 - DONE: Add CI step to run `pnpm golden` on PRs.
-- Verify the golden CI by opening a PR that touches `packages/core` or `packages/data`.
+- DONE: Verify the golden CI by opening a PR that touches `packages/core` or `packages/data`.
 
 ## Docs/data pipeline
 - Tracked in `C:\Git\UniversalArena\TODO.md` (template enforcement, power budgets, schema validation).

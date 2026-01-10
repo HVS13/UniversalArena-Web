@@ -74,8 +74,10 @@ cmd /c pnpm --filter @ua/client build
 
 - Structured effects now cover optional spend/bonus damage/draw/create mechanics; legacy text parsing still handles unique triggers and any remaining unmodeled text.
 - Status/keyword handling covers timing windows, caps/expiry, and cost/speed/power/damage modifiers plus spend/draw/creation hooks, but not all unique triggers.
-- Movement Round and movement swaps are not implemented.
-- Multi-target/AoE/Splash/Bounce targeting is not implemented.
+- Movement Round swaps are implemented; movement is mandatory before combat.
+- Multi-target AoE/Splash/Bounce resolution is implemented; text-only edge cases still rely on legacy parsing.
+- Push/Pull/Swap and Redirect/Cover resolve in core; UI prompts send redirect/push choices with deterministic fallback.
+- Scry/Search/Seek prompt for discard/reorder/take/pick inputs and fall back deterministically if left on Auto.
 - Multiplayer is not implemented yet.
 - Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines, surfaced in UI tooltips.
 

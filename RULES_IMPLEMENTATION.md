@@ -1,6 +1,7 @@
 # Rules Implementation Matrix
 
 Status key: Implemented, Partial, Missing, Not used in data.
+Last verified: 2026-01-10.
 
 ## Keywords
 | Keyword | Status | Notes |
@@ -11,7 +12,7 @@ Status key: Implemented, Partial, Missing, Not used in data.
 | Retain | Implemented | Retained at hand cleanup; structured `retain` supported. |
 | Prepare X | Implemented | Turn-start cost adjustments apply to hand. |
 | Evade | Implemented | Defense vs Attack clash; reuse if 0 damage after Shield. |
-| Counter | Missing | No rule support for Counter follow-up plays. |
+| Counter | Implemented | Zero-damage defense opens a one-action counter window targeting the attacker. |
 | Reuse | Implemented | Keeps card in zone after clash. |
 | Follow-Up | Implemented | After Use window; same-character plays. |
 | Assist Attack | Implemented | After Use window; other-character plays. |
@@ -19,17 +20,17 @@ Status key: Implemented, Partial, Missing, Not used in data.
 | Immune (Damage Type) | Implemented | Parsed from text/innates/status rules. |
 | Weakness X | Implemented | Parsed from text/innates/status rules. |
 | Absorb X | Implemented | Parsed from text/innates/status rules with healing. |
-| Cleanse | Missing | No structured or text parsing for Cleanse/Dispel/Purge. |
-| Dispel | Missing | See Cleanse. |
-| Purge | Missing | See Cleanse. |
-| Push X | Missing | Move/swap helpers exist but no effect wiring. |
-| Pull X | Missing | See Push. |
-| Swap | Missing | See Push. |
-| Scry X | Missing | No deck inspection/reorder logic. |
-| Search | Missing | No deck search/shuffle logic. |
-| Seek X | Missing | No seek/filter logic. |
-| Redirect (Target) | Missing | Only Cover has hardcoded redirect. |
-| Bounce X | Missing | No adjacency-based extra targeting. |
+| Cleanse | Implemented | Text parsing reduces/removes negative statuses; unique/neutral skipped. |
+| Dispel | Implemented | Text parsing reduces/removes positive statuses; unique/neutral skipped. |
+| Purge | Implemented | Text parsing reduces/removes positive/negative statuses; unique/neutral skipped. |
+| Push X | Implemented | Moves target along their line via swaps; rooted path blocks movement; optional direction for opposed targets. |
+| Pull X | Implemented | Moves target toward source column; rooted path blocks movement. |
+| Swap | Implemented | Swaps source/target allies; rooted targets block swaps. |
+| Scry X | Implemented | Supports discard/reorder choices via action fields; deterministic fallback. |
+| Search | Implemented | Supports chosen card via action field; deterministic fallback. |
+| Seek X | Implemented | Supports chosen take list via action field; deterministic fallback. |
+| Redirect (Target) | Implemented | Cover + Redirect text update single-target effects; choice via action field, deterministic fallback. |
+| Bounce X | Implemented | Random adjacent extra targets resolved in multi-target effects. |
 
 ## Status Effects
 All 30 global status effects in `docs/data/status-effects.yml` are implemented in core
@@ -41,18 +42,18 @@ and the Strength/Dexterity/Frail/Weak/Fortified/Vulnerable modifiers.
 | Rule / Term | Status | Notes |
 | --- | --- | --- |
 | Turn Start (Energy reset + draw to hand size) | Implemented | Energy set to 5, draw to size 5. |
-| Movement Round | Missing | No phase/actions for movement swaps. |
+| Movement Round | Implemented | Alternating swap/pass phase with 1 Energy adjacency swaps; rooted swaps fail. |
 | Combat Round / Active Zone / Priority | Implemented | Zones, interrupts, pass resolution. |
 | Draw (reshuffle) | Implemented | Discard reshuffle when draw deck empty. |
 | Discard | Implemented | Hand cleanup and discard pile updates. |
 | Played / Used | Implemented | Logs + effect timings. |
 | Cancelled | Implemented | Before Use onward skipped; Always applies. |
-| Negated | Missing | No negation mechanic in core. |
+| Negated | Implemented | Cards with Negate text negate the opposing clash card; negated cards skip all effects. |
 | Cannot Play Cards | Partial | Implemented via `block_play` (combat round only); requires structured effects. |
-| Created Card default destination | Missing | Core always creates to hand; default-to-discard not modeled. |
+| Created Card default destination | Implemented | Created cards go to discard unless effect text specifies a destination. |
 | Damage resolution order | Implemented | Power mods -> Immune -> % mods -> Shield -> Barrier -> flat HP mods -> HP. |
-| AoE / Splash / Bounce | Missing | No multi-target targeting logic; only single-target resolution. |
-| Redirect | Missing | Only Cover redirect exists; keyword not supported. |
+| AoE / Splash / Bounce | Implemented | Multi-target resolution for AoE + splash adjacency + bounce adjacency rolls. |
+| Redirect | Implemented | Single-target redirect applies before use; AoE/random unaffected; choice via action field. |
 | Rule Priority | Implemented | Structured effects and restrictions override defaults. |
 
 ## Structured Effects

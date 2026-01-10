@@ -21,3 +21,4 @@ Use these when working in the docs repo (`C:\Git\UniversalArena`).
 ## Notes
 - Use `ua-game-client` for client/core changes; log behavioral fixes in `CODEX_HISTORY.md`.
 - Run `pnpm golden` after core rules changes or when validating engine behavior.
+- The game is 3v3 per team with shared deck/hand/energy/ultimate and per-character HP/status.

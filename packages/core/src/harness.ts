@@ -197,6 +197,16 @@ const applyOrThrow = (
   return result.state;
 };
 
+const completeMovementRound = (
+  state: ReturnType<typeof createMatchState>,
+  characters: Character[]
+) => {
+  if (state.phase !== "movement") return state;
+  let updated = applyOrThrow(state, { type: "pass", playerId: state.activePlayerId }, characters);
+  updated = applyOrThrow(updated, { type: "pass", playerId: updated.activePlayerId }, characters);
+  return updated;
+};
+
 const getCardInstanceId = (
   state: ReturnType<typeof createMatchState>,
   playerId: "p1" | "p2",
@@ -234,6 +244,7 @@ const playFromHand = (
 
 const runEvadeTest = (characters: Character[]): HarnessResult => {
   let state = createHarnessState(characters);
+  state = completeMovementRound(state, characters);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   state = applyOrThrow(state, playFromHand(state, "p2", "1", "normal"), characters);
@@ -249,6 +260,7 @@ const runEvadeTest = (characters: Character[]): HarnessResult => {
 
 const runFollowUpTest = (characters: Character[]): HarnessResult => {
   let state = createHarnessState(characters);
+  state = completeMovementRound(state, characters);
   state.initiativePlayerId = "p2";
   state.activePlayerId = "p1";
 
@@ -266,6 +278,7 @@ const runFollowUpTest = (characters: Character[]): HarnessResult => {
 
 const runMitigationTest = (characters: Character[]): HarnessResult[] => {
   let state = createHarnessState(characters);
+  state = completeMovementRound(state, characters);
 
   state = applyOrThrow(state, playFromHand(state, "p1", "1", "normal"), characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
@@ -274,6 +287,7 @@ const runMitigationTest = (characters: Character[]): HarnessResult[] => {
   const resistOk = getPrimary(state, "p2").hp === 95;
 
   let fireState = createHarnessState(characters);
+  fireState = completeMovementRound(fireState, characters);
   fireState = applyOrThrow(fireState, playFromHand(fireState, "p1", "2", "normal"), characters);
   fireState = applyOrThrow(fireState, { type: "pass", playerId: "p2" }, characters);
   fireState = applyOrThrow(fireState, { type: "pass", playerId: "p1" }, characters);
@@ -296,6 +310,7 @@ const runMitigationTest = (characters: Character[]): HarnessResult[] => {
 
 const runRestrictionTest = (characters: Character[]): HarnessResult[] => {
   let state = createHarnessState(characters);
+  state = completeMovementRound(state, characters);
 
   const blocked = applyAction(state, playFromHand(state, "p1", "6", "normal"), characters);
   if (!blocked.error) {

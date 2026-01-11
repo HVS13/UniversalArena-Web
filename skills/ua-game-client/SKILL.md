@@ -14,7 +14,7 @@ This repo hosts the React client and rules engine. Rules text and canonical data
 1. Update UI code in `apps/client/src/`.
 2. Update rules logic in `packages/core/src/`.
 3. If rules, keywords, status effects, or terms change, update the docs repo (`C:\Git\UniversalArena`) reference pages and `docs/data`.
-4. Re-export data from the docs repo into `packages/data/src` (and assets).
+4. Re-export data from the docs repo into `packages/data/src` (and assets) using `scripts/export-game-data/`.
 5. Do not edit generated JSON in `packages/data/src` by hand.
 6. When validating core rules changes, run `pnpm golden`.
 

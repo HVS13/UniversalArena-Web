@@ -7,13 +7,14 @@ description: Design or rebalance character kits in the docs repo (C:\Git\Univers
 
 ## Overview
 
-Character kits and their data live in `C:\Git\UniversalArena` (docs + `docs/data`). This repo only consumes exports.
+Character kits and their data live in `C:\Git\UniversalArena` (docs + `docs/data`). Use this repo only to run the exporter and consume the generated data.
 
 ## Workflow
 
 1. Switch to `C:\Git\UniversalArena` and follow `docs/characters/character-creation-guide.md`.
 2. Update the character page and `docs/data/characters/<slug>.yml`.
-3. Export the updated data into this repo (`packages/data/src` and assets).
+3. Export the updated data into this repo with:
+   `node C:\Git\UniversalArena-Web\scripts\export-game-data\export-game-data.mjs --docs-root C:\Git\UniversalArena --out C:\Git\UniversalArena-Web\packages\data\src --assets-out C:\Git\UniversalArena-Web\apps\client\public\assets\characters`
 4. Do not edit character docs or YAML files in this repo.
 
 ## References

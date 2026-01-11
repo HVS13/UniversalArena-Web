@@ -1,0 +1,62 @@
+name: Export Game Data
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      docs_repo:
+        description: "Docs repo (owner/name). Overrides UA_DOCS_REPO."
+        required: false
+        type: string
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve docs repo
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.docs_repo }}" ]; then
+            echo "DOCS_REPO=${{ inputs.docs_repo }}" >> "$GITHUB_ENV"
+          elif [ -n "${{ vars.UA_DOCS_REPO }}" ]; then
+            echo "DOCS_REPO=${{ vars.UA_DOCS_REPO }}" >> "$GITHUB_ENV"
+          else
+            echo "Set workflow input docs_repo or repo variable UA_DOCS_REPO." >&2
+            exit 1
+          fi
+
+      - name: Checkout docs repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DOCS_REPO }}
+          token: ${{ secrets.UA_DOCS_TOKEN || github.token }}
+          path: docs-src
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install exporter dependencies
+        run: |
+          cd scripts/export-game-data
+          npm install
+
+      - name: Export data and assets
+        run: |
+          node scripts/export-game-data/export-game-data.mjs --docs-root docs-src --out packages/data/src --assets-out apps/client/public/assets/characters
+
+      - name: Commit and push
+        shell: bash
+        run: |
+          if git status --porcelain | grep -q .; then
+            git config user.name "ua-bot"
+            git config user.email "ua-bot@users.noreply.github.com"
+            git add packages/data/src apps/client/public/assets/characters
+            git commit -m "chore: sync game data"
+            git push
+          else
+            echo "No changes to commit."
+          fi

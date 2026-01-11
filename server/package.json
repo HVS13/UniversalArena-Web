@@ -1,0 +1,13 @@
+﻿{
+  "name": "universal-arena-relay",
+  "private": true,
+  "version": "0.1.0",
+  "description": "WebSocket relay for Universal Arena multiplayer.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}

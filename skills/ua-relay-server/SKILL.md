@@ -13,11 +13,10 @@ Maintain the lightweight in-memory relay that powers 2-player lobbies.
 
 1. Update `server/index.js` for room logic, message routing, or limits; keep state in memory.
 2. Keep environment variables aligned with `server/README.md` (`PORT`, `MAX_PLAYERS`).
-3. If server URL or limits change, update `docs/javascripts/game/config.js`.
+3. If server URL or limits change, update the client wiring in `apps/client/src/` when multiplayer is added.
 
 ## References
 
 - `server/index.js`
 - `server/README.md`
 - `server/package.json`
-- `docs/javascripts/game/config.js`

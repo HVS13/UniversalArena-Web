@@ -27,10 +27,23 @@ cmd /c pnpm install
 The canonical data lives in `C:\Git\UniversalArena\docs\data`. Export it before running the game:
 
 ```powershell
-node C:\Git\UniversalArena\docs\scripts\export-game-data.mjs --out C:\Git\UniversalArena-Web\packages\data\src --assets-out C:\Git\UniversalArena-Web\apps\client\public\assets\characters
+cd C:\Git\UniversalArena-Web\scripts\export-game-data
+npm install
+cd C:\Git\UniversalArena-Web
+node scripts/export-game-data/export-game-data.mjs --docs-root C:\Git\UniversalArena --out packages\data\src --assets-out apps\client\public\assets\characters
 ```
 
 Do not edit `packages/data/src/characters.json` by hand.
+
+## CI export workflow (docs -> this repo)
+
+Use this if you want a GitHub Actions button to pull docs data and commit it here.
+
+1. Set repo variable `UA_DOCS_REPO` = `Owner/UniversalArena` (or your docs repo).
+   - Settings -> Secrets and variables -> Actions -> Variables.
+2. If the docs repo is private, add secret `UA_DOCS_TOKEN` with read access.
+   - Settings -> Secrets and variables -> Actions -> Secrets.
+3. Run Actions -> Export Game Data -> Run workflow.
 
 ## Cross-repo workflow
 
@@ -63,6 +76,12 @@ CI runs `pnpm golden` on pull requests that touch core/data files.
 ```powershell
 cmd /c pnpm --filter @ua/client build
 ```
+
+## Relay server (multiplayer, not wired yet)
+
+The relay server lives in `server/`. See `server/README.md` for local usage and
+the free session-only playit.gg tunnel setup. HTTPS-hosted clients will require
+a `wss://` endpoint.
 
 ## Deterministic replay and transcripts
 

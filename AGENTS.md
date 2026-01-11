@@ -10,17 +10,18 @@ Project rules
 - Keyword data includes an optional Core/Advanced tier; status entries in docs include Mode and explicit Turn End lines.
 - Client UI lives in `apps/client/src/`; core rules live in `packages/core/src/`.
 - Character art assets live in `apps/client/public/assets/characters`.
+- Relay server lives in `server/` (session-based multiplayer).
 - Prefer deterministic, testable rules logic in `packages/core` over UI-side effects.
 - Engine uses 3v3 teams with a shared deck/hand/energy/ultimate, per-character HP/status, and character-scoped targeting.
-- Track core/UI tasks in this repo's `TODO.md`; track docs/data pipeline tasks in `C:\Git\UniversalArena\TODO.md`.
+- Track core/UI and data-sync tasks in this repo's `TODO.md`.
 - Core supports deterministic replay + transcripts; golden tests live in `packages/core/src/golden.ts` and run via `pnpm golden`.
 - Structured effects include conditions, transforms, multihit hits, and set/reduce/spend handling; status state is tracked as potency/count/stack/value in core.
 - Restriction enforcement is structured-only; text parsing no longer gates card use. Keep `restrictions` in exported data for any gating text.
 - Core now enforces timing windows and status caps/expiry/trigger hooks (cost/speed/power/damage modifiers) plus hand/deck play and spend/draw/creation handling. Legacy text parsing remains for unmodeled mechanics (optional spend, bonus damage, draw/create, unique triggers).
 
 Data workflow
-- Export command (run from docs repo):  
-  `node C:\Git\UniversalArena\docs\scripts\export-game-data.mjs --out C:\Git\UniversalArena-Web\packages\data\src --assets-out C:\Git\UniversalArena-Web\apps\client\public\assets\characters`
+- Export command (run from this repo):
+  `node scripts/export-game-data/export-game-data.mjs --docs-root C:\Git\UniversalArena --out packages/data/src --assets-out apps/client/public/assets/characters`
 
 Quality checks
 - `pnpm --filter @ua/client build` before release.

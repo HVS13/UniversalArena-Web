@@ -36,5 +36,5 @@ Stop the agent when the session ends; it is not always-on hosting.
 
 ## Client wiring
 
-Multiplayer is not wired in the web client yet. When it is, point the client at either
-`ws://localhost:8787` for local testing or your public relay URL from playit/hosting.
+The web client connects to the relay from the setup screen. Use `ws://localhost:8787`
+for local testing or your public relay URL from playit/hosting.

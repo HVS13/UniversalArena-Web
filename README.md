@@ -77,11 +77,12 @@ CI runs `pnpm golden` on pull requests that touch core/data files.
 cmd /c pnpm --filter @ua/client build
 ```
 
-## Relay server (multiplayer, not wired yet)
+## Relay server (multiplayer)
 
 The relay server lives in `server/`. See `server/README.md` for local usage and
 the free session-only playit.gg tunnel setup. HTTPS-hosted clients will require
-a `wss://` endpoint.
+a `wss://` endpoint. The client now connects via the setup screen; you can set
+`VITE_RELAY_URL` or paste a relay URL in the UI.
 
 ## Deterministic replay and transcripts
 
@@ -97,7 +98,7 @@ a `wss://` endpoint.
 - Multi-target AoE/Splash/Bounce resolution is implemented; text-only edge cases still rely on legacy parsing.
 - Push/Pull/Swap and Redirect/Cover resolve in core; UI prompts send redirect/push choices with deterministic fallback.
 - Scry/Search/Seek prompt for discard/reorder/take/pick inputs and fall back deterministically if left on Auto.
-- Multiplayer is not implemented yet.
+- Multiplayer is relay-based and host-authoritative; reconnect/resync UX is still basic.
 - Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines, surfaced in UI tooltips.
 
 ## Gameplay notes

@@ -1578,7 +1578,9 @@
           "effect": [
             "This card's Multihit Count starts at 3.",
             "Set X to this card's remaining Multihit Count (before resolving this card). Spend Handgun Ammo up to X. Spend as many as possible.",
-            "Deal Power / X damage once per Ammo spent."
+            "Deal Power / X damage once per Ammo spent.",
+            "If this character has Equip: Riot Gun: This card becomes Shoot: Riot Gun.",
+            "If this character has Equip: Chicago Typewriter: This card becomes Shoot: Chicago Typewriter."
           ],
           "effects": [
             {
@@ -1600,6 +1602,22 @@
                   "kind": "x"
                 }
               }
+            }
+          ],
+          "transforms": [
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Equip: Riot Gun"
+              },
+              "cardSlot": "3-2"
+            },
+            {
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Equip: Chicago Typewriter"
+              },
+              "cardSlot": "3-3"
             }
           ]
         },

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { characters as roster, keywords, statusEffects } from "@ua/data";
 import type { Card, Character, Keyword, StatusEffectDefinition } from "@ua/data";
 import {
@@ -18,6 +18,46 @@ type Stage = "setup" | "match";
 type SelectionState = {
   p1: string[];
   p2: string[];
+};
+
+type RelayConnectionStatus = "idle" | "connecting" | "connected";
+
+type RelayLobbySnapshot = {
+  code: string;
+  hostId: string;
+  players: { id: string; name: string }[];
+};
+
+type RelayEventMessage = {
+  type: "lobby_event" | "game_event";
+  event: string;
+  data?: Record<string, unknown>;
+  from?: string;
+};
+
+type SetupSyncPayload = {
+  selection: SelectionState;
+  names: { p1: string; p2: string };
+};
+
+const defaultRelayUrl = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
+
+const createClientId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `client-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+};
+
+const getStoredClientId = () => {
+  if (typeof window === "undefined") {
+    return createClientId();
+  }
+  const stored = window.localStorage.getItem("ua-client-id");
+  if (stored) return stored;
+  const next = createClientId();
+  window.localStorage.setItem("ua-client-id", next);
+  return next;
 };
 
 const defaultSelection = (): SelectionState => {
@@ -93,6 +133,8 @@ type SearchState = {
 type PendingPlay = {
   playerId: PlayerId;
   card: Card;
+  baseCard: Card;
+  baseCardSlot: string;
   cardInstanceId?: string;
   sourceId: MatchCharacterId;
   zones: ZoneName[];
@@ -947,11 +989,25 @@ const buildKeywordMatchers = (list: Keyword[]): KeywordMatcher[] =>
 const findKeywordMatch = (line: string, matchers: KeywordMatcher[]) =>
   matchers.find((matcher) => matcher.regex.test(line));
 
-const getStatusMode = (status: StatusEffectDefinition) => {
+type StatusPrimaryStat = "potency" | "stack" | "value";
+
+type StatusDisplayInfo = {
+  modeLabel: string;
+  turnEnd: string;
+  primaryStat: StatusPrimaryStat;
+};
+
+const getStatusModeLabel = (status: StatusEffectDefinition) => {
   if (status.potencyMax !== undefined || status.countMax !== undefined) return "P/C";
   if (status.stackMax !== undefined) return "S";
   if (status.valueMax !== undefined) return "V";
   return "None";
+};
+
+const getStatusPrimaryStat = (status: StatusEffectDefinition): StatusPrimaryStat => {
+  if (status.potencyMax !== undefined || status.countMax !== undefined) return "potency";
+  if (status.stackMax !== undefined) return "stack";
+  return "value";
 };
 
 const getStatusTurnEnd = (status: StatusEffectDefinition) => {
@@ -963,33 +1019,849 @@ const getStatusTurnEnd = (status: StatusEffectDefinition) => {
   return turnEndRules.join(" / ");
 };
 
+const getStatusPrimaryValue = (
+  member: TeamMember,
+  status: string,
+  lookup: Map<string, StatusDisplayInfo>
+) => {
+  const state = member.statuses[status];
+  if (!state) return 0;
+  const primaryStat = lookup.get(normalizeKey(status))?.primaryStat ?? "value";
+  if (primaryStat === "potency") {
+    return state.potency > 0 && state.count > 0 ? state.potency : 0;
+  }
+  if (primaryStat === "stack") return state.stack;
+  return state.value;
+};
+
+type SoundEffect =
+  | "click"
+  | "confirm"
+  | "error"
+  | "card"
+  | "pass"
+  | "turn"
+  | "victory"
+  | "open"
+  | "swap";
+
+type DeckPulse = "draw" | "shuffle" | null;
+
+const useSoundEffects = (enabled: boolean, volume: number) => {
+  const audioRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    return () => {
+      const current = audioRef.current;
+      if (current) {
+        current.close().catch(() => undefined);
+      }
+    };
+  }, []);
+
+  const play = useCallback(
+    (effect: SoundEffect) => {
+      if (!enabled || volume <= 0) return;
+      if (typeof window === "undefined") return;
+      const audioContextCtor =
+        window.AudioContext ||
+        (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!audioContextCtor) return;
+      if (!audioRef.current) {
+        audioRef.current = new audioContextCtor();
+      }
+      const ctx = audioRef.current;
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => undefined);
+      }
+
+      const now = ctx.currentTime;
+      const maxVolume = Math.max(0.001, Math.min(1, volume));
+      const scheduleTone = ({
+        start = 0,
+        duration,
+        freq,
+        freqEnd,
+        type = "sine",
+        gain = 0.2,
+      }: {
+        start?: number;
+        duration: number;
+        freq: number;
+        freqEnd?: number;
+        type?: OscillatorType;
+        gain?: number;
+      }) => {
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        oscillator.type = type;
+        oscillator.frequency.setValueAtTime(freq, now + start);
+        if (freqEnd) {
+          oscillator.frequency.exponentialRampToValueAtTime(
+            freqEnd,
+            now + start + duration
+          );
+        }
+        const peak = Math.max(0.001, gain * maxVolume);
+        const attack = Math.min(0.02, duration / 3);
+        const release = Math.min(0.12, duration);
+        gainNode.gain.setValueAtTime(0.0001, now + start);
+        gainNode.gain.exponentialRampToValueAtTime(peak, now + start + attack);
+        gainNode.gain.exponentialRampToValueAtTime(
+          0.0001,
+          now + start + duration + release
+        );
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start(now + start);
+        oscillator.stop(now + start + duration + release);
+      };
+
+      switch (effect) {
+        case "click":
+          scheduleTone({
+            freq: 520,
+            freqEnd: 380,
+            duration: 0.05,
+            type: "square",
+            gain: 0.15,
+          });
+          break;
+        case "confirm":
+          scheduleTone({
+            freq: 440,
+            freqEnd: 640,
+            duration: 0.08,
+            type: "triangle",
+            gain: 0.22,
+          });
+          scheduleTone({
+            start: 0.07,
+            freq: 640,
+            freqEnd: 760,
+            duration: 0.08,
+            type: "triangle",
+            gain: 0.18,
+          });
+          break;
+        case "card":
+          scheduleTone({
+            freq: 240,
+            freqEnd: 460,
+            duration: 0.12,
+            type: "sawtooth",
+            gain: 0.2,
+          });
+          scheduleTone({
+            start: 0.05,
+            freq: 460,
+            freqEnd: 360,
+            duration: 0.08,
+            type: "sine",
+            gain: 0.15,
+          });
+          break;
+        case "pass":
+          scheduleTone({
+            freq: 260,
+            freqEnd: 180,
+            duration: 0.1,
+            type: "sine",
+            gain: 0.16,
+          });
+          break;
+        case "turn":
+          scheduleTone({
+            freq: 330,
+            freqEnd: 520,
+            duration: 0.12,
+            type: "triangle",
+            gain: 0.2,
+          });
+          scheduleTone({
+            start: 0.1,
+            freq: 520,
+            freqEnd: 660,
+            duration: 0.1,
+            type: "triangle",
+            gain: 0.18,
+          });
+          break;
+        case "error":
+          scheduleTone({
+            freq: 220,
+            freqEnd: 120,
+            duration: 0.2,
+            type: "sawtooth",
+            gain: 0.2,
+          });
+          break;
+        case "victory":
+          scheduleTone({ freq: 392, duration: 0.12, type: "sine", gain: 0.18 });
+          scheduleTone({ start: 0.12, freq: 494, duration: 0.12, type: "sine", gain: 0.18 });
+          scheduleTone({ start: 0.24, freq: 587, duration: 0.16, type: "sine", gain: 0.2 });
+          break;
+        case "open":
+          scheduleTone({
+            freq: 360,
+            freqEnd: 520,
+            duration: 0.09,
+            type: "triangle",
+            gain: 0.16,
+          });
+          break;
+        case "swap":
+          scheduleTone({
+            freq: 300,
+            freqEnd: 420,
+            duration: 0.1,
+            type: "square",
+            gain: 0.16,
+          });
+          break;
+      }
+    },
+    [enabled, volume]
+  );
+
+  return { play };
+};
+
+type SoundControlsProps = {
+  enabled: boolean;
+  volume: number;
+  onToggle: () => void;
+  onVolumeChange: (value: number) => void;
+};
+
+const SoundControls = ({
+  enabled,
+  volume,
+  onToggle,
+  onVolumeChange,
+}: SoundControlsProps) => (
+  <div className="ua-sound">
+    <button
+      type="button"
+      className="ua-button ua-button--ghost ua-sound__toggle"
+      onClick={onToggle}
+      aria-pressed={enabled}
+    >
+      {enabled ? "SFX On" : "SFX Off"}
+    </button>
+    <input
+      type="range"
+      min={0}
+      max={100}
+      value={Math.round(volume * 100)}
+      onChange={(event) => onVolumeChange(Number(event.target.value) / 100)}
+      aria-label="Sound effects volume"
+      disabled={!enabled}
+    />
+  </div>
+);
+
 
 const App = () => {
   const rosterSorted = useMemo(() => sortRoster(roster), []);
   const keywordMatchers = useMemo(() => buildKeywordMatchers(keywords), [keywords]);
   const statusDetails = useMemo(() => {
-    const map = new Map<string, { mode: string; turnEnd: string }>();
+    const map = new Map<string, StatusDisplayInfo>();
     statusEffects.forEach((status) => {
       map.set(normalizeKey(status.name), {
-        mode: getStatusMode(status),
+        modeLabel: getStatusModeLabel(status),
         turnEnd: getStatusTurnEnd(status),
+        primaryStat: getStatusPrimaryStat(status),
       });
     });
     return map;
   }, [statusEffects]);
+  const resolveCardForDisplay = useCallback(
+    (card: Card, sourceId: MatchCharacterId, targetId?: MatchCharacterId) => {
+      if (!matchState || !card.transforms?.length) return card;
+      const sourceEntry = getMemberById(matchState, sourceId);
+      if (!sourceEntry) return card;
+      const targetEntry = targetId ? getMemberById(matchState, targetId) : null;
+      const character = getCharacter(roster, sourceEntry.member.characterId);
+      if (!character) return card;
+      let resolved = card;
+
+      card.transforms.forEach((transform) => {
+        const condition = transform.condition;
+        let shouldTransform = false;
+        if (!condition) {
+          shouldTransform = true;
+        } else {
+          switch (condition.kind) {
+            case "self_has_status":
+              shouldTransform =
+                getStatusPrimaryValue(sourceEntry.member, condition.status, statusDetails) >=
+                (condition.min ?? 1);
+              break;
+            case "self_missing_status":
+              shouldTransform =
+                getStatusPrimaryValue(sourceEntry.member, condition.status, statusDetails) <= 0;
+              break;
+            case "target_has_status":
+              if (!targetEntry) return;
+              shouldTransform =
+                getStatusPrimaryValue(targetEntry.member, condition.status, statusDetails) >=
+                (condition.min ?? 1);
+              break;
+            case "target_missing_status":
+              if (!targetEntry) return;
+              shouldTransform =
+                getStatusPrimaryValue(targetEntry.member, condition.status, statusDetails) <= 0;
+              break;
+            default:
+              return;
+          }
+        }
+        if (!shouldTransform) return;
+        const replacement = getCardBySlot(character, transform.cardSlot);
+        if (replacement) {
+          resolved = replacement;
+        }
+      });
+
+      return resolved;
+    },
+    [matchState, statusDetails]
+  );
   const [stage, setStage] = useState<Stage>("setup");
   const [names, setNames] = useState({ p1: "Player 1", p2: "Player 2" });
   const [selection, setSelection] = useState<SelectionState>(defaultSelection);
+  const [relayUrl, setRelayUrl] = useState(defaultRelayUrl);
+  const [relayName, setRelayName] = useState("Player 1");
+  const [relayStatus, setRelayStatus] = useState<RelayConnectionStatus>("idle");
+  const [lobbyCode, setLobbyCode] = useState("");
+  const [lobby, setLobby] = useState<RelayLobbySnapshot | null>(null);
   const [matchState, setMatchState] = useState<MatchState | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundVolume, setSoundVolume] = useState(0.55);
+  const [deckPulse, setDeckPulse] = useState<Record<PlayerId, DeckPulse>>({
+    p1: null,
+    p2: null,
+  });
+  const [recentlyDealt, setRecentlyDealt] = useState<Record<string, boolean>>({});
   const [pendingPlay, setPendingPlay] = useState<PendingPlay | null>(null);
   const [inspectPile, setInspectPile] = useState<{
     playerId: PlayerId;
     pile: PileType;
   } | null>(null);
+  const sound = useSoundEffects(soundEnabled, soundVolume);
+  const clientIdRef = useRef(getStoredClientId());
+  const socketRef = useRef<WebSocket | null>(null);
+  const lobbyRef = useRef<RelayLobbySnapshot | null>(null);
+  const selectionRef = useRef(selection);
+  const namesRef = useRef(names);
+  const matchStateRef = useRef<MatchState | null>(null);
+  const syncRequestedRef = useRef(false);
+  const winnerRef = useRef<string | null>(null);
+  const deckCountsRef = useRef<Record<PlayerId, number>>({ p1: 0, p2: 0 });
+  const logIndexRef = useRef(0);
+  const handIdsRef = useRef<Set<string>>(new Set());
+  const dealtTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const deckTimeoutsRef = useRef<Record<PlayerId, number | null>>({
+    p1: null,
+    p2: null,
+  });
+  const matchSyncRef = useRef(false);
+  const reportMessage = (text: string) => {
+    setMessage(text);
+    sound.play("error");
+  };
+  const clientId = clientIdRef.current;
+  const isConnected = relayStatus === "connected";
+  const isMultiplayer = Boolean(lobby);
+  const isHost = lobby?.hostId === clientId;
+  const localSeat = isMultiplayer ? (isHost ? "p1" : "p2") : null;
+  const hasRemotePlayer = (lobby?.players.length ?? 0) > 1;
+  useEffect(() => {
+    selectionRef.current = selection;
+  }, [selection]);
+  useEffect(() => {
+    namesRef.current = names;
+  }, [names]);
+  useEffect(() => {
+    matchStateRef.current = matchState;
+  }, [matchState]);
+  useEffect(() => {
+    lobbyRef.current = lobby;
+  }, [lobby]);
+  const clearVisualTimers = useCallback(() => {
+    dealtTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    dealtTimeoutsRef.current.clear();
+    (Object.keys(deckTimeoutsRef.current) as PlayerId[]).forEach((playerId) => {
+      const timeoutId = deckTimeoutsRef.current[playerId];
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+        deckTimeoutsRef.current[playerId] = null;
+      }
+    });
+  }, []);
+  const resetVisualState = () => {
+    clearVisualTimers();
+    setDeckPulse({ p1: null, p2: null });
+    setRecentlyDealt({});
+    deckCountsRef.current = { p1: 0, p2: 0 };
+    logIndexRef.current = 0;
+    handIdsRef.current = new Set();
+    matchSyncRef.current = false;
+  };
+  const sendRelay = useCallback(
+    (payload: Record<string, unknown>) => {
+      const socket = socketRef.current;
+      if (!socket || socket.readyState !== WebSocket.OPEN) {
+        reportMessage("Relay is not connected.");
+        return false;
+      }
+      socket.send(JSON.stringify(payload));
+      return true;
+    },
+    [reportMessage]
+  );
+  const broadcastSelectionState = useCallback(
+    (payload: SetupSyncPayload) => {
+      if (!isMultiplayer || !isHost) return;
+      sendRelay({ type: "game_event", event: "selection_update", data: payload });
+    },
+    [isHost, isMultiplayer, sendRelay]
+  );
+  const requestSelectionUpdate = useCallback(
+    (playerId: PlayerId, selectionUpdate: string[], nameUpdate: string) => {
+      if (!isMultiplayer || isHost) return;
+      sendRelay({
+        type: "game_event",
+        event: "selection_request",
+        data: { playerId, selection: selectionUpdate, name: nameUpdate },
+      });
+    },
+    [isHost, isMultiplayer, sendRelay]
+  );
+  const applySetupChange = useCallback(
+    (playerId: PlayerId, update: { selection?: string[]; name?: string }) => {
+      const nextSelection: SelectionState = {
+        p1: [...selectionRef.current.p1],
+        p2: [...selectionRef.current.p2],
+      };
+      const nextNames = { ...namesRef.current };
+      if (update.selection) {
+        nextSelection[playerId] = [...update.selection];
+      }
+      if (update.name !== undefined) {
+        nextNames[playerId] = update.name;
+      }
+      setSelection(nextSelection);
+      setNames(nextNames);
+      if (!isMultiplayer) return;
+      if (isHost) {
+        broadcastSelectionState({ selection: nextSelection, names: nextNames });
+        return;
+      }
+      if (localSeat === playerId) {
+        requestSelectionUpdate(playerId, nextSelection[playerId], nextNames[playerId]);
+      }
+    },
+    [broadcastSelectionState, isHost, isMultiplayer, localSeat, requestSelectionUpdate]
+  );
+  const applyActionAndSync = useCallback(
+    (action: Parameters<typeof applyAction>[1]) => {
+      const currentState = matchStateRef.current;
+      if (!currentState) return;
+      const result = applyAction(currentState, action, roster);
+      matchStateRef.current = result.state;
+      setMatchState(result.state);
+      if (lobbyRef.current && lobbyRef.current.hostId === clientIdRef.current) {
+        sendRelay({ type: "game_event", event: "state_update", data: { state: result.state } });
+        if (result.error) {
+          sendRelay({
+            type: "game_event",
+            event: "action_error",
+            data: { message: result.error },
+          });
+        }
+      }
+      if (result.error) {
+        reportMessage(result.error);
+        return;
+      }
+      setMessage(null);
+      switch (action.type) {
+        case "play_card":
+          sound.play("card");
+          break;
+        case "pass":
+          sound.play("pass");
+          break;
+        case "end_turn":
+          sound.play("turn");
+          break;
+        case "move_swap":
+          sound.play("swap");
+          break;
+        case "clear_log":
+          sound.play("click");
+          break;
+      }
+      const winnerId = result.state.winnerId ?? null;
+      if (winnerId && winnerId !== winnerRef.current) {
+        sound.play("victory");
+      }
+      winnerRef.current = winnerId;
+    },
+    [reportMessage, sendRelay, sound]
+  );
+  const dispatchAction = useCallback(
+    (action: Parameters<typeof applyAction>[1]) => {
+      if (isMultiplayer && localSeat && action.playerId !== localSeat) {
+        reportMessage("Not your team.");
+        return;
+      }
+      if (!isMultiplayer) {
+        applyActionAndSync(action);
+        return;
+      }
+      if (isHost) {
+        applyActionAndSync(action);
+        return;
+      }
+      sendRelay({ type: "game_event", event: "action_request", data: { action } });
+    },
+    [applyActionAndSync, isHost, isMultiplayer, localSeat, reportMessage, sendRelay]
+  );
+  const canEditSetup = (playerId: PlayerId) => {
+    if (!isMultiplayer) return true;
+    if (!hasRemotePlayer) return true;
+    return localSeat === playerId;
+  };
+  const canControlPlayer = (playerId: PlayerId) => !isMultiplayer || localSeat === playerId;
+  const relayStatusLabel =
+    relayStatus === "connecting"
+      ? "Connecting"
+      : relayStatus === "connected"
+        ? isMultiplayer
+          ? "In Lobby"
+          : "Connected"
+        : "Offline";
+  const handleRelayEvent = useCallback(
+    (message: RelayEventMessage) => {
+      if (message.type === "lobby_event") {
+        if (message.event === "return_to_lobby" && message.from !== clientId) {
+          setMatchState(null);
+          setStage("setup");
+          setPendingPlay(null);
+          resetVisualState();
+          reportMessage("Host returned to lobby.");
+        }
+        return;
+      }
+
+      if (message.event === "selection_update") {
+        const data = message.data as SetupSyncPayload | undefined;
+        if (data?.selection && data?.names) {
+          setSelection(data.selection);
+          setNames(data.names);
+        }
+        return;
+      }
+
+      if (message.event === "selection_request") {
+        const lobbySnapshot = lobbyRef.current;
+        if (!lobbySnapshot || lobbySnapshot.hostId !== clientIdRef.current) return;
+        const data = message.data as
+          | { playerId?: string; selection?: string[]; name?: string }
+          | undefined;
+        const playerId = data?.playerId === "p1" || data?.playerId === "p2" ? data.playerId : null;
+        if (!playerId) return;
+        const nextSelection: SelectionState = {
+          p1: [...selectionRef.current.p1],
+          p2: [...selectionRef.current.p2],
+        };
+        const nextNames = { ...namesRef.current };
+        if (Array.isArray(data.selection) && data.selection.length === 3) {
+          nextSelection[playerId] = [...data.selection];
+        }
+        if (typeof data.name === "string") {
+          nextNames[playerId] = data.name;
+        }
+        setSelection(nextSelection);
+        setNames(nextNames);
+        broadcastSelectionState({ selection: nextSelection, names: nextNames });
+        return;
+      }
+
+      if (message.event === "state_update") {
+        if (message.from === clientId) return;
+        const data = message.data as
+          | { state?: MatchState; selection?: SelectionState; names?: { p1: string; p2: string } }
+          | undefined;
+        if (!data?.state) return;
+        if (!matchStateRef.current) {
+          resetVisualState();
+        }
+        matchStateRef.current = data.state;
+        setMatchState(data.state);
+        setStage("match");
+        setPendingPlay(null);
+        if (data.selection && data.names) {
+          setSelection(data.selection);
+          setNames(data.names);
+        }
+        setMessage(null);
+        return;
+      }
+
+      if (message.event === "action_request") {
+        const lobbySnapshot = lobbyRef.current;
+        if (!lobbySnapshot || lobbySnapshot.hostId !== clientIdRef.current) return;
+        const data = message.data as { action?: Parameters<typeof applyAction>[1] } | undefined;
+        if (!data?.action) return;
+        if (message.from) {
+          const seat = message.from === lobbySnapshot.hostId ? "p1" : "p2";
+          if (data.action.playerId && data.action.playerId !== seat) {
+            sendRelay({
+              type: "game_event",
+              event: "action_error",
+              data: { message: "Not your team." },
+            });
+            return;
+          }
+        }
+        if (!matchStateRef.current) {
+          sendRelay({
+            type: "game_event",
+            event: "action_error",
+            data: { message: "Match is not running." },
+          });
+          return;
+        }
+        applyActionAndSync(data.action);
+        return;
+      }
+
+      if (message.event === "sync_request") {
+        const lobbySnapshot = lobbyRef.current;
+        if (!lobbySnapshot || lobbySnapshot.hostId !== clientIdRef.current) return;
+        if (matchStateRef.current) {
+          sendRelay({
+            type: "game_event",
+            event: "state_update",
+            data: {
+              state: matchStateRef.current,
+              selection: selectionRef.current,
+              names: namesRef.current,
+            },
+          });
+        } else {
+          sendRelay({
+            type: "game_event",
+            event: "selection_update",
+            data: { selection: selectionRef.current, names: namesRef.current },
+          });
+        }
+        return;
+      }
+
+      if (message.event === "action_error") {
+        if (message.from === clientId) return;
+        const data = message.data as { message?: string } | undefined;
+        if (data?.message) {
+          reportMessage(data.message);
+        }
+      }
+    },
+    [applyActionAndSync, broadcastSelectionState, clientId, reportMessage, resetVisualState, sendRelay]
+  );
+  const handleRelayMessage = useCallback(
+    (raw: string) => {
+      let parsed: unknown = null;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        reportMessage("Invalid relay payload.");
+        return;
+      }
+      if (!parsed || typeof parsed !== "object") return;
+      const message = parsed as { type?: string; [key: string]: unknown };
+      if (message.type === "hello_ack") return;
+      if (message.type === "error" && typeof message.message === "string") {
+        reportMessage(message.message);
+        return;
+      }
+      if (message.type === "lobby_snapshot") {
+        const snapshot = message.lobby as RelayLobbySnapshot | undefined;
+        if (!snapshot) return;
+        setLobby(snapshot);
+        if (snapshot.hostId !== clientId && !syncRequestedRef.current) {
+          syncRequestedRef.current = true;
+          sendRelay({ type: "game_event", event: "sync_request", data: {} });
+        }
+        return;
+      }
+      if (message.type === "lobby_closed") {
+        const reason =
+          typeof message.reason === "string" ? message.reason : "Lobby closed.";
+        setLobby(null);
+        syncRequestedRef.current = false;
+        setMatchState(null);
+        setStage("setup");
+        setPendingPlay(null);
+        resetVisualState();
+        reportMessage(reason);
+        return;
+      }
+      if (message.type === "lobby_event" || message.type === "game_event") {
+        handleRelayEvent(message as RelayEventMessage);
+      }
+    },
+    [clientId, handleRelayEvent, reportMessage, resetVisualState, sendRelay]
+  );
+  const connectRelay = useCallback(() => {
+    if (relayStatus !== "idle") return;
+    const target = relayUrl.trim();
+    if (!target) {
+      reportMessage("Relay URL is required.");
+      return;
+    }
+    setRelayStatus("connecting");
+    const socket = new WebSocket(target);
+    socketRef.current = socket;
+    socket.onopen = () => {
+      setRelayStatus("connected");
+      syncRequestedRef.current = false;
+      const name = relayName.trim() || "Player";
+      sendRelay({ type: "hello", clientId, name });
+    };
+    socket.onmessage = (event) => {
+      handleRelayMessage(event.data);
+    };
+    socket.onerror = () => {
+      reportMessage("Relay connection failed.");
+    };
+    socket.onclose = () => {
+      setRelayStatus("idle");
+      socketRef.current = null;
+      syncRequestedRef.current = false;
+      if (lobbyRef.current) {
+        setLobby(null);
+        setMatchState(null);
+        setStage("setup");
+        setPendingPlay(null);
+        resetVisualState();
+      }
+    };
+  }, [clientId, handleRelayMessage, relayName, relayStatus, relayUrl, reportMessage, resetVisualState, sendRelay]);
+  const disconnectRelay = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    if (lobbyRef.current) {
+      sendRelay({ type: "leave_lobby" });
+    }
+    socket.close();
+  }, [sendRelay]);
+  const createLobby = useCallback(() => {
+    if (!isConnected) {
+      reportMessage("Connect to the relay first.");
+      return;
+    }
+    if (isMultiplayer) return;
+    sendRelay({ type: "create_lobby" });
+  }, [isConnected, isMultiplayer, reportMessage, sendRelay]);
+  const joinLobby = useCallback(() => {
+    if (!isConnected) {
+      reportMessage("Connect to the relay first.");
+      return;
+    }
+    if (isMultiplayer) return;
+    const code = lobbyCode.trim().toUpperCase();
+    if (!code) {
+      reportMessage("Enter a lobby code.");
+      return;
+    }
+    sendRelay({ type: "join_lobby", code });
+  }, [isConnected, isMultiplayer, lobbyCode, reportMessage, sendRelay]);
+  const leaveLobby = useCallback(() => {
+    if (!isConnected || !lobby) return;
+    sendRelay({ type: "leave_lobby" });
+    setLobby(null);
+    syncRequestedRef.current = false;
+    setMatchState(null);
+    setStage("setup");
+    setPendingPlay(null);
+    resetVisualState();
+  }, [isConnected, lobby, resetVisualState, sendRelay]);
+  useEffect(() => {
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+    };
+  }, []);
+  const markDealtCards = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    setRecentlyDealt((prev) => {
+      const next = { ...prev };
+      ids.forEach((id) => {
+        next[id] = true;
+      });
+      return next;
+    });
+    ids.forEach((id) => {
+      const existing = dealtTimeoutsRef.current.get(id);
+      if (existing) {
+        window.clearTimeout(existing);
+      }
+      const timeoutId = window.setTimeout(() => {
+        dealtTimeoutsRef.current.delete(id);
+        setRecentlyDealt((prev) => {
+          if (!prev[id]) return prev;
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }, 600);
+      dealtTimeoutsRef.current.set(id, timeoutId);
+    });
+  }, []);
+  const queueDeckPulse = useCallback((playerId: PlayerId, effect: DeckPulse) => {
+    if (!effect) return;
+    setDeckPulse((prev) => ({ ...prev, [playerId]: effect }));
+    const existing = deckTimeoutsRef.current[playerId];
+    if (existing) {
+      window.clearTimeout(existing);
+    }
+    deckTimeoutsRef.current[playerId] = window.setTimeout(() => {
+      deckTimeoutsRef.current[playerId] = null;
+      setDeckPulse((prev) => ({ ...prev, [playerId]: null }));
+    }, 650);
+  }, []);
+  const toggleSound = () => {
+    if (soundEnabled) {
+      sound.play("click");
+    }
+    setSoundEnabled((prev) => !prev);
+  };
+  const updateSoundVolume = (value: number) => {
+    setSoundVolume(Math.max(0, Math.min(1, value)));
+  };
+  const soundControls = (
+    <SoundControls
+      enabled={soundEnabled}
+      volume={soundVolume}
+      onToggle={toggleSound}
+      onVolumeChange={updateSoundVolume}
+    />
+  );
 
   const startMatch = () => {
     try {
+      if (isMultiplayer && !isHost) {
+        reportMessage("Only the host can start the match.");
+        return;
+      }
+      resetVisualState();
       const state = createMatchState(roster, [
         { id: "p1", name: names.p1.trim() || "Player 1", characterIds: selection.p1 },
         { id: "p2", name: names.p2.trim() || "Player 2", characterIds: selection.p2 },
@@ -997,8 +1869,17 @@ const App = () => {
       setMatchState(state);
       setStage("match");
       setMessage(null);
+      winnerRef.current = null;
+      sound.play("confirm");
+      if (isMultiplayer && isHost) {
+        sendRelay({
+          type: "game_event",
+          event: "state_update",
+          data: { state, selection, names },
+        });
+      }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to start match.");
+      reportMessage(error instanceof Error ? error.message : "Failed to start match.");
     }
   };
 
@@ -1006,14 +1887,72 @@ const App = () => {
     setMatchState(null);
     setStage("setup");
     setMessage(null);
+    setPendingPlay(null);
+    winnerRef.current = null;
+    resetVisualState();
+    sound.play("click");
+    if (isMultiplayer && isHost) {
+      sendRelay({ type: "lobby_event", event: "return_to_lobby", data: {} });
+    }
   };
 
-  const handleAction = (action: Parameters<typeof applyAction>[1]) => {
-    if (!matchState) return;
-    const result = applyAction(matchState, action, roster);
-    setMatchState(result.state);
-    setMessage(result.error ?? null);
-  };
+  useEffect(() => {
+    return () => {
+      clearVisualTimers();
+    };
+  }, [clearVisualTimers]);
+
+  useEffect(() => {
+    if (!matchState) {
+      matchSyncRef.current = false;
+      return;
+    }
+    const players: PlayerId[] = ["p1", "p2"];
+    const nextDeckCounts = {
+      p1: matchState.players.p1.deck.length,
+      p2: matchState.players.p2.deck.length,
+    };
+    const isFirstSync = !matchSyncRef.current;
+    if (isFirstSync) {
+      matchSyncRef.current = true;
+      deckCountsRef.current = nextDeckCounts;
+      logIndexRef.current = matchState.log.length;
+    } else {
+      players.forEach((playerId) => {
+        const previous = deckCountsRef.current[playerId];
+        const current = nextDeckCounts[playerId];
+        if (previous !== current) {
+          queueDeckPulse(playerId, current > previous ? "shuffle" : "draw");
+        }
+      });
+      deckCountsRef.current = nextDeckCounts;
+      const newLogs = matchState.log.slice(logIndexRef.current);
+      logIndexRef.current = matchState.log.length;
+      newLogs.forEach((entry) => {
+        if (!entry.includes("shuffles their discard into the draw pile.")) return;
+        const name = entry.split(" shuffles")[0];
+        const teamId = players.find((playerId) => matchState.players[playerId].name === name);
+        if (teamId) {
+          queueDeckPulse(teamId, "shuffle");
+        }
+      });
+    }
+
+    const newHandIds: string[] = [];
+    const currentHandIds = new Set<string>();
+    players.forEach((playerId) => {
+      matchState.players[playerId].hand.forEach((instance) => {
+        currentHandIds.add(instance.id);
+        if (!handIdsRef.current.has(instance.id)) {
+          newHandIds.push(instance.id);
+        }
+      });
+    });
+    if (newHandIds.length > 0) {
+      markDealtCards(newHandIds);
+    }
+    handIdsRef.current = currentHandIds;
+  }, [matchState, markDealtCards, queueDeckPulse]);
 
   const buildPendingMeta = (
     base: Omit<
@@ -1084,24 +2023,113 @@ const App = () => {
     };
   };
 
+  const buildPendingPlay = (
+    base: {
+      playerId: PlayerId;
+      baseCard: Card;
+      baseCardSlot: string;
+      cardInstanceId?: string;
+      sourceId: MatchCharacterId;
+      targets: { id: MatchCharacterId; label: string }[];
+      targetId: MatchCharacterId;
+      zone?: ZoneName;
+      xValue?: number;
+      choiceIndex?: number;
+    },
+    previous?: PendingPlay | null
+  ): PendingPlay => {
+    const ownerEntry = getMemberById(matchState!, base.sourceId);
+    if (!ownerEntry) {
+      return previous ?? {
+        playerId: base.playerId,
+        card: base.baseCard,
+        baseCard: base.baseCard,
+        baseCardSlot: base.baseCardSlot,
+        cardInstanceId: base.cardInstanceId,
+        sourceId: base.sourceId,
+        zones: [],
+        zone: "normal",
+        xValue: 0,
+        xRange: null,
+        choices: [],
+        choiceIndex: 0,
+        targets: base.targets,
+        targetId: base.targetId,
+        redirectOptions: [],
+        needsPushDirection: false,
+      };
+    }
+    const member = ownerEntry.member;
+    const team = matchState!.players[base.playerId];
+    const cardInstance = base.cardInstanceId
+      ? team.hand.find((instance) => instance.id === base.cardInstanceId)
+      : undefined;
+    const card = resolveCardForDisplay(base.baseCard, base.sourceId, base.targetId);
+    const zones = getPlayableZones(card, matchState!, member);
+    const safeZones = zones.length > 0 ? zones : previous?.zones ?? ["normal"];
+    const zone = safeZones.includes(base.zone ?? safeZones[0])
+      ? (base.zone ?? safeZones[0])
+      : safeZones[0];
+    const choices = getCardChoices(card);
+    const choiceIndex =
+      choices.length === 0
+        ? 0
+        : Math.min(base.choiceIndex ?? 0, Math.max(choices.length - 1, 0));
+    const xRange = getXRangeFromText(card);
+    const cost = parseCost(card.cost);
+    const isAfterUse =
+      matchState!.afterUseWindow &&
+      matchState!.afterUseWindow.validForAction === matchState!.actionId + 1;
+    const isFollowUpPlay =
+      Boolean(isAfterUse) && matchState!.afterUseWindow?.lastUsedCharacterId === base.sourceId;
+    const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+    const max = cost.variable
+      ? getMaxX(team, member, cost, cardInstance, followUpAdjustment)
+      : 0;
+    let xValue = base.xValue ?? (xRange ? xRange.max : max);
+    if (xRange) {
+      xValue = Math.max(xRange.min, Math.min(xRange.max, xValue));
+    } else if (cost.variable) {
+      xValue = Math.max(0, Math.min(max, xValue));
+    }
+
+    return buildPendingMeta(
+      {
+        playerId: base.playerId,
+        card,
+        baseCard: base.baseCard,
+        baseCardSlot: base.baseCardSlot,
+        cardInstanceId: base.cardInstanceId,
+        sourceId: base.sourceId,
+        zones: safeZones,
+        zone,
+        xValue,
+        xRange,
+        choices,
+        choiceIndex,
+        targets: base.targets,
+        targetId: base.targetId,
+      },
+      previous
+    );
+  };
+
   const updatePendingPlay = (overrides: Partial<PendingPlay>) => {
     setPendingPlay((prev) => {
-      if (!prev) return prev;
+      if (!prev || !matchState) return prev;
       const merged = { ...prev, ...overrides };
-      return buildPendingMeta(
+      return buildPendingPlay(
         {
           playerId: merged.playerId,
-          card: merged.card,
+          baseCard: merged.baseCard,
+          baseCardSlot: merged.baseCardSlot,
           cardInstanceId: merged.cardInstanceId,
           sourceId: merged.sourceId,
-          zones: merged.zones,
-          zone: merged.zone,
-          xValue: merged.xValue,
-          xRange: merged.xRange,
-          choices: merged.choices,
-          choiceIndex: merged.choiceIndex,
           targets: merged.targets,
           targetId: merged.targetId,
+          zone: merged.zone,
+          xValue: merged.xValue,
+          choiceIndex: merged.choiceIndex,
         },
         merged
       );
@@ -1115,33 +2143,47 @@ const App = () => {
     cardInstanceId?: string
   ) => {
     if (!matchState) return;
+    if (isMultiplayer && !canControlPlayer(playerId)) {
+      reportMessage("Not your team.");
+      return;
+    }
     if (matchState.phase === "movement") {
-      setMessage("Movement Round in progress.");
+      reportMessage("Movement Round in progress.");
       return;
     }
     const team = matchState.players[playerId];
     const ownerEntry = getMemberById(matchState, sourceId);
     if (!ownerEntry || ownerEntry.teamId !== playerId) {
-      setMessage("Card source not found.");
+      reportMessage("Card source not found.");
       return;
     }
     const member = ownerEntry.member;
-    const zones = getPlayableZones(card, matchState, member);
+    let targets = getLegalTargets(card, sourceId, matchState, roster).map((targetId) => ({
+      id: targetId,
+      label: formatMemberLabel(matchState, targetId),
+    }));
+    if (!targets.length) {
+      reportMessage("No legal targets.");
+      return;
+    }
+    const initialTargetId = targets[0].id;
+    const playCard = resolveCardForDisplay(card, sourceId, initialTargetId);
+    const zones = getPlayableZones(playCard, matchState, member);
     if (!zones.length) {
-      setMessage("No legal zones available.");
+      reportMessage("No legal zones available.");
       return;
     }
     const cardInstance = cardInstanceId
       ? team.hand.find((instance) => instance.id === cardInstanceId)
       : undefined;
-    const cost = parseCost(card.cost);
-    const xRange = getXRangeFromText(card);
+    const cost = parseCost(playCard.cost);
+    const xRange = getXRangeFromText(playCard);
     const isAfterUse =
       matchState.afterUseWindow &&
       matchState.afterUseWindow.validForAction === matchState.actionId + 1;
     const isFollowUpPlay =
       Boolean(isAfterUse) && matchState.afterUseWindow?.lastUsedCharacterId === sourceId;
-    const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+    const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(playCard) : 0;
     const max = cost.variable
       ? getMaxX(team, member, cost, cardInstance, followUpAdjustment)
       : 0;
@@ -1153,34 +2195,26 @@ const App = () => {
       cardInstance,
       followUpAdjustment
     );
-    const choices = getCardChoices(card);
-    let targets = getLegalTargets(card, sourceId, matchState, roster).map((targetId) => ({
-      id: targetId,
-      label: formatMemberLabel(matchState, targetId),
-    }));
-    if (!targets.length) {
-      setMessage("No legal targets.");
-      return;
-    }
-    const targetText = card.target.toLowerCase();
+    const choices = getCardChoices(playCard);
+    const targetText = playCard.target.toLowerCase();
     if (targetText.includes("all enemies") || targetText.includes("all allies")) {
       targets = [targets[0]];
     }
-    const basePending = {
-      playerId,
-      card,
-      cardInstanceId,
-      sourceId,
-      zones,
-      zone: zones[0],
-      xValue: xRange ? xRange.max : max,
-      xRange,
-      choices,
-      choiceIndex: 0,
-      targets,
-      targetId: targets[0].id,
-    };
-    const pendingWithMeta = buildPendingMeta(basePending, null);
+    const pendingWithMeta = buildPendingPlay(
+      {
+        playerId,
+        baseCard: card,
+        baseCardSlot: card.slot,
+        cardInstanceId,
+        sourceId,
+        targets,
+        targetId: initialTargetId,
+        zone: zones[0],
+        xValue: xRange ? xRange.max : max,
+        choiceIndex: 0,
+      },
+      null
+    );
     const needsMetaModal =
       Boolean(pendingWithMeta.scry) ||
       Boolean(pendingWithMeta.seek) ||
@@ -1195,19 +2229,19 @@ const App = () => {
       targets.length > 1 ||
       needsMetaModal;
     if (cost.variable && !baseAffordable) {
-      setMessage("Insufficient resources.");
+      reportMessage("Insufficient resources.");
       return;
     }
     if (!cost.variable && xRange && !baseAffordable) {
-      setMessage("Insufficient resources.");
+      reportMessage("Insufficient resources.");
       return;
     }
     if (xRange && xRange.max < xRange.min) {
-      setMessage("Invalid X range.");
+      reportMessage("Invalid X range.");
       return;
     }
     if (!needsModal) {
-      handleAction({
+      dispatchAction({
         type: "play_card",
         playerId,
         cardInstanceId,
@@ -1218,23 +2252,26 @@ const App = () => {
       });
       return;
     }
+    sound.play("open");
     setPendingPlay(pendingWithMeta);
   };
 
   const openPile = (playerId: PlayerId, pile: PileType) => {
     setInspectPile({ playerId, pile });
+    sound.play("open");
   };
 
   const closePile = () => {
     setInspectPile(null);
+    sound.play("click");
   };
 
   const confirmXPlay = () => {
     if (!pendingPlay) return;
-    handleAction({
+    dispatchAction({
       type: "play_card",
       playerId: pendingPlay.playerId,
-      cardSlot: pendingPlay.card.slot,
+      cardSlot: pendingPlay.baseCardSlot,
       cardInstanceId: pendingPlay.cardInstanceId,
       sourceId: pendingPlay.sourceId,
       targetId: pendingPlay.targetId,
@@ -1346,20 +2383,103 @@ const App = () => {
   if (stage === "setup") {
     return (
       <div className="ua-shell">
-        <header className="ua-header">
-          <div>
-            <p className="ua-kicker">Universal Arena</p>
-          <h1>Local Match Setup</h1>
+      <header className="ua-header">
+        <div>
+          <p className="ua-kicker">Universal Arena</p>
+          <h1>{isMultiplayer ? "Multiplayer Setup" : "Local Match Setup"}</h1>
           <p className="ua-subtitle">
-              Pick three characters per team from the current roster and start a hot-seat match.
+            Pick three characters per team from the current roster and start a match.
           </p>
         </div>
-        <div className="ua-badge">Prototype Engine</div>
-        </header>
+        <div className="ua-header__actions">
+          {soundControls}
+          <div className="ua-badge">Prototype Engine</div>
+        </div>
+      </header>
 
-        {message && <div className="ua-toast">{message}</div>}
+      {message && <div className="ua-toast">{message}</div>}
 
-        <section className="ua-setup-grid">
+      <section className="ua-panel ua-panel--wide">
+        <div className="ua-panel__header">
+          <h2>Multiplayer (Relay)</h2>
+          <span className="ua-panel__tag">{relayStatusLabel}</span>
+        </div>
+        <div className="ua-help-row">
+          <label className="ua-label">
+            Relay URL
+            <input
+              value={relayUrl}
+              disabled={relayStatus !== "idle"}
+              onChange={(event) => setRelayUrl(event.target.value)}
+            />
+          </label>
+          <label className="ua-label">
+            Display name
+            <input
+              value={relayName}
+              disabled={relayStatus !== "idle"}
+              onChange={(event) => setRelayName(event.target.value)}
+            />
+          </label>
+          <label className="ua-label">
+            Lobby code
+            <input
+              value={lobbyCode}
+              disabled={!isConnected || isMultiplayer}
+              onChange={(event) => setLobbyCode(event.target.value.toUpperCase())}
+            />
+          </label>
+        </div>
+        <div className="ua-help-row">
+          <button
+            className="ua-button"
+            disabled={relayStatus !== "idle"}
+            onClick={connectRelay}
+          >
+            Connect
+          </button>
+          <button
+            className="ua-button ua-button--ghost"
+            disabled={!isConnected}
+            onClick={disconnectRelay}
+          >
+            Disconnect
+          </button>
+          <button
+            className="ua-button"
+            disabled={!isConnected || isMultiplayer}
+            onClick={createLobby}
+          >
+            Create Lobby
+          </button>
+          <button
+            className="ua-button"
+            disabled={!isConnected || isMultiplayer || !lobbyCode.trim()}
+            onClick={joinLobby}
+          >
+            Join Lobby
+          </button>
+          <button
+            className="ua-button ua-button--ghost"
+            disabled={!isMultiplayer}
+            onClick={leaveLobby}
+          >
+            Leave Lobby
+          </button>
+        </div>
+        {isMultiplayer ? (
+          <p className="ua-zone-status">
+            Lobby {lobby?.code} • {isHost ? "Host (P1)" : "Guest (P2)"} • Players:{" "}
+            {lobby?.players.map((player) => player.name).join(", ")}
+          </p>
+        ) : (
+          <p className="ua-zone-status">
+            Use the relay to play remotely. The match setup below controls the in-game names.
+          </p>
+        )}
+      </section>
+
+      <section className="ua-setup-grid">
           {(["p1", "p2"] as PlayerId[]).map((playerId) => {
             const selected = selection[playerId];
             const selectedCharacters = selected
@@ -1372,29 +2492,31 @@ const App = () => {
                   <h2>{playerId === "p1" ? "Player One" : "Player Two"}</h2>
                   <span className="ua-panel__tag">{playerId.toUpperCase()}</span>
                 </div>
-                <label className="ua-label">
-                  Name
-                  <input
-                    value={names[playerId]}
-                    onChange={(event) =>
-                      setNames((prev) => ({ ...prev, [playerId]: event.target.value }))
-                    }
-                  />
-                </label>
+                  <label className="ua-label">
+                    Name
+                    <input
+                      value={names[playerId]}
+                      disabled={!canEditSetup(playerId)}
+                      onChange={(event) =>
+                        applySetupChange(playerId, { name: event.target.value })
+                      }
+                    />
+                  </label>
                 <div className="ua-team-selects">
                   {selected.map((selectionId, index) => (
                     <label key={`${playerId}-${index}`} className="ua-label">
                       Character {index + 1}
-                      <select
-                        value={selectionId}
-                        onChange={(event) =>
-                          setSelection((prev) => {
-                            const next = [...prev[playerId]];
-                            next[index] = event.target.value;
-                            return { ...prev, [playerId]: next };
-                          })
-                        }
-                      >
+                        <select
+                          value={selectionId}
+                          disabled={!canEditSetup(playerId)}
+                          onChange={(event) =>
+                            applySetupChange(playerId, {
+                              selection: selection[playerId].map((entry, entryIndex) =>
+                                entryIndex === index ? event.target.value : entry
+                              ),
+                            })
+                          }
+                        >
                         {rosterSorted.map((entry) => (
                           <option
                             key={entry.id}
@@ -1450,7 +2572,11 @@ const App = () => {
         </section>
 
         <div className="ua-actions">
-          <button className="ua-button ua-button--primary" onClick={startMatch}>
+          <button
+            className="ua-button ua-button--primary"
+            disabled={isMultiplayer && !isHost}
+            onClick={startMatch}
+          >
             Start Match
           </button>
         </div>
@@ -1587,22 +2713,72 @@ const App = () => {
       </p>
     );
   };
+  const pendingTargetPreview =
+    pendingPlay && matchState
+      ? (() => {
+          const options = pendingPlay.targets.map((target) => {
+            const resolvedCard = resolveCardForDisplay(
+              pendingPlay.baseCard,
+              pendingPlay.sourceId,
+              target.id
+            );
+            const legalTargets = getLegalTargets(
+              resolvedCard,
+              pendingPlay.sourceId,
+              matchState,
+              roster
+            );
+            const isTransformed = resolvedCard.slot !== pendingPlay.baseCardSlot;
+            const isRetarget = !legalTargets.includes(target.id);
+            return {
+              ...target,
+              resolvedCard,
+              legalTargets,
+              isTransformed,
+              isRetarget,
+            };
+          });
+          const active = options.find((option) => option.id === pendingPlay.targetId) ?? null;
+          const legalTargetLabels = active
+            ? active.legalTargets.map((targetId) =>
+                formatMemberLabel(matchState, targetId)
+              )
+            : [];
+          const autoTargetLabel =
+            active && active.legalTargets.length > 0
+              ? formatMemberLabel(matchState, active.legalTargets[0])
+              : null;
+          return { options, active, legalTargetLabels, autoTargetLabel };
+        })()
+      : null;
+  const isTransformPreview =
+    pendingPlay && pendingPlay.baseCardSlot !== pendingPlay.card.slot;
 
   return (
     <div className="ua-shell">
       <header className="ua-header">
         <div>
           <p className="ua-kicker">Universal Arena</p>
-          <h1>Local Match</h1>
+          <h1>{isMultiplayer ? "Multiplayer Match" : "Local Match"}</h1>
           <p className="ua-subtitle">
             Turn {matchState.turn} • Active: {activeTeam.name}
           </p>
+          {isMultiplayer && lobby && (
+            <p className="ua-zone-status">
+              Lobby {lobby.code} • {isHost ? "Host (P1)" : "Guest (P2)"}
+            </p>
+          )}
         </div>
-        <div className="ua-header__actions">
-          <button className="ua-button ua-button--ghost" onClick={resetMatch}>
-            Back to Setup
-          </button>
-        </div>
+          <div className="ua-header__actions">
+            {soundControls}
+            <button
+              className="ua-button ua-button--ghost"
+              disabled={isMultiplayer && !isHost}
+              onClick={resetMatch}
+            >
+              Back to Setup
+            </button>
+          </div>
       </header>
 
       {message && <div className="ua-toast">{message}</div>}
@@ -1707,6 +2883,11 @@ const App = () => {
       <section className="ua-match-grid">
         {(["p1", "p2"] as PlayerId[]).map((playerId) => {
           const team = matchState.players[playerId];
+          const deckEffect = deckPulse[playerId];
+          const deckClass =
+            "ua-stat-button ua-pile-button ua-pile-button--deck" +
+            (deckEffect === "draw" ? " is-drawing" : "") +
+            (deckEffect === "shuffle" ? " is-shuffling" : "");
           return (
             <div
               key={playerId}
@@ -1732,7 +2913,7 @@ const App = () => {
                   </div>
                   <button
                     type="button"
-                    className="ua-stat-button"
+                    className={deckClass}
                     onClick={() => openPile(playerId, "deck")}
                   >
                     <span>Deck</span>
@@ -1740,7 +2921,7 @@ const App = () => {
                   </button>
                   <button
                     type="button"
-                    className="ua-stat-button"
+                    className="ua-stat-button ua-pile-button ua-pile-button--discard"
                     onClick={() => openPile(playerId, "discard")}
                   >
                     <span>Discard</span>
@@ -1748,7 +2929,7 @@ const App = () => {
                   </button>
                   <button
                     type="button"
-                    className="ua-stat-button"
+                    className="ua-stat-button ua-pile-button ua-pile-button--exhaust"
                     onClick={() => openPile(playerId, "exhausted")}
                   >
                     <span>Exhaust</span>
@@ -1796,7 +2977,7 @@ const App = () => {
                             {statusEntries.map(([status, value]) => {
                               const info = statusDetails.get(normalizeKey(status));
                               const tip = info
-                                ? `${status}\nMode: ${info.mode}\nTurn End: ${info.turnEnd}`
+                                ? `${status}\nMode: ${info.modeLabel}\nTurn End: ${info.turnEnd}`
                                 : null;
                               return (
                                 <span
@@ -1825,10 +3006,13 @@ const App = () => {
         <div className="ua-panel__header">
           <h2>Event Log</h2>
           <div className="ua-inline-actions">
-            <button
-              className="ua-button ua-button--ghost"
-              onClick={() => handleAction({ type: "clear_log", playerId: matchState.activePlayerId })}
-            >
+              <button
+                className="ua-button ua-button--ghost"
+                disabled={!canControlPlayer(matchState.activePlayerId)}
+                onClick={() =>
+                  dispatchAction({ type: "clear_log", playerId: matchState.activePlayerId })
+                }
+              >
               Clear Log
             </button>
           </div>
@@ -1870,20 +3054,21 @@ const App = () => {
           <div className="ua-inline-actions">
             <button
               className="ua-button"
-              disabled={matchState.activePlayerId !== activeTeam.id}
-              onClick={() => handleAction({ type: "pass", playerId: activeTeam.id })}
+              disabled={!canControlPlayer(activeTeam.id) || matchState.activePlayerId !== activeTeam.id}
+              onClick={() => dispatchAction({ type: "pass", playerId: activeTeam.id })}
             >
               Pass
             </button>
             <button
               className="ua-button"
               disabled={
+                !canControlPlayer(matchState.initiativePlayerId) ||
                 matchState.activePlayerId !== matchState.initiativePlayerId ||
                 matchState.activeZone !== null ||
                 matchState.phase !== "combat"
               }
               onClick={() =>
-                handleAction({ type: "end_turn", playerId: matchState.initiativePlayerId })
+                dispatchAction({ type: "end_turn", playerId: matchState.initiativePlayerId })
               }
             >
               End Turn
@@ -1899,14 +3084,16 @@ const App = () => {
             <p>Spend 1 Energy to swap adjacent allies, or pass.</p>
             <div className="ua-movement__actions">
               {movementPairs.map((pair) => (
-                <button
-                  key={`${pair.left.id}-${pair.right.id}`}
-                  className="ua-button ua-button--ghost"
-                  disabled={
-                    matchState.activePlayerId !== activeTeam.id || activeTeam.energy < 1
-                  }
+                  <button
+                    key={`${pair.left.id}-${pair.right.id}`}
+                    className="ua-button ua-button--ghost"
+                    disabled={
+                      !canControlPlayer(activeTeam.id) ||
+                      matchState.activePlayerId !== activeTeam.id ||
+                      activeTeam.energy < 1
+                    }
                   onClick={() =>
-                    handleAction({
+                    dispatchAction({
                       type: "move_swap",
                       playerId: activeTeam.id,
                       firstId: pair.left.id,
@@ -1939,18 +3126,21 @@ const App = () => {
             Active Hand <span>({activeTeam.name})</span>
           </h3>
           <div className="ua-card-grid">
-            {activeHand.map((entry) => {
+            {activeHand.map((entry, index) => {
               const { instance, card, owner } = entry;
-              const cost = parseCost(card.cost);
+              const displayCard = resolveCardForDisplay(card, owner.id);
+              const cost = parseCost(displayCard.cost);
               const isVariable = Boolean(cost.variable);
-              const xRange = getXRangeFromText(card);
+              const xRange = getXRangeFromText(displayCard);
               const isAfterUse =
                 matchState.afterUseWindow &&
                 matchState.afterUseWindow.validForAction === matchState.actionId + 1;
               const isFollowUpPlay =
                 Boolean(isAfterUse) &&
                 matchState.afterUseWindow?.lastUsedCharacterId === owner.id;
-              const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+              const followUpAdjustment = isFollowUpPlay
+                ? getFollowUpCostAdjustment(displayCard)
+                : 0;
               const baseAffordable = canAffordWithAdjustments(
                 activeTeam,
                 owner,
@@ -1959,40 +3149,43 @@ const App = () => {
                 instance,
                 followUpAdjustment
               );
-              const canAct =
-                matchState.activePlayerId === activeTeam.id ||
-                canReactAfterUse(matchState, card, owner.id);
-              const disabled = !canAct || !baseAffordable || owner.defeated;
+                const canAct =
+                  matchState.activePlayerId === activeTeam.id ||
+                  canReactAfterUse(matchState, displayCard, owner.id);
+                const canControl = canControlPlayer(activeTeam.id);
+                const disabled = !canControl || !canAct || !baseAffordable || owner.defeated;
               const adjustment =
                 getEnergyCostAdjustment(owner) +
                 (instance.costAdjustment ?? 0) +
                 followUpAdjustment;
+              const isDealt = Boolean(recentlyDealt[instance.id]);
               return (
                 <button
                   key={instance.id}
-                  className="ua-card"
+                  className={`ua-card${isDealt ? " ua-card--deal" : ""}`}
+                  style={isDealt ? { animationDelay: `${index * 0.035}s` } : undefined}
                   disabled={disabled}
                   onClick={() => handlePlayCard(activeTeam.id, card, owner.id, instance.id)}
                 >
-                  <div className="ua-card__title">{card.name}</div>
+                  <div className="ua-card__title">{displayCard.name}</div>
                   <div className="ua-card__meta">
                     <span>Owner: {owner.name}</span>
                   </div>
                   <div className="ua-card__meta">
                     <span>
-                      Cost: {card.cost}
+                      Cost: {displayCard.cost}
                       {adjustment !== 0 &&
                         ` (Adj ${adjustment >= 0 ? "+" : ""}${adjustment})`}
                     </span>
-                    <span>Power: {card.power}</span>
+                    <span>Power: {displayCard.power}</span>
                   </div>
                   <div className="ua-card__meta">
-                    <span>Speed: {card.speed}</span>
-                    <span>Target: {card.target}</span>
+                    <span>Speed: {displayCard.speed}</span>
+                    <span>Target: {displayCard.target}</span>
                   </div>
-                  <div className="ua-card__tags">{card.types.join(" / ")}</div>
+                  <div className="ua-card__tags">{displayCard.types.join(" / ")}</div>
                   <div className="ua-card__effect">
-                    {card.effect.map((line, index) =>
+                    {displayCard.effect.map((line, index) =>
                       renderEffectLine(line, `${instance.id}-${index}`)
                     )}
                   </div>
@@ -2009,7 +3202,8 @@ const App = () => {
               <div className="ua-card-grid">
                 {activeUltimates.map((entry) => {
                   const { card, member } = entry;
-                  const cost = parseCost(card.cost);
+                  const displayCard = resolveCardForDisplay(card, member.id);
+                  const cost = parseCost(displayCard.cost);
                   const isVariable = Boolean(cost.variable);
                   const isAfterUse =
                     matchState.afterUseWindow &&
@@ -2017,7 +3211,9 @@ const App = () => {
                   const isFollowUpPlay =
                     Boolean(isAfterUse) &&
                     matchState.afterUseWindow?.lastUsedCharacterId === member.id;
-                  const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+                  const followUpAdjustment = isFollowUpPlay
+                    ? getFollowUpCostAdjustment(displayCard)
+                    : 0;
                   const baseAffordable = canAffordWithAdjustments(
                     activeTeam,
                     member,
@@ -2026,10 +3222,11 @@ const App = () => {
                     undefined,
                     followUpAdjustment
                   );
-                  const canAct =
-                    matchState.activePlayerId === activeTeam.id ||
-                    canReactAfterUse(matchState, card, member.id);
-                  const disabled = !canAct || !baseAffordable || member.defeated;
+                    const canAct =
+                      matchState.activePlayerId === activeTeam.id ||
+                      canReactAfterUse(matchState, displayCard, member.id);
+                    const canControl = canControlPlayer(activeTeam.id);
+                    const disabled = !canControl || !canAct || !baseAffordable || member.defeated;
                   return (
                     <button
                       key={`${member.id}-${card.slot}`}
@@ -2037,21 +3234,21 @@ const App = () => {
                       disabled={disabled}
                       onClick={() => handlePlayCard(activeTeam.id, card, member.id)}
                     >
-                      <div className="ua-card__title">{card.name}</div>
+                      <div className="ua-card__title">{displayCard.name}</div>
                       <div className="ua-card__meta">
                         <span>Owner: {member.name}</span>
                       </div>
                       <div className="ua-card__meta">
-                        <span>Cost: {card.cost}</span>
-                        <span>Power: {card.power}</span>
+                        <span>Cost: {displayCard.cost}</span>
+                        <span>Power: {displayCard.power}</span>
                       </div>
                       <div className="ua-card__meta">
-                        <span>Speed: {card.speed}</span>
-                        <span>Target: {card.target}</span>
+                        <span>Speed: {displayCard.speed}</span>
+                        <span>Target: {displayCard.target}</span>
                       </div>
-                      <div className="ua-card__tags">{card.types.join(" / ")}</div>
+                      <div className="ua-card__tags">{displayCard.types.join(" / ")}</div>
                       <div className="ua-card__effect">
-                        {card.effect.map((line, index) =>
+                        {displayCard.effect.map((line, index) =>
                           renderEffectLine(line, `${member.id}-${card.slot}-${index}`)
                         )}
                       </div>
@@ -2081,18 +3278,21 @@ const App = () => {
               <h2>Reaction ({team.name})</h2>
             </div>
             <div className="ua-card-grid">
-              {handEntries.map((entry) => {
+              {handEntries.map((entry, index) => {
                 const { instance, card, owner } = entry;
-                const cost = parseCost(card.cost);
+                const displayCard = resolveCardForDisplay(card, owner.id);
+                const cost = parseCost(displayCard.cost);
                 const isVariable = Boolean(cost.variable);
-                const xRange = getXRangeFromText(card);
+                const xRange = getXRangeFromText(displayCard);
                 const isAfterUse =
                   matchState.afterUseWindow &&
                   matchState.afterUseWindow.validForAction === matchState.actionId + 1;
                 const isFollowUpPlay =
                   Boolean(isAfterUse) &&
                   matchState.afterUseWindow?.lastUsedCharacterId === owner.id;
-                const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+                const followUpAdjustment = isFollowUpPlay
+                  ? getFollowUpCostAdjustment(displayCard)
+                  : 0;
                 const baseAffordable = canAffordWithAdjustments(
                   team,
                   owner,
@@ -2101,38 +3301,41 @@ const App = () => {
                   instance,
                   followUpAdjustment
                 );
-                const canReact = canReactAfterUse(matchState, card, owner.id);
-                const disabled = !canReact || !baseAffordable || owner.defeated;
+                  const canReact = canReactAfterUse(matchState, displayCard, owner.id);
+                  const canControl = canControlPlayer(playerId);
+                  const disabled = !canControl || !canReact || !baseAffordable || owner.defeated;
                 const adjustment =
                   getEnergyCostAdjustment(owner) +
                   (instance.costAdjustment ?? 0) +
                   followUpAdjustment;
+                const isDealt = Boolean(recentlyDealt[instance.id]);
                 return (
                   <button
                     key={instance.id}
-                    className="ua-card"
+                    className={`ua-card${isDealt ? " ua-card--deal" : ""}`}
+                    style={isDealt ? { animationDelay: `${index * 0.035}s` } : undefined}
                     disabled={disabled}
                     onClick={() => handlePlayCard(playerId, card, owner.id, instance.id)}
                   >
-                    <div className="ua-card__title">{card.name}</div>
+                    <div className="ua-card__title">{displayCard.name}</div>
                     <div className="ua-card__meta">
                       <span>Owner: {owner.name}</span>
                     </div>
                     <div className="ua-card__meta">
                       <span>
-                        Cost: {card.cost}
+                        Cost: {displayCard.cost}
                         {adjustment !== 0 &&
                           ` (Adj ${adjustment >= 0 ? "+" : ""}${adjustment})`}
                       </span>
-                      <span>Power: {card.power}</span>
+                      <span>Power: {displayCard.power}</span>
                     </div>
                     <div className="ua-card__meta">
-                      <span>Speed: {card.speed}</span>
-                      <span>Target: {card.target}</span>
+                      <span>Speed: {displayCard.speed}</span>
+                      <span>Target: {displayCard.target}</span>
                     </div>
-                    <div className="ua-card__tags">{card.types.join(" / ")}</div>
+                    <div className="ua-card__tags">{displayCard.types.join(" / ")}</div>
                     <div className="ua-card__effect">
-                      {card.effect.map((line, index) =>
+                      {displayCard.effect.map((line, index) =>
                         renderEffectLine(line, `${instance.id}-${index}`)
                       )}
                     </div>
@@ -2149,7 +3352,8 @@ const App = () => {
                 <div className="ua-card-grid">
                   {ultimateEntries.map((entry) => {
                     const { card, member } = entry;
-                    const cost = parseCost(card.cost);
+                    const displayCard = resolveCardForDisplay(card, member.id);
+                    const cost = parseCost(displayCard.cost);
                     const isVariable = Boolean(cost.variable);
                     const isAfterUse =
                       matchState.afterUseWindow &&
@@ -2157,7 +3361,9 @@ const App = () => {
                     const isFollowUpPlay =
                       Boolean(isAfterUse) &&
                       matchState.afterUseWindow?.lastUsedCharacterId === member.id;
-                    const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(card) : 0;
+                    const followUpAdjustment = isFollowUpPlay
+                      ? getFollowUpCostAdjustment(displayCard)
+                      : 0;
                     const baseAffordable = canAffordWithAdjustments(
                       team,
                       member,
@@ -2166,8 +3372,9 @@ const App = () => {
                       undefined,
                       followUpAdjustment
                     );
-                    const canReact = canReactAfterUse(matchState, card, member.id);
-                    const disabled = !canReact || !baseAffordable || member.defeated;
+                    const canReact = canReactAfterUse(matchState, displayCard, member.id);
+                    const canControl = canControlPlayer(playerId);
+                    const disabled = !canControl || !canReact || !baseAffordable || member.defeated;
                     return (
                       <button
                         key={`${member.id}-${card.slot}`}
@@ -2175,21 +3382,21 @@ const App = () => {
                         disabled={disabled}
                         onClick={() => handlePlayCard(playerId, card, member.id)}
                       >
-                        <div className="ua-card__title">{card.name}</div>
+                        <div className="ua-card__title">{displayCard.name}</div>
                         <div className="ua-card__meta">
                           <span>Owner: {member.name}</span>
                         </div>
                         <div className="ua-card__meta">
-                          <span>Cost: {card.cost}</span>
-                          <span>Power: {card.power}</span>
+                          <span>Cost: {displayCard.cost}</span>
+                          <span>Power: {displayCard.power}</span>
                         </div>
                         <div className="ua-card__meta">
-                          <span>Speed: {card.speed}</span>
-                          <span>Target: {card.target}</span>
+                          <span>Speed: {displayCard.speed}</span>
+                          <span>Target: {displayCard.target}</span>
                         </div>
-                        <div className="ua-card__tags">{card.types.join(" / ")}</div>
+                        <div className="ua-card__tags">{displayCard.types.join(" / ")}</div>
                         <div className="ua-card__effect">
-                          {card.effect.map((line, index) =>
+                          {displayCard.effect.map((line, index) =>
                             renderEffectLine(line, `${member.id}-${card.slot}-${index}`)
                           )}
                         </div>
@@ -2211,6 +3418,11 @@ const App = () => {
             <p className="ua-modal__note">
               Auto choices use deterministic defaults. Override only when you want a specific line of play.
             </p>
+            {isTransformPreview && (
+              <p className="ua-modal__subnote">
+                Transforms from {pendingPlay.baseCard.name}.
+              </p>
+            )}
             {pendingPlay.zones.length > 1 && (
               <div className="ua-modal__zones">
                 <p>Choose a zone:</p>
@@ -2231,16 +3443,51 @@ const App = () => {
               <div className="ua-modal__zones">
                 <p>Choose a target:</p>
                 <div className="ua-modal__zone-buttons">
-                  {pendingPlay.targets.map((target) => (
-                    <button
-                      key={target.id}
-                      className={`ua-button ${pendingPlay.targetId === target.id ? "ua-button--primary" : ""}`}
-                      onClick={() => updatePendingPlay({ targetId: target.id })}
-                    >
-                      {target.label}
-                    </button>
-                  ))}
+                  {pendingPlay.targets.map((target) => {
+                    const preview =
+                      pendingTargetPreview?.options.find((option) => option.id === target.id) ??
+                      null;
+                    return (
+                      <button
+                        key={target.id}
+                        className={`ua-button ${pendingPlay.targetId === target.id ? "ua-button--primary" : ""}`}
+                        onClick={() => updatePendingPlay({ targetId: target.id })}
+                      >
+                        {target.label}
+                        {preview?.isTransformed && (
+                          <span className="ua-target-tag">Transforms</span>
+                        )}
+                        {preview?.isRetarget && (
+                          <span className="ua-target-tag ua-target-tag--warn">Retargets</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+                {pendingTargetPreview?.active && (
+                  <>
+                    {pendingTargetPreview.active.legalTargets.length === 0 && (
+                      <p className="ua-modal__warning">
+                        No legal targets after transform.
+                      </p>
+                    )}
+                    {pendingTargetPreview.active.legalTargets.length > 0 &&
+                      (pendingTargetPreview.active.isRetarget ||
+                        pendingTargetPreview.active.isTransformed) && (
+                        <p className="ua-modal__warning">
+                          Target will resolve as {pendingTargetPreview.autoTargetLabel}.
+                        </p>
+                      )}
+                    {pendingTargetPreview.active.legalTargets.length > 0 &&
+                      (pendingTargetPreview.active.isRetarget ||
+                        pendingTargetPreview.active.isTransformed) && (
+                        <p className="ua-modal__subnote">
+                          Legal targets after transform:{" "}
+                          {pendingTargetPreview.legalTargetLabels.join(", ")}.
+                        </p>
+                      )}
+                  </>
+                )}
               </div>
             )}
             {pendingPlay.choices.length > 0 && (
@@ -2468,7 +3715,13 @@ const App = () => {
               <button className="ua-button ua-button--primary" onClick={confirmXPlay}>
                 Confirm
               </button>
-              <button className="ua-button ua-button--ghost" onClick={() => setPendingPlay(null)}>
+              <button
+                className="ua-button ua-button--ghost"
+                onClick={() => {
+                  sound.play("click");
+                  setPendingPlay(null);
+                }}
+              >
                 Cancel
               </button>
             </div>

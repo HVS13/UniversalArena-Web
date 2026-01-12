@@ -34,7 +34,8 @@
 - DONE: Add choice prompts for Scry/Seek/Search, Redirect (defender selection), and opposed Push direction.
 
 ## Multiplayer
-- Add relay server and client sync (room codes, reconnect, host authority) only after 1-3 are complete.
+- DONE: relay client hookup (create/join lobby, host authority, selection sync, state updates).
+- Add reconnect/resync UX, lobby readiness, and connection loss handling polish.
 
 ## Tooling
 - DONE: golden test runner for core engine (seeded replay + transcript snapshot).

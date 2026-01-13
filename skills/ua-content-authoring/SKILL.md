@@ -14,7 +14,7 @@ Docs live in `C:\Git\UniversalArena`. Use this repo only to run the exporter and
 1. Switch to `C:\Git\UniversalArena` and follow `docs/adding-content.md`.
 2. Update the relevant docs pages and `docs/data` there.
 3. Export into this repo with:
-   `node C:\Git\UniversalArena-Web\scripts\export-game-data\export-game-data.mjs --docs-root C:\Git\UniversalArena --out C:\Git\UniversalArena-Web\packages\data\src --assets-out C:\Git\UniversalArena-Web\apps\client\public\assets\characters`
+   `node C:\Git\UniversalArena\docs\scripts\export-game-data.mjs --out C:\Git\UniversalArena-Web\packages\data\src --assets-out C:\Git\UniversalArena-Web\apps\client\public\assets\characters`
 4. Do not add or edit `docs/` content in this repo.
 
 ## References

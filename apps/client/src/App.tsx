@@ -1276,6 +1276,7 @@ const App = () => {
     });
     return map;
   }, [statusEffects]);
+  const [matchState, setMatchState] = useState<MatchState | null>(null);
   const resolveCardForDisplay = useCallback(
     (card: Card, sourceId: MatchCharacterId, targetId?: MatchCharacterId) => {
       if (!matchState || !card.transforms?.length) return card;
@@ -1336,7 +1337,6 @@ const App = () => {
   const [relayStatus, setRelayStatus] = useState<RelayConnectionStatus>("idle");
   const [lobbyCode, setLobbyCode] = useState("");
   const [lobby, setLobby] = useState<RelayLobbySnapshot | null>(null);
-  const [matchState, setMatchState] = useState<MatchState | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundVolume, setSoundVolume] = useState(0.55);
@@ -1573,6 +1573,7 @@ const App = () => {
         const data = message.data as
           | { playerId?: string; selection?: string[]; name?: string }
           | undefined;
+        if (!data) return;
         const playerId = data?.playerId === "p1" || data?.playerId === "p2" ? data.playerId : null;
         if (!playerId) return;
         const nextSelection: SelectionState = {

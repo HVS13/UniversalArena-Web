@@ -43,6 +43,4 @@
 - DONE: Verify the golden CI by opening a PR that touches `packages/core` or `packages/data`.
 
 ## Docs/data pipeline
-- Maintain `scripts/export-game-data/` and the `Export Game Data` workflow for syncing docs into `packages/data`.
-- Keep schema validation aligned with `docs/data/README.md`.
-- Configure repo variable `UA_DOCS_REPO` and (if private) secret `UA_DOCS_TOKEN` for the export workflow.
+- Tracked in `C:\Git\UniversalArena\TODO.md` (template enforcement, power budgets, schema validation, export workflow).

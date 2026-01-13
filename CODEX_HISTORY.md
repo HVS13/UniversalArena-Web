@@ -70,4 +70,5 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-10: Added UI prompts for Scry/Seek/Search choices, redirect selection, and opposed push direction, wiring the new action fields through the client modal.
 - 2026-01-11: Fixed the redirect choice golden test to use explicit 3v3 cover slots so Cover consumption/logging is exercised and the golden suite passes.
 - 2026-01-11: Moved the relay server and data export tooling into this repo, with a docs-repo checkout workflow for syncing `packages/data`.
-- 2026-01-11: Documented the new export workflow settings (`UA_DOCS_REPO`, `UA_DOCS_TOKEN`) and tracked the configuration task in TODO.
+- 2026-01-11: Temporarily documented `UA_DOCS_REPO`/`UA_DOCS_TOKEN` for a game-repo export workflow (later reverted).
+- 2026-01-13: Restored docs-owned auto-sync; exporter/workflow now live in the docs repo again.

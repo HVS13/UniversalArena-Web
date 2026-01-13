@@ -463,6 +463,35 @@ const getFollowUpCostAdjustment = (card: Card) => {
   return 0;
 };
 
+type PendingWindowContext = {
+  type: "after_use" | "counter";
+  zone: ZoneName;
+  playerId: PlayerId;
+  counterTargetId?: MatchCharacterId;
+};
+
+const getPendingWindow = (state: MatchState): PendingWindowContext | null => {
+  if (!state.pendingResolution) return null;
+  const nextActionId = state.actionId + 1;
+  if (state.pendingResolution.window === "counter") {
+    const window = state.counterWindow;
+    if (!window || window.validForAction !== nextActionId) return null;
+    return {
+      type: "counter",
+      zone: window.zone,
+      playerId: window.by,
+      counterTargetId: window.targetId,
+    };
+  }
+  const window = state.afterUseWindow;
+  if (!window || window.validForAction !== nextActionId) return null;
+  return {
+    type: "after_use",
+    zone: window.zone,
+    playerId: window.lastUsedBy,
+  };
+};
+
 const getPlayableZones = (
   card: Card,
   state: MatchState,
@@ -470,6 +499,10 @@ const getPlayableZones = (
 ): ZoneName[] => {
   const effectiveSpeed = getEffectiveSpeed(card.speed, member);
   const legal = getLegalZonesForSpeed(effectiveSpeed);
+  const pendingWindow = getPendingWindow(state);
+  if (pendingWindow) {
+    return legal.includes(pendingWindow.zone) ? [pendingWindow.zone] : [];
+  }
   if (!state.activeZone) return legal;
   return legal.filter(
     (zone) => zone === state.activeZone || zoneRank[zone] > zoneRank[state.activeZone!]
@@ -829,10 +862,16 @@ const canReactAfterUse = (
   card: Card,
   sourceId: MatchCharacterId
 ) => {
+  const pendingWindow = getPendingWindow(state);
+  if (!pendingWindow || pendingWindow.type !== "after_use") return false;
   const window = state.afterUseWindow;
   if (!window || window.validForAction !== state.actionId + 1) return false;
   const teamId = getTeamIdFromMatchCharacterId(sourceId);
-  if (!teamId || teamId !== window.lastUsedBy) return false;
+  if (!teamId || teamId !== pendingWindow.playerId) return false;
+  const ownerEntry = getMemberById(state, sourceId);
+  if (!ownerEntry || ownerEntry.member.defeated) return false;
+  const zones = getPlayableZones(card, state, ownerEntry.member);
+  if (!zones.length) return false;
   const flags = getCardKeywords(card);
   let followUpAllowed = flags.followUp;
   if (!followUpAllowed) {
@@ -849,27 +888,24 @@ const canReactAfterUse = (
   return false;
 };
 
-const getReactivePlayers = (state: MatchState, rosterList: Character[]) => {
-  const window = state.afterUseWindow;
-  if (!window || window.validForAction !== state.actionId + 1) return [];
-  const reactiveId = window.lastUsedBy;
-  const team = state.players[reactiveId];
-  const handReact = team.hand.some((instance) => {
-    const card = getCardByInstance(instance);
-    const ownerEntry = getMemberById(state, instance.ownerId);
-    if (!card || !ownerEntry) return false;
-    return canReactAfterUse(state, card, ownerEntry.member.id);
-  });
-  const ultimateReact = team.characters.some((member) => {
-    if (member.defeated) return false;
-    const character = getCharacter(rosterList, member.characterId);
-    if (!character) return false;
-    return character.cards.some(
-      (card) =>
-        isUltimateCard(card) && canReactAfterUse(state, card, member.id)
-    );
-  });
-  return handReact || ultimateReact ? [reactiveId] : [];
+const canReactCounter = (state: MatchState, card: Card, sourceId: MatchCharacterId) => {
+  const pendingWindow = getPendingWindow(state);
+  if (!pendingWindow || pendingWindow.type !== "counter") return false;
+  const teamId = getTeamIdFromMatchCharacterId(sourceId);
+  if (!teamId || teamId !== pendingWindow.playerId) return false;
+  const ownerEntry = getMemberById(state, sourceId);
+  if (!ownerEntry || ownerEntry.member.defeated) return false;
+  const zones = getPlayableZones(card, state, ownerEntry.member);
+  if (!zones.length) return false;
+  const targetId = pendingWindow.counterTargetId;
+  if (!targetId) return false;
+  const legalTargets = getLegalTargets(card, sourceId, state, roster);
+  return legalTargets.includes(targetId);
+};
+
+const getReactivePlayers = (state: MatchState) => {
+  const pendingWindow = getPendingWindow(state);
+  return pendingWindow ? [pendingWindow.playerId] : [];
 };
 
 const getCardChoices = (card: Card) => {
@@ -2406,7 +2442,9 @@ const App = () => {
         : Math.min(base.choiceIndex ?? 0, Math.max(choices.length - 1, 0));
     const xRange = getXRangeFromText(card);
     const cost = parseCost(card.cost);
+    const pendingWindow = getPendingWindow(matchState!);
     const isAfterUse =
+      pendingWindow?.type === "after_use" &&
       matchState!.afterUseWindow &&
       matchState!.afterUseWindow.validForAction === matchState!.actionId + 1;
     const isFollowUpPlay =
@@ -2495,6 +2533,14 @@ const App = () => {
       reportMessage("No legal targets.");
       return;
     }
+    const pendingWindow = getPendingWindow(matchState);
+    if (pendingWindow?.type === "counter" && pendingWindow.counterTargetId) {
+      targets = targets.filter((target) => target.id === pendingWindow.counterTargetId);
+      if (!targets.length) {
+        reportMessage("Counter must target the attacker.");
+        return;
+      }
+    }
     const initialTargetId = targets[0].id;
     const playCard = resolveCardForDisplay(card, sourceId, initialTargetId);
     const zones = getPlayableZones(playCard, matchState, member);
@@ -2508,6 +2554,7 @@ const App = () => {
     const cost = parseCost(playCard.cost);
     const xRange = getXRangeFromText(playCard);
     const isAfterUse =
+      pendingWindow?.type === "after_use" &&
       matchState.afterUseWindow &&
       matchState.afterUseWindow.validForAction === matchState.actionId + 1;
     const isFollowUpPlay =
@@ -2927,7 +2974,8 @@ const App = () => {
   const pausedZonesLabel = matchState.pausedZones.length
     ? matchState.pausedZones.map(zoneLabel).join(", ")
     : "None";
-  const allReactivePlayers = getReactivePlayers(matchState, roster);
+  const pendingWindow = getPendingWindow(matchState);
+  const allReactivePlayers = getReactivePlayers(matchState);
   const reactivePlayers = allReactivePlayers.filter(
     (playerId) => playerId !== matchState.activePlayerId
   );
@@ -3643,9 +3691,11 @@ const App = () => {
             </div>
           </div>
         )}
-        {reactionNames.length > 0 && (
+        {pendingWindow && reactionNames.length > 0 && (
           <p className="ua-zone-status">
-            Reaction window: {reactionNames.join(" / ")} can play Follow-Up or Assist Attack now.
+            Reaction window: {reactionNames.join(" / ")} can play{" "}
+            {pendingWindow.type === "counter" ? "Counter" : "Follow-Up or Assist Attack"} now in the{" "}
+            {zoneLabel(pendingWindow.zone)} Zone.
           </p>
         )}
         <div className="ua-help-row">
@@ -3669,6 +3719,7 @@ const App = () => {
               const isVariable = Boolean(cost.variable);
               const xRange = getXRangeFromText(displayCard);
               const isAfterUse =
+                pendingWindow?.type === "after_use" &&
                 matchState.afterUseWindow &&
                 matchState.afterUseWindow.validForAction === matchState.actionId + 1;
               const isFollowUpPlay =
@@ -3685,9 +3736,14 @@ const App = () => {
                 instance,
                 followUpAdjustment
               );
-                const canAct =
-                  matchState.activePlayerId === activeTeam.id ||
-                  canReactAfterUse(matchState, displayCard, owner.id);
+                const canReact = pendingWindow
+                  ? pendingWindow.type === "counter"
+                    ? canReactCounter(matchState, displayCard, owner.id)
+                    : canReactAfterUse(matchState, displayCard, owner.id)
+                  : false;
+                const canAct = pendingWindow
+                  ? canReact
+                  : matchState.activePlayerId === activeTeam.id;
                 const canControl = canControlPlayer(activeTeam.id);
                 const disabled = !canControl || !canAct || !baseAffordable || owner.defeated;
               const adjustment =
@@ -3742,6 +3798,7 @@ const App = () => {
                   const cost = parseCost(displayCard.cost);
                   const isVariable = Boolean(cost.variable);
                   const isAfterUse =
+                    pendingWindow?.type === "after_use" &&
                     matchState.afterUseWindow &&
                     matchState.afterUseWindow.validForAction === matchState.actionId + 1;
                   const isFollowUpPlay =
@@ -3758,9 +3815,14 @@ const App = () => {
                     undefined,
                     followUpAdjustment
                   );
-                    const canAct =
-                      matchState.activePlayerId === activeTeam.id ||
-                      canReactAfterUse(matchState, displayCard, member.id);
+                    const canReact = pendingWindow
+                      ? pendingWindow.type === "counter"
+                        ? canReactCounter(matchState, displayCard, member.id)
+                        : canReactAfterUse(matchState, displayCard, member.id)
+                      : false;
+                    const canAct = pendingWindow
+                      ? canReact
+                      : matchState.activePlayerId === activeTeam.id;
                     const canControl = canControlPlayer(activeTeam.id);
                     const disabled = !canControl || !canAct || !baseAffordable || member.defeated;
                   return (
@@ -3821,6 +3883,7 @@ const App = () => {
                 const isVariable = Boolean(cost.variable);
                 const xRange = getXRangeFromText(displayCard);
                 const isAfterUse =
+                  pendingWindow?.type === "after_use" &&
                   matchState.afterUseWindow &&
                   matchState.afterUseWindow.validForAction === matchState.actionId + 1;
                 const isFollowUpPlay =
@@ -3837,7 +3900,11 @@ const App = () => {
                   instance,
                   followUpAdjustment
                 );
-                  const canReact = canReactAfterUse(matchState, displayCard, owner.id);
+                  const canReact = pendingWindow
+                    ? pendingWindow.type === "counter"
+                      ? canReactCounter(matchState, displayCard, owner.id)
+                      : canReactAfterUse(matchState, displayCard, owner.id)
+                    : false;
                   const canControl = canControlPlayer(playerId);
                   const disabled = !canControl || !canReact || !baseAffordable || owner.defeated;
                 const adjustment =
@@ -3892,6 +3959,7 @@ const App = () => {
                     const cost = parseCost(displayCard.cost);
                     const isVariable = Boolean(cost.variable);
                     const isAfterUse =
+                      pendingWindow?.type === "after_use" &&
                       matchState.afterUseWindow &&
                       matchState.afterUseWindow.validForAction === matchState.actionId + 1;
                     const isFollowUpPlay =
@@ -3908,7 +3976,11 @@ const App = () => {
                       undefined,
                       followUpAdjustment
                     );
-                    const canReact = canReactAfterUse(matchState, displayCard, member.id);
+                    const canReact = pendingWindow
+                      ? pendingWindow.type === "counter"
+                        ? canReactCounter(matchState, displayCard, member.id)
+                        : canReactAfterUse(matchState, displayCard, member.id)
+                      : false;
                     const canControl = canControlPlayer(playerId);
                     const disabled = !canControl || !canReact || !baseAffordable || member.defeated;
                     return (

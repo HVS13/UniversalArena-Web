@@ -73,3 +73,5 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-11: Temporarily documented `UA_DOCS_REPO`/`UA_DOCS_TOKEN` for a game-repo export workflow (later reverted).
 - 2026-01-13: Restored docs-owned auto-sync; exporter/workflow now live in the docs repo again.
 - 2026-01-13: Added cinematic combat playback data in core and a UI clash overlay with roll reveals, impact VFX, SFX cues, and a Skip Combat toggle.
+- 2026-01-14: Enforced zone-bound Follow-Up/Assist/Counter reaction windows with paused resolution and client reaction gating.
+- 2026-01-14: Follow-Up/Assist/Counter reactions now resolve immediately without entering the zone stack; resolution resumes with remaining cards.

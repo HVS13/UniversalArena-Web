@@ -173,11 +173,18 @@ export type MatchState = {
     lastUsedBy: PlayerId;
     lastUsedCharacterId: MatchCharacterId;
     validForAction: number;
+    zone: ZoneName;
   };
   counterWindow?: {
     by: PlayerId;
     targetId: MatchCharacterId;
     validForAction: number;
+    zone: ZoneName;
+  };
+  pendingResolution?: {
+    zone: ZoneName;
+    window: "after_use" | "counter";
+    resolvedBy: PlayerId;
   };
 };
 
@@ -2710,15 +2717,22 @@ const canPlayAfterUse = (
   state: MatchState,
   card: Card,
   sourceId: MatchCharacterId,
-  characters?: Character[]
+  characters?: Character[],
+  actionIdOverride?: number
 ) => {
-  if (!state.afterUseWindow || state.afterUseWindow.validForAction !== state.actionId) {
+  const window = state.afterUseWindow;
+  const actionId = actionIdOverride ?? state.actionId;
+  if (!window || window.validForAction !== actionId) {
+    return false;
+  }
+  const sourceTeam = getTeamForCharacter(state, sourceId);
+  if (!sourceTeam || sourceTeam.id !== window.lastUsedBy) {
     return false;
   }
   const flags = getKeywordFlags(card.effect);
   let followUpAllowed = flags.followUp;
   if (!followUpAllowed && characters) {
-    const lastUsed = getMatchCharacter(state, state.afterUseWindow.lastUsedCharacterId);
+    const lastUsed = getMatchCharacter(state, window.lastUsedCharacterId);
     const lastUsedCharacter = lastUsed
       ? getCharacterById(characters, lastUsed.characterId)
       : null;
@@ -2729,8 +2743,8 @@ const canPlayAfterUse = (
       followUpAllowed = true;
     }
   }
-  if (followUpAllowed && state.afterUseWindow.lastUsedCharacterId === sourceId) return true;
-  if (flags.assistAttack && state.afterUseWindow.lastUsedCharacterId !== sourceId) return true;
+  if (followUpAllowed && window.lastUsedCharacterId === sourceId) return true;
+  if (flags.assistAttack && window.lastUsedCharacterId !== sourceId) return true;
   return false;
 };
 
@@ -3415,15 +3429,20 @@ const isWindowRestrictionMet = (
   state: MatchState,
   sourceId: MatchCharacterId
 ) => {
-  const afterUse =
-    state.afterUseWindow && state.afterUseWindow.validForAction === state.actionId;
-  if (!afterUse) return false;
+  const afterUseWindow = state.afterUseWindow;
+  if (!afterUseWindow || afterUseWindow.validForAction !== state.actionId) {
+    return false;
+  }
+  const sourceTeam = getTeamForCharacter(state, sourceId);
+  if (!sourceTeam || sourceTeam.id !== afterUseWindow.lastUsedBy) {
+    return false;
+  }
   if (window === "after_use") return true;
   if (window === "follow_up") {
-    return state.afterUseWindow?.lastUsedCharacterId === sourceId;
+    return afterUseWindow.lastUsedCharacterId === sourceId;
   }
   if (window === "assist_attack") {
-    return state.afterUseWindow?.lastUsedCharacterId !== sourceId;
+    return afterUseWindow.lastUsedCharacterId !== sourceId;
   }
   return false;
 };
@@ -4432,6 +4451,7 @@ const resolveUse = (
   entry: StackEntry,
   isHit: boolean,
   characters: Character[],
+  zoneName: ZoneName,
   options?: { cancelled?: boolean; powerOverride?: number }
 ) => {
   const source = getMatchCharacter(state, entry.sourceId);
@@ -4541,6 +4561,7 @@ const resolveUse = (
       lastUsedBy: entry.playedBy,
       lastUsedCharacterId: source.id,
       validForAction: (state.actionId ?? 0) + 1,
+      zone: zoneName,
     };
   }
 
@@ -4579,7 +4600,82 @@ const finalizeEntryCard = (state: MatchState, entry: StackEntry, characters: Cha
   }
 };
 
-const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Character[]) => {
+const hasPlayableAfterUseResponse = (
+  state: MatchState,
+  characters: Character[],
+  actionId: number
+) => {
+  const window = state.afterUseWindow;
+  if (!window || window.validForAction !== actionId) return false;
+  const team = state.players[window.lastUsedBy];
+  if (!team) return false;
+
+  const canUseCard = (card: Card, source: MatchCharacter) => {
+    if (!canPlayAfterUse(state, card, source.id, characters, actionId)) return false;
+    const sourceCharacter = getCharacterById(characters, source.characterId);
+    const effectiveSpeed = getEffectiveSpeed(card.speed, source, sourceCharacter);
+    const legalZones = getLegalZonesForSpeed(effectiveSpeed);
+    if (!legalZones.includes(window.zone)) return false;
+    return true;
+  };
+
+  const handReact = team.hand.some((instance) => {
+    const source = getMatchCharacter(state, instance.ownerId);
+    if (!source || source.defeated) return false;
+    const card = findCard(characters, instance.characterId, instance.cardSlot);
+    if (!card) return false;
+    return canUseCard(card, source);
+  });
+
+  const ultimateReact = team.characters.some((member) => {
+    if (member.defeated) return false;
+    const character = getCharacterById(characters, member.characterId);
+    if (!character) return false;
+    return character.cards.some((card) => isUltimateCard(card) && canUseCard(card, member));
+  });
+
+  return handReact || ultimateReact;
+};
+
+const pauseForReactionWindow = (
+  state: MatchState,
+  zoneName: ZoneName,
+  characters: Character[],
+  resolvedBy?: PlayerId
+) => {
+  const nextActionId = (state.actionId ?? 0) + 1;
+  const counterWindow = state.counterWindow;
+  if (counterWindow && counterWindow.validForAction === nextActionId) {
+    state.pendingResolution = {
+      zone: zoneName,
+      window: "counter",
+      resolvedBy: resolvedBy ?? state.activePlayerId,
+    };
+    state.activePlayerId = counterWindow.by;
+    return true;
+  }
+  const afterUseWindow = state.afterUseWindow;
+  if (afterUseWindow && afterUseWindow.validForAction === nextActionId) {
+    if (hasPlayableAfterUseResponse(state, characters, nextActionId)) {
+      state.pendingResolution = {
+        zone: zoneName,
+        window: "after_use",
+        resolvedBy: resolvedBy ?? state.activePlayerId,
+      };
+      state.activePlayerId = afterUseWindow.lastUsedBy;
+      return true;
+    }
+    state.afterUseWindow = undefined;
+  }
+  return false;
+};
+
+const resolveZone = (
+  state: MatchState,
+  zoneName: ZoneName,
+  characters: Character[],
+  context?: { resolvedBy?: PlayerId }
+) => {
   const zone = state.zones[zoneName];
   if (!zone.cards.length) return;
 
@@ -4606,6 +4702,7 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
 
   addLog(state, `${zoneLabel(zoneName)} Zone resolves.`);
 
+  const resolvedBy = context?.resolvedBy;
   let index = zone.cards.length - 1;
   while (index >= 0) {
     const right = zone.cards[index];
@@ -4619,10 +4716,13 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
         rightPower,
         outcome: "single",
       });
-      resolveUse(state, right, rightType === "attack", characters, { powerOverride: rightPower });
+      resolveUse(state, right, rightType === "attack", characters, zoneName, { powerOverride: rightPower });
       finalizeEntryCard(state, right, characters);
       zone.cards.splice(index, 1);
       index -= 1;
+      if (pauseForReactionWindow(state, zoneName, characters, resolvedBy)) {
+        return;
+      }
       continue;
     }
 
@@ -4635,10 +4735,13 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
         rightPower,
         outcome: "same_team",
       });
-      resolveUse(state, right, rightType === "attack", characters, { powerOverride: rightPower });
+      resolveUse(state, right, rightType === "attack", characters, zoneName, { powerOverride: rightPower });
       finalizeEntryCard(state, right, characters);
       zone.cards.splice(index, 1);
       index = leftIndex;
+      if (pauseForReactionWindow(state, zoneName, characters, resolvedBy)) {
+        return;
+      }
       continue;
     }
 
@@ -4679,28 +4782,37 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
         addLog(state, `${right.cardName} and ${left.cardName} clash and are both cancelled.`);
         resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
         resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
-        resolveUse(state, right, false, characters, { cancelled: true, powerOverride: rightPower });
-        resolveUse(state, left, false, characters, { cancelled: true, powerOverride: leftPower });
+        resolveUse(state, right, false, characters, zoneName, { cancelled: true, powerOverride: rightPower });
+        resolveUse(state, left, false, characters, zoneName, { cancelled: true, powerOverride: leftPower });
         finalizeEntryCard(state, right, characters);
         finalizeEntryCard(state, left, characters);
         zone.cards.splice(leftIndex, 2);
         index = leftIndex - 1;
+        if (pauseForReactionWindow(state, zoneName, characters, resolvedBy)) {
+          return;
+        }
       } else if (rightPower > leftPower) {
         addLog(state, `${right.cardName} overpowers ${left.cardName}.`);
         resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
         resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
-        resolveUse(state, left, false, characters, { cancelled: true, powerOverride: leftPower });
+        resolveUse(state, left, false, characters, zoneName, { cancelled: true, powerOverride: leftPower });
         finalizeEntryCard(state, left, characters);
         zone.cards.splice(leftIndex, 1);
         index = leftIndex;
+        if (pauseForReactionWindow(state, zoneName, characters, resolvedBy)) {
+          return;
+        }
       } else {
         addLog(state, `${left.cardName} overpowers ${right.cardName}.`);
         resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
         resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
-        resolveUse(state, right, false, characters, { cancelled: true, powerOverride: rightPower });
+        resolveUse(state, right, false, characters, zoneName, { cancelled: true, powerOverride: rightPower });
         finalizeEntryCard(state, right, characters);
         zone.cards.splice(index, 1);
         index = leftIndex;
+        if (pauseForReactionWindow(state, zoneName, characters, resolvedBy)) {
+          return;
+        }
       }
       continue;
     }
@@ -4724,7 +4836,7 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
       resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
       resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
 
-      resolveUse(state, defense, false, characters, { powerOverride: defensePower });
+      resolveUse(state, defense, false, characters, zoneName, { powerOverride: defensePower });
 
       const defenseCancelled = Boolean(defense.cancelledBeforeUse);
       const defenseKeywords = defenseCancelled
@@ -4762,13 +4874,14 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
             by: defense.playedBy,
             targetId: attacker.id,
             validForAction: (state.actionId ?? 0) + 1,
+            zone: zoneName,
           };
           addLog(state, `${defender.name} can Counter ${attacker.name}.`);
         }
       }
 
       attack.mitigationText = defenseCancelled ? undefined : defense.effectText;
-      resolveUse(state, attack, attackIsHit, characters, { powerOverride: attackPower });
+      resolveUse(state, attack, attackIsHit, characters, zoneName, { powerOverride: attackPower });
       attack.mitigationText = undefined;
 
       const keepDefense = !defenseCancelled && (defenseReuse || defenseKeywords.reuse);
@@ -4794,6 +4907,9 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
         zone.cards.splice(leftIndex, 1);
         index = leftIndex;
       }
+      if (pauseForReactionWindow(state, zoneName, characters, resolvedBy)) {
+        return;
+      }
       continue;
     }
 
@@ -4807,8 +4923,8 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
       });
       resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
       resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
-      resolveUse(state, right, false, characters, { powerOverride: rightPower });
-      resolveUse(state, left, false, characters, { powerOverride: leftPower });
+      resolveUse(state, right, false, characters, zoneName, { powerOverride: rightPower });
+      resolveUse(state, left, false, characters, zoneName, { powerOverride: leftPower });
 
       const rightReuse = !right.cancelledBeforeUse && getEntryKeywordFlags(right).reuse;
       const leftReuse = !left.cancelledBeforeUse && getEntryKeywordFlags(left).reuse;
@@ -4833,6 +4949,9 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
         zone.cards.splice(leftIndex, 1);
         index = leftIndex;
       }
+      if (pauseForReactionWindow(state, zoneName, characters, resolvedBy)) {
+        return;
+      }
       continue;
     }
 
@@ -4845,16 +4964,21 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
     });
     resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
     resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
-    resolveUse(state, right, rightType === "attack", characters, { powerOverride: rightPower });
-    resolveUse(state, left, leftType === "attack", characters, { powerOverride: leftPower });
+    resolveUse(state, right, rightType === "attack", characters, zoneName, { powerOverride: rightPower });
+    resolveUse(state, left, leftType === "attack", characters, zoneName, { powerOverride: leftPower });
     finalizeEntryCard(state, right, characters);
     finalizeEntryCard(state, left, characters);
     zone.cards.splice(leftIndex, 2);
     index = leftIndex - 1;
+    if (pauseForReactionWindow(state, zoneName, characters, resolvedBy)) {
+      return;
+    }
   }
 
   zone.lastPlayedBy = undefined;
   zone.passCount = 0;
+  state.afterUseWindow = undefined;
+  state.counterWindow = undefined;
   resolution.logEnd = state.log.length;
   state.lastResolution = resolution;
 };
@@ -4902,6 +5026,61 @@ const zonesAreEmpty = (state: MatchState) =>
 const nextOccupiedZone = (state: MatchState) => {
   const entries: ZoneName[] = ["fast", "normal", "slow"];
   return entries.find((zone) => state.zones[zone].cards.length > 0) ?? null;
+};
+
+type PendingWindowContext = {
+  type: "after_use" | "counter";
+  zone: ZoneName;
+  playerId: PlayerId;
+  resolvedBy: PlayerId;
+  targetId?: MatchCharacterId;
+};
+
+const getPendingWindow = (state: MatchState): PendingWindowContext | null => {
+  const pending = state.pendingResolution;
+  if (!pending) return null;
+  if (pending.window === "counter") {
+    const window = state.counterWindow;
+    if (!window || window.validForAction !== state.actionId) return null;
+    return {
+      type: "counter",
+      zone: window.zone,
+      playerId: window.by,
+      resolvedBy: pending.resolvedBy,
+      targetId: window.targetId,
+    };
+  }
+  const window = state.afterUseWindow;
+  if (!window || window.validForAction !== state.actionId) return null;
+  return {
+    type: "after_use",
+    zone: window.zone,
+    playerId: window.lastUsedBy,
+    resolvedBy: pending.resolvedBy,
+  };
+};
+
+const consumePendingWindow = (state: MatchState, pending: PendingWindowContext) => {
+  if (pending.type === "counter") {
+    state.counterWindow = undefined;
+  } else {
+    state.afterUseWindow = undefined;
+  }
+  state.pendingResolution = undefined;
+};
+
+const advanceAfterZoneResolution = (state: MatchState, resolvedBy: PlayerId) => {
+  const nextZone = state.pausedZones.pop() ?? nextOccupiedZone(state);
+  if (nextZone && state.zones[nextZone].cards.length > 0) {
+    state.activeZone = nextZone;
+    addLog(state, `${zoneLabel(nextZone)} Zone becomes Active.`);
+    state.activePlayerId = getOpponentId(resolvedBy);
+  } else {
+    state.activeZone = null;
+    state.activePlayerId = state.initiativePlayerId;
+    addLog(state, "Combat Round ends.");
+    clearCombatRoundLocks(state);
+  }
 };
 
 export const createMatchState = (
@@ -5054,6 +5233,9 @@ export const applyAction = (
   if (next.counterWindow && next.counterWindow.validForAction < next.actionId) {
     next.counterWindow = undefined;
   }
+  if (next.afterUseWindow && next.afterUseWindow.validForAction < next.actionId) {
+    next.afterUseWindow = undefined;
+  }
 
   const finalize = (error?: string) => {
     recordTranscriptEntry(next, action, error);
@@ -5063,6 +5245,34 @@ export const applyAction = (
   if (action.type === "clear_log") {
     next.log = [];
     return finalize();
+  }
+
+  const pendingWindow = getPendingWindow(next);
+  if (next.pendingResolution) {
+    if (!pendingWindow) {
+      next.pendingResolution = undefined;
+      next.afterUseWindow = undefined;
+      next.counterWindow = undefined;
+      return finalize("Reaction window expired.");
+    }
+    if (action.type === "pass") {
+      if (action.playerId !== pendingWindow.playerId) {
+        return finalize("Not your turn.");
+      }
+      const { zone, resolvedBy } = pendingWindow;
+      consumePendingWindow(next, pendingWindow);
+      resolveZone(next, zone, characters, { resolvedBy });
+      if (!next.pendingResolution) {
+        advanceAfterZoneResolution(next, resolvedBy);
+      }
+      return finalize();
+    }
+    if (action.type !== "play_card") {
+      return finalize("Reaction window active.");
+    }
+    if (action.playerId !== pendingWindow.playerId) {
+      return finalize("Not your turn.");
+    }
   }
 
   if (action.type !== "play_card" && action.playerId !== next.activePlayerId) {
@@ -5136,12 +5346,23 @@ export const applyAction = (
         ? next.counterWindow
         : null;
     const isOutOfTurn = action.playerId !== next.activePlayerId;
-    const counterAllowed = Boolean(isOutOfTurn && counterWindow && counterWindow.by === action.playerId);
-    const outOfTurnAllowed =
-      isOutOfTurn &&
-      (counterAllowed || canPlayAfterUse(next, resolvedCard, sourceMember.id, characters));
-    if (action.playerId !== next.activePlayerId && !outOfTurnAllowed) {
+    const afterUseAllowed = pendingWindow?.type === "after_use"
+      ? canPlayAfterUse(next, resolvedCard, sourceMember.id, characters, next.actionId)
+      : !pendingWindow
+        ? canPlayAfterUse(next, resolvedCard, sourceMember.id, characters, next.actionId)
+        : false;
+    const counterAllowed = pendingWindow?.type === "counter"
+      ? Boolean(counterWindow && counterWindow.by === action.playerId)
+      : Boolean(isOutOfTurn && counterWindow && counterWindow.by === action.playerId);
+    const outOfTurnAllowed = isOutOfTurn && (counterAllowed || afterUseAllowed);
+    if (!pendingWindow && action.playerId !== next.activePlayerId && !outOfTurnAllowed) {
       return finalize("Not your turn.");
+    }
+    if (pendingWindow?.type === "after_use" && !afterUseAllowed) {
+      return finalize("Card must be played as Follow-Up or Assist Attack.");
+    }
+    if (pendingWindow?.type === "counter" && !counterAllowed) {
+      return finalize("Counter window only.");
     }
 
     const sourceCharacter = getCharacterById(characters, sourceMember.characterId);
@@ -5249,7 +5470,9 @@ export const applyAction = (
       return finalize("X value must be an integer.");
     }
     const isAfterUse =
-      next.afterUseWindow && next.afterUseWindow.validForAction === next.actionId;
+      next.afterUseWindow &&
+      next.afterUseWindow.validForAction === next.actionId &&
+      pendingWindow?.type !== "counter";
     const isFollowUpPlay =
       Boolean(isAfterUse) && next.afterUseWindow?.lastUsedCharacterId === sourceMember.id;
     const followUpAdjustment = isFollowUpPlay
@@ -5279,6 +5502,13 @@ export const applyAction = (
       }
     }
 
+    const reactionZone = pendingWindow?.zone
+      ?? (counterAllowed ? counterWindow?.zone : null)
+      ?? (afterUseAllowed ? next.afterUseWindow?.zone : null);
+    if (reactionZone && action.zone !== reactionZone) {
+      return finalize("Must play in the same zone as the triggering card.");
+    }
+
     if (cardInstance && cardInstanceIndex >= 0) {
       cardInstance = team.hand.splice(cardInstanceIndex, 1)[0] ?? null;
     }
@@ -5287,6 +5517,69 @@ export const applyAction = (
     team.ultimate -= adjustedTotals.ultimate;
     if (adjustedTotals.energy > 0) {
       team.ultimate += adjustedTotals.energy;
+    }
+
+    if (pendingWindow) {
+      const entry: StackEntry = {
+        id: `${action.playerId}-${resolvedCard.slot}-react-${next.actionId}`,
+        cardSlot: resolvedCard.slot,
+        cardName: resolvedCard.name,
+        powerText: resolvedCard.power,
+        effectText: resolvedCard.effect,
+        effects: resolvedCard.effects,
+        types: resolvedCard.types,
+        speed: effectiveSpeed,
+        playedBy: action.playerId,
+        sourceId: sourceMember.id,
+        targetId,
+        targetText: resolvedCard.target,
+        xValue,
+        choiceIndex: action.choiceIndex,
+        redirectTargetId: action.redirectTargetId,
+        scryDiscardIds: action.scryDiscardIds,
+        scryOrderIds: action.scryOrderIds,
+        seekTakeIds: action.seekTakeIds,
+        searchPickId: action.searchPickId,
+        pushDirection: action.pushDirection,
+        cardInstanceId: cardInstance?.id,
+        cardInstance: cardInstance ?? undefined,
+      };
+
+      if (resolvedCard.name !== card.name) {
+        addLog(next, `${card.name} becomes ${resolvedCard.name}.`);
+      }
+      addLog(
+        next,
+        `${sourceMember.name} plays ${resolvedCard.name} in the ${zoneLabel(pendingWindow.zone)} Zone.`
+      );
+      applyCardPlayedStatusRules(next, entry, adjustedTotals.energy, characters);
+      consumePendingWindow(next, pendingWindow);
+      if (next.phase === "finished") {
+        return finalize();
+      }
+
+      const playPower = getModifiedEntryPower(
+        next,
+        entry,
+        getActionType(entry.types),
+        characters
+      );
+      resolveEffectsForTiming(next, entry, playPower, "on_play", false, characters);
+      resolveUse(next, entry, actionType === "attack", characters, pendingWindow.zone, {
+        powerOverride: playPower,
+      });
+      finalizeEntryCard(next, entry, characters);
+      if (next.phase === "finished") {
+        return finalize();
+      }
+      if (pauseForReactionWindow(next, pendingWindow.zone, characters, pendingWindow.resolvedBy)) {
+        return finalize();
+      }
+      resolveZone(next, pendingWindow.zone, characters, { resolvedBy: pendingWindow.resolvedBy });
+      if (!next.pendingResolution) {
+        advanceAfterZoneResolution(next, pendingWindow.resolvedBy);
+      }
+      return finalize();
     }
 
     if (!next.activeZone) {
@@ -5343,6 +5636,15 @@ export const applyAction = (
       characters
     );
     resolveEffectsForTiming(next, entry, playPower, "on_play", false, characters);
+    if (pendingWindow) {
+      const { zone, resolvedBy } = pendingWindow;
+      consumePendingWindow(next, pendingWindow);
+      resolveZone(next, zone, characters, { resolvedBy });
+      if (!next.pendingResolution) {
+        advanceAfterZoneResolution(next, resolvedBy);
+      }
+      return finalize();
+    }
     next.activePlayerId = getOpponentId(action.playerId);
     return finalize();
   }
@@ -5403,18 +5705,9 @@ export const applyAction = (
 
     if (zone.passCount >= 2 && zone.lastPlayedBy === action.playerId) {
       const resolvedBy = action.playerId;
-      resolveZone(next, next.activeZone, characters);
-
-      const nextZone = next.pausedZones.pop() ?? nextOccupiedZone(next);
-      if (nextZone && next.zones[nextZone].cards.length > 0) {
-        next.activeZone = nextZone;
-        addLog(next, `${zoneLabel(nextZone)} Zone becomes Active.`);
-        next.activePlayerId = getOpponentId(resolvedBy);
-      } else {
-        next.activeZone = null;
-        next.activePlayerId = next.initiativePlayerId;
-        addLog(next, "Combat Round ends.");
-        clearCombatRoundLocks(next);
+      resolveZone(next, next.activeZone, characters, { resolvedBy });
+      if (!next.pendingResolution) {
+        advanceAfterZoneResolution(next, resolvedBy);
       }
     } else {
       next.activePlayerId = getOpponentId(action.playerId);

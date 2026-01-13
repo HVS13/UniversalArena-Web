@@ -716,8 +716,8 @@
         {
           "slot": "3-1",
           "name": "Meteor Combination",
-          "cost": "1 Energy",
-          "power": "10-14",
+          "cost": "2 Energy",
+          "power": "20-28",
           "types": [
             "Technique",
             "Attack",
@@ -756,8 +756,8 @@
         {
           "slot": "3-2",
           "name": "Kaio-ken Attack",
-          "cost": "1 Energy",
-          "power": "10-14",
+          "cost": "2 Energy",
+          "power": "20-28",
           "types": [
             "Technique",
             "Attack",
@@ -786,8 +786,8 @@
         {
           "slot": "4",
           "name": "Kamehameha",
-          "cost": "2 Energy",
-          "power": "16-24",
+          "cost": "3 Energy",
+          "power": "27-45",
           "types": [
             "Technique",
             "Attack",
@@ -815,7 +815,7 @@
         {
           "slot": "5",
           "name": "Kaioken",
-          "cost": "1 Energy",
+          "cost": "2 Energy",
           "power": "-",
           "types": [
             "Technique",
@@ -873,8 +873,8 @@
         {
           "slot": "ultimate",
           "name": "Spirit Bomb",
-          "cost": "20 Ultimate Meter",
-          "power": "27-45",
+          "cost": "30 Ultimate Meter",
+          "power": "41-67",
           "types": [
             "Ultimate",
             "Attack",
@@ -1194,8 +1194,8 @@
         {
           "slot": "3",
           "name": "Shunpo",
-          "cost": "1 Energy",
-          "power": "8-12",
+          "cost": "2 Energy",
+          "power": "16-24",
           "types": [
             "Technique",
             "Defense",
@@ -1228,8 +1228,8 @@
         {
           "slot": "4-1",
           "name": "Getsuga Tensho",
-          "cost": "2 Energy",
-          "power": "16-24",
+          "cost": "3 Energy",
+          "power": "23-37",
           "types": [
             "Technique",
             "Attack",
@@ -1251,6 +1251,24 @@
               "type": "deal_damage",
               "amount": {
                 "kind": "power"
+              }
+            },
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "x"
+              },
+              "allowPartial": true
+            },
+            {
+              "timing": "on_use",
+              "type": "deal_damage_per_spent",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 4
               }
             },
             {
@@ -1276,8 +1294,8 @@
         {
           "slot": "4-2",
           "name": "Getsuga Tensho: Tensa Zangetsu",
-          "cost": "2 Energy",
-          "power": "16-24",
+          "cost": "3 Energy",
+          "power": "23-37",
           "types": [
             "Technique",
             "Attack",
@@ -1300,6 +1318,24 @@
               }
             },
             {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "x"
+              },
+              "allowPartial": true
+            },
+            {
+              "timing": "on_use",
+              "type": "deal_damage_per_spent",
+              "status": "Reiatsu",
+              "amount": {
+                "kind": "flat",
+                "value": 5
+              }
+            },
+            {
               "timing": "on_hit",
               "type": "gain_status",
               "status": "Reiatsu",
@@ -1313,7 +1349,7 @@
         {
           "slot": "5",
           "name": "Bankai: Tensa Zangetsu",
-          "cost": "1 Energy",
+          "cost": "2 Energy",
           "power": "-",
           "types": [
             "Technique",
@@ -1404,7 +1440,7 @@
           "effect": [
             "Can only be played if this character has Bankai: Tensa Zangetsu.",
             "Deal Power damage.",
-            "Spend up to 6 Reiatsu? Deal 4 times Reiatsu spent bonus damage."
+            "Spend X Reiatsu (0-6)? Deal 4 times Reiatsu spent bonus damage."
           ],
           "restrictions": [
             {
@@ -1646,6 +1682,16 @@
           "effects": [
             {
               "timing": "on_use",
+              "type": "spend_status",
+              "status": "Shotgun Ammo",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "gateAll": true
+            },
+            {
+              "timing": "on_use",
               "type": "deal_damage",
               "amount": {
                 "kind": "power_div",
@@ -1820,6 +1866,16 @@
             "If this character doesn't have Rocket Launcher: this Ultimate becomes Purchase Rocket Launcher."
           ],
           "effects": [
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Rocket Launcher",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "gateAll": true
+            },
             {
               "timing": "on_use",
               "type": "deal_damage",
@@ -2050,7 +2106,7 @@
           "speed": "Normal",
           "effect": [
             "Inflict 2 Stagnate.",
-            "If the target has 3+ Stolen Information, also inflict 1 Slow."
+            "If the target has 3+ Stolen Information: Inflict 1 Slow."
           ],
           "effects": [
             {
@@ -2094,7 +2150,7 @@
           "speed": "Slow",
           "effect": [
             "Can only be played if the target has 6 Stolen Information.",
-            "Inflict 3 Death by Death Note. Then set the target's Stolen Information Value to 0."
+            "Inflict 3 Death by Death Note. Set the target's Stolen Information Value to 0."
           ],
           "restrictions": [
             {
@@ -2158,8 +2214,7 @@
           "speed": "Normal",
           "effect": [
             "Can only be played if the target has 6 Stolen Information or Death by Death Note.",
-            "Choose 1 enemy with 6 Stolen Information or Death by Death Note.",
-            "If the target has 6 Stolen Information, inflict 3 Death by Death Note and set its Stolen Information Value to 0.",
+            "If the target has 6 Stolen Information: Inflict 3 Death by Death Note. Set the target's Stolen Information Value to 0.",
             "Reduce the target's Death by Death Note Value by 1.",
             "Reduce by 1 additional per 10 Ultimate Meter spent (max 2; cannot reduce below 1)."
           ],
@@ -2332,8 +2387,8 @@
         {
           "slot": "3-1",
           "name": "Gomu Gomu no Pistol",
-          "cost": "1 Energy",
-          "power": "10-14",
+          "cost": "2 Energy",
+          "power": "20-28",
           "types": [
             "Technique",
             "Attack",
@@ -2377,8 +2432,8 @@
         {
           "slot": "3-2",
           "name": "Gomu Gomu no Jet Pistol",
-          "cost": "1 Energy",
-          "power": "10-14",
+          "cost": "2 Energy",
+          "power": "20-28",
           "types": [
             "Technique",
             "Attack",
@@ -2404,8 +2459,8 @@
         {
           "slot": "3-3",
           "name": "Gomu Gomu no Gigant Pistol",
-          "cost": "1 Energy",
-          "power": "10-14",
+          "cost": "2 Energy",
+          "power": "20-28",
           "types": [
             "Technique",
             "Attack",
@@ -2431,8 +2486,8 @@
         {
           "slot": "4-1",
           "name": "Gomu Gomu no Bazooka",
-          "cost": "2 Energy",
-          "power": "20-28",
+          "cost": "3 Energy",
+          "power": "27-45",
           "types": [
             "Technique",
             "Attack",
@@ -2476,8 +2531,8 @@
         {
           "slot": "4-2",
           "name": "Gomu Gomu no Jet Bazooka",
-          "cost": "2 Energy",
-          "power": "20-30",
+          "cost": "3 Energy",
+          "power": "27-45",
           "types": [
             "Technique",
             "Attack",
@@ -2503,8 +2558,8 @@
         {
           "slot": "4-3",
           "name": "Gomu Gomu no Gigant Bazooka",
-          "cost": "2 Energy",
-          "power": "20-30",
+          "cost": "3 Energy",
+          "power": "27-45",
           "types": [
             "Technique",
             "Attack",
@@ -2864,7 +2919,7 @@
           "speed": "Normal",
           "effect": [
             "Deal Power damage.",
-            "On Hit: If this character has Kyuubi Chakra, gain 1 Shadow Clones."
+            "On Hit: If this character has Kyuubi Chakra: Gain 1 Shadow Clones."
           ],
           "effects": [
             {
@@ -2939,7 +2994,7 @@
         {
           "slot": "3",
           "name": "Shadow Clone Jutsu",
-          "cost": "1 Energy",
+          "cost": "2 Energy",
           "power": "-",
           "types": [
             "Technique",
@@ -2995,6 +3050,15 @@
             "On Hit: If X is 3: Inflict 1 Stun."
           ],
           "effects": [
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Shadow Clones",
+              "amount": {
+                "kind": "x"
+              },
+              "gateAll": true
+            },
             {
               "timing": "on_use",
               "type": "deal_damage",
@@ -3079,6 +3143,21 @@
             "Follow-Up."
           ],
           "effects": [
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Shadow Clones",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "gateAll": true,
+              "condition": {
+                "kind": "self_has_status",
+                "status": "Shadow Clones",
+                "min": 2
+              }
+            },
             {
               "timing": "on_use",
               "type": "deal_damage",
@@ -3225,6 +3304,16 @@
             }
           ],
           "effects": [
+            {
+              "timing": "on_use",
+              "type": "spend_status",
+              "status": "Shadow Clones",
+              "amount": {
+                "kind": "flat",
+                "value": 2
+              },
+              "gateAll": true
+            },
             {
               "timing": "on_use",
               "type": "deal_damage",
@@ -3475,8 +3564,8 @@
         {
           "slot": "3",
           "name": "Resonating Slashes",
-          "cost": "1 Energy",
-          "power": "8-12",
+          "cost": "2 Energy",
+          "power": "16-24",
           "types": [
             "Technique",
             "Attack",
@@ -3503,15 +3592,21 @@
             },
             {
               "timing": "on_hit",
+              "type": "spend_status",
+              "status": "Diminutive Sound",
+              "amount": {
+                "kind": "flat",
+                "value": 1
+              },
+              "gateAll": true
+            },
+            {
+              "timing": "on_hit",
               "type": "inflict_status",
               "status": "Spectro Frazzle",
               "amount": {
                 "kind": "flat",
                 "value": 2
-              },
-              "condition": {
-                "kind": "self_has_status",
-                "status": "Diminutive Sound"
               }
             }
           ]
@@ -3555,7 +3650,7 @@
         {
           "slot": "5",
           "name": "Instant",
-          "cost": "1 Energy",
+          "cost": "2 Energy",
           "power": "-",
           "types": [
             "Technique",
@@ -3568,7 +3663,15 @@
           "target": "All Enemies",
           "speed": "Normal",
           "effect": [
+            "Can only be played as Assist Attack.",
+            "Assist Attack.",
             "Inflict 2 Stagnate."
+          ],
+          "restrictions": [
+            {
+              "kind": "require_window",
+              "window": "assist_attack"
+            }
           ],
           "effects": [
             {
@@ -3888,8 +3991,8 @@
         {
           "slot": "3-2",
           "name": "Normal Punch",
-          "cost": "1 Energy",
-          "power": "8-12",
+          "cost": "2 Energy",
+          "power": "16-24",
           "types": [
             "Technique",
             "Attack",
@@ -4014,8 +4117,8 @@
         {
           "slot": "4-2",
           "name": "Normal Punch",
-          "cost": "1 Energy",
-          "power": "8-12",
+          "cost": "2 Energy",
+          "power": "16-24",
           "types": [
             "Technique",
             "Attack",

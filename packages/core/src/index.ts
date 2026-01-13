@@ -2260,6 +2260,16 @@ type UseRestriction = {
   raw?: string;
 };
 
+type UseRestrictionWindow = "assist_attack" | "follow_up" | "after_use";
+
+type UseRestrictionWindowRule = {
+  kind: "require_window" | "forbid_window";
+  window: UseRestrictionWindow;
+  raw?: string;
+};
+
+type UseRestrictionRule = UseRestriction | UseRestrictionWindowRule;
+
 const timingLabelMap: Record<string, Effect["timing"]> = {
   "on play": "on_play",
   "before clash": "before_clash",
@@ -2506,6 +2516,19 @@ const formatRestrictionRaw = (
     status.min > 1 ? `${status.min}+ ${status.name}` : status.name
   );
   return `${subject} has ${parts.join(joiner)}`;
+};
+
+const formatWindowRestrictionRaw = (window: UseRestrictionWindow) => {
+  switch (window) {
+    case "assist_attack":
+      return "can only be played as Assist Attack";
+    case "follow_up":
+      return "can only be played as Follow-Up";
+    case "after_use":
+      return "can only be played after a card resolves";
+    default:
+      return "window restriction not met";
+  }
 };
 
 const normalizeTag = (value: string) => value.trim().toLowerCase();
@@ -3346,6 +3369,24 @@ const isStatusRequirementMet = (
   return isStatusActive(state, definition) && getStatusPrimaryValue(state, definition) >= min;
 };
 
+const isWindowRestrictionMet = (
+  window: UseRestrictionWindow,
+  state: MatchState,
+  sourceId: MatchCharacterId
+) => {
+  const afterUse =
+    state.afterUseWindow && state.afterUseWindow.validForAction === state.actionId;
+  if (!afterUse) return false;
+  if (window === "after_use") return true;
+  if (window === "follow_up") {
+    return state.afterUseWindow?.lastUsedCharacterId === sourceId;
+  }
+  if (window === "assist_attack") {
+    return state.afterUseWindow?.lastUsedCharacterId !== sourceId;
+  }
+  return false;
+};
+
 const getUseRestrictionError = (
   card: Card,
   state: MatchState,
@@ -3366,6 +3407,18 @@ const getUseRestrictionError = (
     : null;
 
   for (const restriction of restrictions) {
+    if (restriction.kind === "require_window" || restriction.kind === "forbid_window") {
+      const meets = isWindowRestrictionMet(restriction.window, state, sourceId);
+      const raw = restriction.raw ?? formatWindowRestrictionRaw(restriction.window);
+      if (restriction.kind === "require_window" && !meets) {
+        return `Card requirement not met: ${raw}`;
+      }
+      if (restriction.kind === "forbid_window" && meets) {
+        return `Card restriction blocks use: ${raw}`;
+      }
+      continue;
+    }
+
     const statuses = restriction.statuses
       .map((status) => ({ name: status.name, min: status.min ?? 1 }))
       .filter((status) => status.name);

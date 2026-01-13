@@ -108,13 +108,21 @@ export type UseRestrictionStatus = {
   min?: number;
 };
 
-export type UseRestriction = {
-  kind: "require" | "forbid";
-  subject: "self" | "target";
-  mode: "any" | "all";
-  statuses: UseRestrictionStatus[];
-  raw?: string;
-};
+export type UseRestrictionWindow = "assist_attack" | "follow_up" | "after_use";
+
+export type UseRestriction =
+  | {
+      kind: "require" | "forbid";
+      subject: "self" | "target";
+      mode: "any" | "all";
+      statuses: UseRestrictionStatus[];
+      raw?: string;
+    }
+  | {
+      kind: "require_window" | "forbid_window";
+      window: UseRestrictionWindow;
+      raw?: string;
+    };
 
 export type Effect =
   | (EffectBase & { type: "deal_damage"; amount: EffectAmount; hits?: EffectScalar })

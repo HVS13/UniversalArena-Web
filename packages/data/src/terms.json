@@ -16,7 +16,7 @@
       "section": "Resources",
       "id": "term-spend",
       "name": "Spend",
-      "definition": "When an effect says to Spend X (Energy, Ammo, a status value, etc.), you must reduce that resource by X to resolve that part of the effect. If you cannot spend the full amount, that part of the effect does not happen. Optional Spend must say \"may.\""
+      "definition": "When an effect says to Spend X (Energy, Ammo, a status value, etc.), you must reduce that resource by X to resolve that part of the effect. If you cannot spend the full amount, that part of the effect does not happen. Optional Spend uses \"?\" (example: \"Spend X Resource? Gain Evade.\")."
     },
     {
       "section": "Resources",

@@ -23,7 +23,7 @@
         },
         {
           "name": "Blood Is Power",
-          "text": "Whenever this character gains X Stolen Blood, gain X Blood Focus. Whenever this character spends X Stolen Blood, reduce Blood Focus Value by X. Once per game, when this character would be reduced to 0 HP: You may spend 3 Stolen Blood. If you do, set HP to 1 instead."
+          "text": "Whenever this character gains X Stolen Blood, gain X Blood Focus. Whenever this character spends X Stolen Blood, reduce Blood Focus Value by X. Once per game, when this character would be reduced to 0 HP: Spend 3 Stolen Blood? Set HP to 1 instead."
         }
       ],
       "statusEffects": [
@@ -74,7 +74,7 @@
           "speed": "Normal",
           "effect": [
             "Deal Power damage.",
-            "On Hit: If the target has Stun, gain 1 Stolen Blood.",
+            "On Hit: If the target has Stun: Gain 1 Stolen Blood.",
             "If this character has The World: Time Stop: This card becomes Strike: Muda Barrage."
           ],
           "effects": [
@@ -219,8 +219,8 @@
             "Gain Power Shield.",
             "Evade.",
             "Follow-Up.",
-            "Retain.",
-            "After Use: Gain 1 Haste and +1 Haste Count."
+            "After Use: Gain 1 Haste and +1 Haste Count.",
+            "Retain."
           ],
           "effects": [
             {
@@ -276,7 +276,7 @@
             "Heal for Power / 2 HP.",
             "Gain 4 Stolen Blood.",
             "On Hit: Inflict 2 Weak and +2 Weak Count.",
-            "On Hit: If the target has Stun, gain 2 Stolen Blood."
+            "On Hit: If the target has Stun: Gain 2 Stolen Blood."
           ],
           "effects": [
             {
@@ -462,7 +462,7 @@
           "speed": "Fast",
           "effect": [
             "Gain 1 The World: Time Stop and +2 The World: Time Stop Count.",
-            "You may spend X Stolen Blood (0-5). If you do, gain +X The World: Time Stop Count.",
+            "Spend X Stolen Blood (0-5)? Gain +X The World: Time Stop Count.",
             "Inflict 1 Stun on All Enemies.",
             "Until the end of this Combat Round, enemies cannot play cards. (Cards already played still resolve.)",
             "Retain."
@@ -545,10 +545,10 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "Can only be used if this character has The World: Time Stop.",
+            "Can only be played if this character has The World: Time Stop.",
             "Deal Power damage.",
             "On Hit: Inflict 1 Stun.",
-            "You may spend X Stolen Blood (0-10). If you do, deal 6 times X bonus damage and inflict X Bleed.",
+            "Spend X Stolen Blood (0-10)? Deal 6 times X bonus damage and inflict X Bleed.",
             "After Use: Set this character's The World: Time Stop Count to 0."
           ],
           "restrictions": [
@@ -798,8 +798,9 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
+            "Deal Power damage.",
             "Follow-Up.",
-            "Deal Power damage."
+            "On Follow-Up: -1 Energy Cost."
           ],
           "effects": [
             {
@@ -1094,8 +1095,8 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "Follow-Up.",
             "Deal Power damage. On Hit: Gain 2 Reiatsu.",
+            "Follow-Up.",
             "After Use: Gain 1 Vulnerable and +1 Vulnerable Count."
           ],
           "effects": [
@@ -1240,7 +1241,8 @@
           "speed": "Normal",
           "effect": [
             "Deal Power damage. On Hit: Gain 1 Reiatsu.",
-            "You may spend X Reiatsu (0-3). If you do, deal 4 times X bonus damage.",
+            "Spend X Reiatsu (0-3)? Deal 4 times X bonus damage.",
+            "Follow-Up.",
             "If this character has Bankai: Tensa Zangetsu: This card becomes Getsuga Tensho: Tensa Zangetsu."
           ],
           "effects": [
@@ -1287,7 +1289,7 @@
           "speed": "Fast",
           "effect": [
             "Deal Power damage. On Hit: Gain 1 Reiatsu.",
-            "You may spend X Reiatsu (0-4). If you do, deal 5 times X bonus damage."
+            "Spend X Reiatsu (0-4)? Deal 5 times X bonus damage."
           ],
           "effects": [
             {
@@ -1400,9 +1402,9 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "Can only be used if this character has Bankai: Tensa Zangetsu.",
+            "Can only be played if this character has Bankai: Tensa Zangetsu.",
             "Deal Power damage.",
-            "You may spend up to 6 Reiatsu. If you do, deal 4 times Reiatsu spent bonus damage."
+            "Spend up to 6 Reiatsu? Deal 4 times Reiatsu spent bonus damage."
           ],
           "restrictions": [
             {
@@ -1577,8 +1579,8 @@
           "speed": "Normal",
           "effect": [
             "This card's Multihit Count starts at 3.",
-            "Set X to this card's remaining Multihit Count (before resolving this card). Spend Handgun Ammo up to X. Spend as many as possible.",
-            "Deal Power / X damage once per Ammo spent.",
+            "Set X to this card's remaining Multihit Count (before resolving this card).",
+            "Spend X Handgun Ammo: Deal Power / X damage once per Ammo spent.",
             "If this character has Equip: Riot Gun: This card becomes Shoot: Riot Gun.",
             "If this character has Equip: Chicago Typewriter: This card becomes Shoot: Chicago Typewriter."
           ],
@@ -1637,9 +1639,8 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
+            "Spend 1 Shotgun Ammo: Deal Power / 3 damage 3 times.",
             "Follow-Up.",
-            "Spend 1 Shotgun Ammo to deal damage.",
-            "Deal Power / 3 damage 3 times.",
             "On Follow-Up: -1 Energy Cost."
           ],
           "effects": [
@@ -1705,9 +1706,9 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Follow-Up.",
             "Deal Power damage.",
-            "On Follow-Up: Deal Power damage. Inflict 1 Stun instead."
+            "Follow-Up.",
+            "On Follow-Up: Inflict 1 Stun."
           ],
           "effects": [
             {
@@ -1748,12 +1749,13 @@
           "target": "Self",
           "speed": "Normal",
           "effect": [
+            "Innate.",
             "Choose 1:",
             "Switch to Equip: Handgun.",
             "Switch to Equip: Riot Gun.",
             "Switch to Equip: Chicago Typewriter.",
-            "If you choose the same weapon, Reload instead.",
-            "Innate. Retain."
+            "If you choose the same weapon: Reload instead.",
+            "Retain."
           ],
           "effects": [
             {
@@ -1814,9 +1816,8 @@
           "target": "All Enemies",
           "speed": "Normal",
           "effect": [
-            "Spend 1 Rocket Launcher to deal damage.",
-            "Deal Power damage.",
-            "If this character doesn't have Rocket Launcher, this Ultimate becomes Purchase Rocket Launcher."
+            "Spend 1 Rocket Launcher: Deal Power damage.",
+            "If this character doesn't have Rocket Launcher: this Ultimate becomes Purchase Rocket Launcher."
           ],
           "effects": [
             {
@@ -1922,7 +1923,7 @@
           "speed": "Normal",
           "effect": [
             "Deal Power damage. On Hit: Inflict 1 Stolen Information.",
-            "On Hit: If the target has 3+ Stolen Information, inflict 1 Slow and +1 Slow Count."
+            "On Hit: If the target has 3+ Stolen Information: Inflict 1 Slow and +1 Slow Count."
           ],
           "effects": [
             {
@@ -2014,7 +2015,8 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "Inflict 2 Stolen Information. Retain."
+            "Inflict 2 Stolen Information.",
+            "Retain."
           ],
           "effects": [
             {
@@ -2091,7 +2093,7 @@
           "target": "1 Enemy",
           "speed": "Slow",
           "effect": [
-            "Can only be used if the target has 6 Stolen Information.",
+            "Can only be played if the target has 6 Stolen Information.",
             "Inflict 3 Death by Death Note. Then set the target's Stolen Information Value to 0."
           ],
           "restrictions": [
@@ -2155,7 +2157,7 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Can only be used if the target has 6 Stolen Information or Death by Death Note.",
+            "Can only be played if the target has 6 Stolen Information or Death by Death Note.",
             "Choose 1 enemy with 6 Stolen Information or Death by Death Note.",
             "If the target has 6 Stolen Information, inflict 3 Death by Death Note and set its Stolen Information Value to 0.",
             "Reduce the target's Death by Death Note Value by 1.",
@@ -2540,7 +2542,7 @@
           "target": "Self",
           "speed": "Normal",
           "effect": [
-            "Cannot be used if this character has Gear 2nd or Gear 3rd.",
+            "Cannot be played if this character has Gear 2nd or Gear 3rd.",
             "Choose 1:",
             "Gain 1 Gear 2nd.",
             "Gain 1 Gear 3rd.",
@@ -2620,7 +2622,7 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "Can only be used if this character has Gear 2nd.",
+            "Can only be played if this character has Gear 2nd.",
             "Deal Power / (X + 1) damage (X + 1) times. Inflict X Frail. Gain X Weak and +X Weak Count. Gain X Vulnerable and +X Vulnerable Count.",
             "If this character has Gear 3rd: This Ultimate becomes Gomu Gomu no Gigant Rifle."
           ],
@@ -2746,7 +2748,7 @@
           "target": "1 Enemy",
           "speed": "Slow",
           "effect": [
-            "Can only be used if this character has Gear 3rd.",
+            "Can only be played if this character has Gear 3rd.",
             "Deal Power damage.",
             "If this character has Gear 2nd: This Ultimate becomes Gomu Gomu no Jet Gatling."
           ],
@@ -2902,7 +2904,7 @@
           "speed": "Normal",
           "effect": [
             "Gain Power Shield.",
-            "If this character has 1+ Shadow Clones: You may spend 1 Shadow Clones. If you do, this card gains Evade."
+            "If this character has 1+ Shadow Clones? Spend 1 Shadow Clones: This card gains Evade."
           ],
           "effects": [
             {
@@ -2947,9 +2949,9 @@
           "target": "Self",
           "speed": "Fast",
           "effect": [
+            "Innate.",
             "Gain 2 Shadow Clones.",
-            "Create 2 Shadow Clone: Strike in hand.",
-            "Innate."
+            "Create 2 Shadow Clone: Strike in hand."
           ],
           "effects": [
             {
@@ -2989,9 +2991,8 @@
           "speed": "Normal",
           "effect": [
             "Choose X (0-3).",
-            "Spend X Shadow Clones.",
-            "Deal Power / (X + 2) damage (X + 2) times.",
-            "On Hit: If X is 3, inflict 1 Stun."
+            "Spend X Shadow Clones: Deal Power / (X + 2) damage (X + 2) times.",
+            "On Hit: If X is 3: Inflict 1 Stun."
           ],
           "effects": [
             {
@@ -3073,10 +3074,9 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Spend 2 Shadow Clones.",
-            "Follow-Up.",
-            "Deal Power damage.",
-            "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count."
+            "Spend 2 Shadow Clones: Deal Power damage.",
+            "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count.",
+            "Follow-Up."
           ],
           "effects": [
             {
@@ -3206,11 +3206,10 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Can only be used if this character has One-Tail Cloak.",
-            "Spend 2 Shadow Clones.",
-            "Follow-Up.",
-            "Deal Power damage.",
+            "Can only be played if this character has One-Tail Cloak.",
+            "Spend 2 Shadow Clones: Deal Power damage.",
             "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count. Inflict 1 Slow and +1 Slow Count.",
+            "Follow-Up.",
             "After Use: Reduce Kyuubi Chakra Count by 2."
           ],
           "restrictions": [
@@ -3339,9 +3338,9 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Follow-Up.",
             "Deal Power damage.",
             "On Hit: Inflict 1 Slow.",
+            "Follow-Up.",
             "Exhaust. Ethereal."
           ],
           "effects": [
@@ -3490,7 +3489,7 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power / 2 damage 2 times. On Hit: Spend 1 Diminutive Sound to inflict 2 Spectro Frazzle."
+            "Deal Power / 2 damage 2 times. On Hit: Spend 1 Diminutive Sound: Inflict 2 Spectro Frazzle."
           ],
           "effects": [
             {

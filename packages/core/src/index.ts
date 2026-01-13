@@ -102,6 +102,46 @@ export type StackEntry = {
   spentResources?: Record<string, number>;
 };
 
+export type StackEntrySnapshot = {
+  id: string;
+  cardSlot: string;
+  cardName: string;
+  powerText: string;
+  effectText: string[];
+  types: string[];
+  speed: string;
+  playedBy: PlayerId;
+  sourceId: MatchCharacterId;
+  targetId: MatchCharacterId;
+  xValue: number;
+};
+
+export type CombatResolutionOutcome =
+  | "single"
+  | "same_team"
+  | "attack_tie"
+  | "attack_right"
+  | "attack_left"
+  | "attack_vs_defense"
+  | "defense_vs_defense"
+  | "opposed";
+
+export type CombatResolutionStep = {
+  left?: StackEntrySnapshot;
+  right?: StackEntrySnapshot;
+  leftPower?: number;
+  rightPower?: number;
+  outcome: CombatResolutionOutcome;
+};
+
+export type CombatResolution = {
+  actionId: number;
+  zone: ZoneName;
+  steps: CombatResolutionStep[];
+  logStart: number;
+  logEnd: number;
+};
+
 export type ZoneState = {
   zone: ZoneName;
   cards: StackEntry[];
@@ -123,6 +163,7 @@ export type MatchState = {
   players: Record<PlayerId, MatchTeam>;
   playLocks: Record<PlayerId, { source: string; duration: "combat_round" }[]>;
   log: string[];
+  lastResolution?: CombatResolution | null;
   winnerId?: PlayerId;
   pendingTurnStartGains: Record<MatchCharacterId, PendingStatusGain[]>;
   nextCardInstanceId: number;
@@ -4542,6 +4583,27 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
   const zone = state.zones[zoneName];
   if (!zone.cards.length) return;
 
+  const resolution: CombatResolution = {
+    actionId: state.actionId ?? 0,
+    zone: zoneName,
+    steps: [],
+    logStart: state.log.length,
+    logEnd: state.log.length,
+  };
+  const snapshotEntry = (entry: StackEntry): StackEntrySnapshot => ({
+    id: entry.id,
+    cardSlot: entry.cardSlot,
+    cardName: entry.cardName,
+    powerText: entry.powerText,
+    effectText: [...entry.effectText],
+    types: [...entry.types],
+    speed: entry.speed,
+    playedBy: entry.playedBy,
+    sourceId: entry.sourceId,
+    targetId: entry.targetId,
+    xValue: entry.xValue,
+  });
+
   addLog(state, `${zoneLabel(zoneName)} Zone resolves.`);
 
   let index = zone.cards.length - 1;
@@ -4552,6 +4614,11 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
     if (leftIndex < 0) {
       const rightType = getActionType(right.types);
       const rightPower = getModifiedEntryPower(state, right, rightType, characters);
+      resolution.steps.push({
+        right: snapshotEntry(right),
+        rightPower,
+        outcome: "single",
+      });
       resolveUse(state, right, rightType === "attack", characters, { powerOverride: rightPower });
       finalizeEntryCard(state, right, characters);
       zone.cards.splice(index, 1);
@@ -4563,6 +4630,11 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
     if (left.playedBy === right.playedBy) {
       const rightType = getActionType(right.types);
       const rightPower = getModifiedEntryPower(state, right, rightType, characters);
+      resolution.steps.push({
+        right: snapshotEntry(right),
+        rightPower,
+        outcome: "same_team",
+      });
       resolveUse(state, right, rightType === "attack", characters, { powerOverride: rightPower });
       finalizeEntryCard(state, right, characters);
       zone.cards.splice(index, 1);
@@ -4591,6 +4663,18 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
     resolveEffectsForTiming(state, left, leftPower, "before_clash", false, characters);
 
     if (rightType === "attack" && leftType === "attack") {
+      resolution.steps.push({
+        right: snapshotEntry(right),
+        left: snapshotEntry(left),
+        rightPower,
+        leftPower,
+        outcome:
+          rightPower === leftPower
+            ? "attack_tie"
+            : rightPower > leftPower
+              ? "attack_right"
+              : "attack_left",
+      });
       if (rightPower === leftPower) {
         addLog(state, `${right.cardName} and ${left.cardName} clash and are both cancelled.`);
         resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
@@ -4625,6 +4709,13 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
       (rightType === "attack" && leftType === "defense") ||
       (rightType === "defense" && leftType === "attack")
     ) {
+      resolution.steps.push({
+        right: snapshotEntry(right),
+        left: snapshotEntry(left),
+        rightPower,
+        leftPower,
+        outcome: "attack_vs_defense",
+      });
       const defense = rightType === "defense" ? right : left;
       const attack = rightType === "attack" ? right : left;
       const defensePower = defense === right ? rightPower : leftPower;
@@ -4707,6 +4798,13 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
     }
 
     if (rightType === "defense" && leftType === "defense") {
+      resolution.steps.push({
+        right: snapshotEntry(right),
+        left: snapshotEntry(left),
+        rightPower,
+        leftPower,
+        outcome: "defense_vs_defense",
+      });
       resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
       resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
       resolveUse(state, right, false, characters, { powerOverride: rightPower });
@@ -4738,6 +4836,13 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
       continue;
     }
 
+    resolution.steps.push({
+      right: snapshotEntry(right),
+      left: snapshotEntry(left),
+      rightPower,
+      leftPower,
+      outcome: "opposed",
+    });
     resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
     resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
     resolveUse(state, right, rightType === "attack", characters, { powerOverride: rightPower });
@@ -4750,6 +4855,8 @@ const resolveZone = (state: MatchState, zoneName: ZoneName, characters: Characte
 
   zone.lastPlayedBy = undefined;
   zone.passCount = 0;
+  resolution.logEnd = state.log.length;
+  state.lastResolution = resolution;
 };
 
 const findCard = (characters: Character[], characterId: string, cardSlot: string) => {
@@ -4910,6 +5017,7 @@ export const createMatchState = (
     },
     playLocks: { p1: [], p2: [] },
     log: [],
+    lastResolution: null,
     pendingTurnStartGains: {},
     nextCardInstanceId: 1,
     rng,
@@ -4941,6 +5049,7 @@ export const applyAction = (
 ): { state: MatchState; error?: string } => {
   if (state.phase === "finished") return { state };
   const next = cloneState(state);
+  next.lastResolution = null;
   next.actionId = (next.actionId ?? 0) + 1;
   if (next.counterWindow && next.counterWindow.validForAction < next.actionId) {
     next.counterWindow = undefined;

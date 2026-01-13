@@ -72,3 +72,4 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-11: Moved the relay server and data export tooling into this repo, with a docs-repo checkout workflow for syncing `packages/data`.
 - 2026-01-11: Temporarily documented `UA_DOCS_REPO`/`UA_DOCS_TOKEN` for a game-repo export workflow (later reverted).
 - 2026-01-13: Restored docs-owned auto-sync; exporter/workflow now live in the docs repo again.
+- 2026-01-13: Added cinematic combat playback data in core and a UI clash overlay with roll reveals, impact VFX, SFX cues, and a Skip Combat toggle.

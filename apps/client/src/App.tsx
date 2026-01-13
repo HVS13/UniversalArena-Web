@@ -6,6 +6,7 @@ import {
   createMatchState,
   getLegalTargets,
   parseCost,
+  type CombatResolution,
   type MatchCharacterId,
   type MatchState,
   type PlayerId,
@@ -60,6 +61,11 @@ const getStoredClientId = () => {
   return next;
 };
 
+const getStoredSkipCombat = () => {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("ua-skip-combat") === "true";
+};
+
 const defaultSelection = (): SelectionState => {
   const sorted = sortRoster(roster);
   const p1 = sorted.slice(0, 3).map((entry) => entry.id);
@@ -80,6 +86,16 @@ type Team = MatchState["players"][PlayerId];
 type TeamMember = Team["characters"][number];
 type CardInstance = Team["hand"][number];
 type TeamLookup = { teamId: PlayerId; team: Team; member: TeamMember };
+
+type CombatSide = {
+  entry: NonNullable<CombatResolution["steps"][number]["left"]>;
+  teamId: PlayerId;
+  member: TeamMember;
+  character?: Character;
+  targetName: string;
+  artUrl: string | null;
+  power: number | null;
+};
 
 type PileType = "deck" | "discard" | "exhausted";
 
@@ -891,6 +907,24 @@ type LogGroup = {
   entries: LogEntry[];
 };
 
+type CombatPlaybackPhase = "pairing" | "roll" | "impact";
+
+type CombatLogEvent = {
+  kind: "damage" | "shield" | "heal" | "overpower" | "cancelled" | "negate";
+  source?: string;
+  target?: string;
+  amount?: number;
+  cardNames?: string[];
+  line: string;
+};
+
+type CombatPlayback = {
+  resolution: CombatResolution;
+  stepIndex: number;
+  phase: CombatPlaybackPhase;
+  stepEvents: CombatLogEvent[][];
+};
+
 const parseLogEntry = (line: string): LogEntry => {
   const dealMatch = line.match(/^(.+?) deals (\d+) damage to (.+?)\.$/);
   if (dealMatch) {
@@ -969,6 +1003,93 @@ const groupLogEntries = (entries: string[]): LogGroup[] => {
   return groups;
 };
 
+const parseCombatLogEvent = (line: string): CombatLogEvent | null => {
+  const dealMatch = line.match(/^(.+?) deals (\d+) damage to (.+?)\.$/);
+  if (dealMatch) {
+    const [, source, amount, target] = dealMatch;
+    return { kind: "damage", source, target, amount: Number(amount), line };
+  }
+  const takeMatch = line.match(/^(.+?) takes (\d+) damage from (.+?)\.$/);
+  if (takeMatch) {
+    const [, target, amount, source] = takeMatch;
+    return { kind: "damage", source, target, amount: Number(amount), line };
+  }
+  const healMatch = line.match(/^(.+?) heals (\d+) HP(?: from (.+?))?\.$/);
+  if (healMatch) {
+    const [, target, amount, source] = healMatch;
+    return { kind: "heal", source, target, amount: Number(amount), line };
+  }
+  const shieldMatch = line.match(/^(.+?) gains (\d+) shield\.$/);
+  if (shieldMatch) {
+    const [, target, amount] = shieldMatch;
+    return { kind: "shield", target, amount: Number(amount), line };
+  }
+  const overpowerMatch = line.match(/^(.+?) overpowers (.+?)\.$/);
+  if (overpowerMatch) {
+    const [, winner, loser] = overpowerMatch;
+    return { kind: "overpower", cardNames: [winner, loser], line };
+  }
+  const clashMatch = line.match(/^(.+?) and (.+?) clash and are both cancelled\.$/);
+  if (clashMatch) {
+    const [, left, right] = clashMatch;
+    return { kind: "cancelled", cardNames: [left, right], line };
+  }
+  const negateMatch = line.match(/^(.+?) negates (.+?)\.$/);
+  if (negateMatch) {
+    const [, source, target] = negateMatch;
+    return { kind: "negate", cardNames: [source, target], line };
+  }
+  return null;
+};
+
+const getStepMatchNames = (
+  state: MatchState,
+  step: CombatResolution["steps"][number]
+) => {
+  const names = new Set<string>();
+  const cardNames = new Set<string>();
+  const addEntry = (entry?: CombatResolution["steps"][number]["left"]) => {
+    if (!entry) return;
+    cardNames.add(entry.cardName);
+    const source = getMemberById(state, entry.sourceId);
+    if (source) names.add(source.member.name);
+    const target = getMemberById(state, entry.targetId);
+    if (target) names.add(target.member.name);
+  };
+  addEntry(step.left);
+  addEntry(step.right);
+  return { names, cardNames };
+};
+
+const buildCombatStepEvents = (
+  state: MatchState,
+  resolution: CombatResolution
+) => {
+  const stepEvents = resolution.steps.map(() => [] as CombatLogEvent[]);
+  const events = state.log
+    .slice(resolution.logStart, resolution.logEnd)
+    .map((line) => parseCombatLogEvent(line))
+    .filter((entry): entry is CombatLogEvent => Boolean(entry));
+  let cursor = 0;
+  events.forEach((event) => {
+    for (let index = cursor; index < resolution.steps.length; index += 1) {
+      const step = resolution.steps[index];
+      const { names, cardNames } = getStepMatchNames(state, step);
+      const cardMatch =
+        event.cardNames?.some((name) => cardNames.has(name)) ?? false;
+      const nameMatch =
+        (event.source && names.has(event.source)) ||
+        (event.target && names.has(event.target));
+      if (cardMatch || nameMatch) {
+        stepEvents[index].push(event);
+        cursor = index;
+        return;
+      }
+    }
+  });
+  return stepEvents;
+};
+
 const normalizeKey = (value: string) => value.trim().toLowerCase();
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1043,7 +1164,12 @@ type SoundEffect =
   | "turn"
   | "victory"
   | "open"
-  | "swap";
+  | "swap"
+  | "roll"
+  | "clash"
+  | "hit"
+  | "shield"
+  | "heal";
 
 type DeckPulse = "draw" | "shuffle" | null;
 
@@ -1219,12 +1345,89 @@ const useSoundEffects = (enabled: boolean, volume: number) => {
             gain: 0.16,
           });
           break;
+        case "roll":
+          scheduleTone({
+            freq: 560,
+            freqEnd: 640,
+            duration: 0.05,
+            type: "triangle",
+            gain: 0.14,
+          });
+          scheduleTone({
+            start: 0.06,
+            freq: 520,
+            freqEnd: 720,
+            duration: 0.06,
+            type: "triangle",
+            gain: 0.12,
+          });
+          scheduleTone({
+            start: 0.14,
+            freq: 480,
+            freqEnd: 760,
+            duration: 0.07,
+            type: "triangle",
+            gain: 0.12,
+          });
+          break;
+        case "clash":
+          scheduleTone({
+            freq: 200,
+            freqEnd: 120,
+            duration: 0.18,
+            type: "sawtooth",
+            gain: 0.22,
+          });
+          scheduleTone({
+            start: 0.08,
+            freq: 320,
+            freqEnd: 180,
+            duration: 0.14,
+            type: "square",
+            gain: 0.18,
+          });
+          break;
+        case "hit":
+          scheduleTone({
+            freq: 140,
+            freqEnd: 90,
+            duration: 0.12,
+            type: "sawtooth",
+            gain: 0.22,
+          });
+          break;
+        case "shield":
+          scheduleTone({
+            freq: 420,
+            freqEnd: 560,
+            duration: 0.12,
+            type: "sine",
+            gain: 0.16,
+          });
+          break;
+        case "heal":
+          scheduleTone({
+            freq: 360,
+            freqEnd: 520,
+            duration: 0.12,
+            type: "sine",
+            gain: 0.16,
+          });
+          scheduleTone({
+            start: 0.08,
+            freq: 520,
+            freqEnd: 660,
+            duration: 0.12,
+            type: "sine",
+            gain: 0.14,
+          });
+          break;
       }
     },
     [enabled, volume]
   );
 
-  return { play };
+  return useMemo(() => ({ play }), [play]);
 };
 
 type SoundControlsProps = {
@@ -1340,6 +1543,8 @@ const App = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [soundVolume, setSoundVolume] = useState(0.55);
+  const [skipCombat, setSkipCombat] = useState(getStoredSkipCombat);
+  const [combatPlayback, setCombatPlayback] = useState<CombatPlayback | null>(null);
   const [deckPulse, setDeckPulse] = useState<Record<PlayerId, DeckPulse>>({
     p1: null,
     p2: null,
@@ -1368,6 +1573,8 @@ const App = () => {
     p2: null,
   });
   const matchSyncRef = useRef(false);
+  const lastResolutionRef = useRef<number | null>(null);
+  const combatTimerRef = useRef<number | null>(null);
   const reportMessage = (text: string) => {
     setMessage(text);
     sound.play("error");
@@ -1385,6 +1592,10 @@ const App = () => {
     namesRef.current = names;
   }, [names]);
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("ua-skip-combat", skipCombat ? "true" : "false");
+  }, [skipCombat]);
+  useEffect(() => {
     matchStateRef.current = matchState;
   }, [matchState]);
   useEffect(() => {
@@ -1401,14 +1612,23 @@ const App = () => {
       }
     });
   }, []);
+  const clearCombatTimer = useCallback(() => {
+    if (combatTimerRef.current !== null) {
+      window.clearTimeout(combatTimerRef.current);
+      combatTimerRef.current = null;
+    }
+  }, []);
   const resetVisualState = () => {
     clearVisualTimers();
+    clearCombatTimer();
     setDeckPulse({ p1: null, p2: null });
     setRecentlyDealt({});
     deckCountsRef.current = { p1: 0, p2: 0 };
     logIndexRef.current = 0;
     handIdsRef.current = new Set();
     matchSyncRef.current = false;
+    lastResolutionRef.current = null;
+    setCombatPlayback(null);
   };
   const sendRelay = useCallback(
     (payload: Record<string, unknown>) => {
@@ -1844,6 +2064,12 @@ const App = () => {
     }
     setSoundEnabled((prev) => !prev);
   };
+  const toggleSkipCombat = () => {
+    if (soundEnabled) {
+      sound.play("click");
+    }
+    setSkipCombat((prev) => !prev);
+  };
   const updateSoundVolume = (value: number) => {
     setSoundVolume(Math.max(0, Math.min(1, value)));
   };
@@ -1855,6 +2081,7 @@ const App = () => {
       onVolumeChange={updateSoundVolume}
     />
   );
+  const combatSpeed = 1;
 
   const startMatch = () => {
     try {
@@ -1900,8 +2127,9 @@ const App = () => {
   useEffect(() => {
     return () => {
       clearVisualTimers();
+      clearCombatTimer();
     };
-  }, [clearVisualTimers]);
+  }, [clearCombatTimer, clearVisualTimers]);
 
   useEffect(() => {
     if (!matchState) {
@@ -1954,6 +2182,106 @@ const App = () => {
     }
     handIdsRef.current = currentHandIds;
   }, [matchState, markDealtCards, queueDeckPulse]);
+
+  const stopCombatPlayback = useCallback(() => {
+    clearCombatTimer();
+    setCombatPlayback(null);
+  }, [clearCombatTimer]);
+
+  const startCombatPlayback = useCallback(
+    (resolution: CombatResolution, state: MatchState) => {
+      if (resolution.steps.length === 0) return;
+      const stepEvents = buildCombatStepEvents(state, resolution);
+      setCombatPlayback({ resolution, stepIndex: 0, phase: "pairing", stepEvents });
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!matchState) {
+      lastResolutionRef.current = null;
+      stopCombatPlayback();
+      return;
+    }
+    if (skipCombat) {
+      stopCombatPlayback();
+      return;
+    }
+    const resolution = matchState.lastResolution;
+    if (!resolution) return;
+    if (resolution.actionId === lastResolutionRef.current) return;
+    lastResolutionRef.current = resolution.actionId;
+    startCombatPlayback(resolution, matchState);
+  }, [matchState, skipCombat, startCombatPlayback, stopCombatPlayback]);
+
+  useEffect(() => {
+    if (skipCombat) {
+      stopCombatPlayback();
+    }
+  }, [skipCombat, stopCombatPlayback]);
+
+  useEffect(() => {
+    if (!combatPlayback) return;
+    const { phase, resolution, stepIndex } = combatPlayback;
+    const totalSteps = resolution.steps.length;
+    if (stepIndex >= totalSteps) {
+      stopCombatPlayback();
+      return;
+    }
+
+    if (phase === "roll") {
+      sound.play("roll");
+    }
+
+    if (phase === "impact") {
+      sound.play("clash");
+      const events = combatPlayback.stepEvents[stepIndex] ?? [];
+      events.forEach((event, index) => {
+        const delay = (0.08 * index) / combatSpeed;
+        const playEffect = () => {
+          if (event.kind === "damage") sound.play("hit");
+          if (event.kind === "shield") sound.play("shield");
+          if (event.kind === "heal") sound.play("heal");
+        };
+        if (delay === 0) {
+          playEffect();
+        } else {
+          window.setTimeout(playEffect, delay * 1000);
+        }
+      });
+    }
+
+    const baseDurations: Record<CombatPlaybackPhase, number> = {
+      pairing: 720,
+      roll: 620,
+      impact: 900,
+    };
+    const duration = baseDurations[phase] / combatSpeed;
+    clearCombatTimer();
+    combatTimerRef.current = window.setTimeout(() => {
+      setCombatPlayback((prev) => {
+        if (!prev) return prev;
+        if (prev.phase === "pairing") {
+          return { ...prev, phase: "roll" };
+        }
+        if (prev.phase === "roll") {
+          return { ...prev, phase: "impact" };
+        }
+        if (prev.phase === "impact") {
+          const nextIndex = prev.stepIndex + 1;
+          if (nextIndex >= totalSteps) {
+            return null;
+          }
+          return { ...prev, stepIndex: nextIndex, phase: "pairing" };
+        }
+        return prev;
+      });
+    }, duration);
+
+    return () => {
+      clearCombatTimer();
+    };
+  }, [combatPlayback, clearCombatTimer, combatSpeed, sound, stopCombatPlayback]);
 
   const buildPendingMeta = (
     base: Omit<
@@ -2394,6 +2722,10 @@ const App = () => {
         </div>
         <div className="ua-header__actions">
           {soundControls}
+          <label className="ua-toggle">
+            <input type="checkbox" checked={skipCombat} onChange={toggleSkipCombat} />
+            Skip Combat
+          </label>
           <div className="ua-badge">Prototype Engine</div>
         </div>
       </header>
@@ -2701,6 +3033,15 @@ const App = () => {
     ? "Cards may be played in the active zone or any faster zone allowed by their speed. Slower zones are locked until the active zone resolves."
     : "No active zone yet. Cards can be played in any zone allowed by their speed.";
   const logGroups = groupLogEntries(matchState.log);
+  const formationRows = Array.from({ length: matchState.lineSize }, (_, index) => {
+    const left =
+      matchState.players.p1.characters.find((member) => member.position === index) ??
+      null;
+    const right =
+      matchState.players.p2.characters.find((member) => member.position === index) ??
+      null;
+    return { index, left, right };
+  });
   const renderEffectLine = (line: string, key: string) => {
     const match = findKeywordMatch(line, keywordMatchers);
     if (!match) return <p key={key}>{line}</p>;
@@ -2754,9 +3095,225 @@ const App = () => {
       : null;
   const isTransformPreview =
     pendingPlay && pendingPlay.baseCardSlot !== pendingPlay.card.slot;
+  const renderCharacterCard = (member: TeamMember | null) => {
+    if (!member) {
+      return (
+        <div className="ua-character-card ua-character-card--empty">
+          <div className="ua-combat-empty">Empty slot</div>
+        </div>
+      );
+    }
+    const character = getCharacter(roster, member.characterId);
+    const statusEntries = formatStatusList(member.statuses);
+    return (
+      <div className={`ua-character-card${member.defeated ? " is-defeated" : ""}`}>
+        <div className="ua-character-card__header">
+          <div>
+            <p className="ua-character-title">
+              {character?.name ?? member.characterId}{" "}
+              {character?.version ? <span>({character.version})</span> : null}
+            </p>
+            {character && (
+              <p className="ua-character-origin">{character.origin}</p>
+            )}
+          </div>
+          {member.defeated && (
+            <span className="ua-character-card__tag">Defeated</span>
+          )}
+        </div>
+        <div className="ua-stats ua-stats--compact">
+          <div>
+            <span>HP</span>
+            <strong>{member.hp}</strong>
+          </div>
+          <div>
+            <span>Shield</span>
+            <strong>{member.shield}</strong>
+          </div>
+        </div>
+        {statusEntries.length > 0 && (
+          <div className="ua-statuses">
+            {statusEntries.map(([status, value]) => {
+              const info = statusDetails.get(normalizeKey(status));
+              const tip = info
+                ? `${status}\nMode: ${info.modeLabel}\nTurn End: ${info.turnEnd}`
+                : null;
+              return (
+                <span
+                  key={status}
+                  className={`ua-pill${info ? " ua-tooltip ua-status-pill" : ""}`}
+                  data-tip={tip ?? undefined}
+                  tabIndex={info ? 0 : undefined}
+                >
+                  {status}: {value}
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+  const combatOverlay =
+    combatPlayback && matchState
+      ? (() => {
+          const step = combatPlayback.resolution.steps[combatPlayback.stepIndex];
+          if (!step) return null;
+          const outcomeLabelMap: Record<string, string> = {
+            single: "Unopposed",
+            same_team: "Chain Resolve",
+            attack_tie: "Clash: Draw",
+            attack_right: "Overpower",
+            attack_left: "Overpower",
+            attack_vs_defense: "Attack vs Defense",
+            defense_vs_defense: "Guarding",
+            opposed: "Opposed",
+          };
+          const phaseLabelMap: Record<CombatPlaybackPhase, string> = {
+            pairing: "Pairing",
+            roll: "Roll",
+            impact: "Impact",
+          };
+          const getSide = (
+            entry: CombatResolution["steps"][number]["left"],
+            power: number | undefined
+          ): CombatSide | null => {
+            if (!entry) return null;
+            const lookup = getMemberById(matchState, entry.sourceId);
+            if (!lookup) return null;
+            const target = getMemberById(matchState, entry.targetId);
+            const character = getCharacter(roster, lookup.member.characterId);
+            const artUrl = character?.art ? `/assets/characters/${character.art}` : null;
+            return {
+              entry,
+              teamId: lookup.teamId,
+              member: lookup.member,
+              character: character ?? undefined,
+              targetName: target?.member.name ?? "Unknown",
+              artUrl,
+              power: power ?? null,
+            };
+          };
+          const leftCandidate = getSide(step.left, step.leftPower);
+          const rightCandidate = getSide(step.right, step.rightPower);
+          const sides = [leftCandidate, rightCandidate].filter(
+            (side): side is CombatSide => Boolean(side)
+          );
+          const leftSide =
+            sides.find((side) => side.teamId === "p1") ?? sides[0] ?? null;
+          let rightSide =
+            sides.find((side) => side.teamId === "p2") ??
+            (sides.length > 1 ? sides.find((side) => side !== leftSide) ?? null : null);
+          if (leftSide && rightSide && rightSide.entry.id === leftSide.entry.id) {
+            rightSide = sides.find((side) => side.entry.id !== leftSide.entry.id) ?? null;
+          }
+          const winnerEntryId =
+            step.outcome === "attack_right"
+              ? step.right?.id
+              : step.outcome === "attack_left"
+                ? step.left?.id
+                : null;
+          const stepEvents = combatPlayback.stepEvents[combatPlayback.stepIndex] ?? [];
+          const buildImpactTokens = (side: CombatSide | null) => {
+            if (!side) return [];
+            return stepEvents
+              .filter(
+                (event) =>
+                  (event.kind === "damage" ||
+                    event.kind === "shield" ||
+                    event.kind === "heal") &&
+                  event.target === side.member.name
+              )
+              .map((event, index) => ({
+                id: `${event.kind}-${event.target}-${index}`,
+                kind: event.kind,
+                amount: event.amount ?? 0,
+              }));
+          };
+          const leftImpact = buildImpactTokens(leftSide);
+          const rightImpact = buildImpactTokens(rightSide);
+          const zoneName = zoneLabel(combatPlayback.resolution.zone);
+          const stepLabel = `Clash ${combatPlayback.stepIndex + 1} / ${
+            combatPlayback.resolution.steps.length
+          }`;
+          const outcomeLabel = outcomeLabelMap[step.outcome] ?? "Clash";
+          const phaseLabel = phaseLabelMap[combatPlayback.phase];
+          const renderSide = (side: CombatSide | null, sideClass: string, tokens: typeof leftImpact) => {
+            if (!side) {
+              return (
+                <div className={`ua-combat-side ${sideClass} is-empty`}>
+                  <div className="ua-combat-empty">No entry</div>
+                </div>
+              );
+            }
+            const isWinner = winnerEntryId === side.entry.id;
+            const rollLabel = side.power !== null ? side.power : "--";
+            return (
+              <div
+                className={`ua-combat-side ${sideClass} ${isWinner ? "is-winner" : ""} ${
+                  tokens.length ? "has-impact" : ""
+                }`}
+              >
+                <div className="ua-combat-portrait">
+                  {side.artUrl ? (
+                    <img src={side.artUrl} alt={side.member.name} />
+                  ) : (
+                    <div className="ua-combat-portrait__placeholder">{side.member.name}</div>
+                  )}
+                </div>
+                <div className="ua-combat-card">
+                  <div className="ua-combat-card__title">{side.entry.cardName}</div>
+                  <div className="ua-combat-card__meta">
+                    {side.member.name} {"->"} {side.targetName}
+                  </div>
+                  <div className="ua-combat-card__types">{side.entry.types.join(" / ")}</div>
+                </div>
+                <div className="ua-combat-roll">{rollLabel}</div>
+                <div className="ua-combat-impact">
+                  {tokens.map((token) => (
+                    <div
+                      key={token.id}
+                      className={`ua-combat-impact__token ua-combat-impact__token--${token.kind}`}
+                    >
+                      {token.kind === "damage" ? "-" : "+"}
+                      {token.amount}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          };
+          return (
+            <div
+              className={`ua-combat-overlay phase-${combatPlayback.phase}`}
+              onClick={stopCombatPlayback}
+            >
+              <div className="ua-combat-stage">
+                <div className="ua-combat-stage__header">
+                  <span className="ua-combat-stage__zone">{zoneName} Zone</span>
+                  <span className="ua-combat-stage__step">{stepLabel}</span>
+                </div>
+                <div className="ua-combat-stage__arena">
+                  {renderSide(leftSide, "is-left", leftImpact)}
+                  <div className="ua-combat-vs">
+                    <span>{outcomeLabel}</span>
+                  </div>
+                  {renderSide(rightSide, "is-right", rightImpact)}
+                </div>
+                <div className="ua-combat-stage__footer">
+                  <span className="ua-combat-stage__phase">{phaseLabel}</span>
+                  <span className="ua-combat-stage__hint">Click to skip</span>
+                </div>
+              </div>
+            </div>
+          );
+        })()
+      : null;
 
   return (
-    <div className="ua-shell">
+    <>
+      {combatOverlay}
+      <div className="ua-shell">
       <header className="ua-header">
         <div>
           <p className="ua-kicker">Universal Arena</p>
@@ -2772,6 +3329,10 @@ const App = () => {
         </div>
           <div className="ua-header__actions">
             {soundControls}
+            <label className="ua-toggle">
+              <input type="checkbox" checked={skipCombat} onChange={toggleSkipCombat} />
+              Skip Combat
+            </label>
             <button
               className="ua-button ua-button--ghost"
               disabled={isMultiplayer && !isHost}
@@ -2940,67 +3501,41 @@ const App = () => {
                 <p className="ua-pile-hint">
                   Click Deck, Discard, or Exhaust to inspect pile contents.
                 </p>
-                <div className="ua-team-characters">
-                  {team.characters.map((member) => {
-                    const character = getCharacter(roster, member.characterId);
-                    const statusEntries = formatStatusList(member.statuses);
-                    return (
-                      <div
-                        key={member.id}
-                        className={`ua-character-card${member.defeated ? " is-defeated" : ""}`}
-                      >
-                        <div className="ua-character-card__header">
-                          <div>
-                            <p className="ua-character-title">
-                              {character?.name ?? member.characterId}{" "}
-                              {character?.version ? <span>({character.version})</span> : null}
-                            </p>
-                            {character && (
-                              <p className="ua-character-origin">{character.origin}</p>
-                            )}
-                          </div>
-                          {member.defeated && (
-                            <span className="ua-character-card__tag">Defeated</span>
-                          )}
-                        </div>
-                        <div className="ua-stats ua-stats--compact">
-                          <div>
-                            <span>HP</span>
-                            <strong>{member.hp}</strong>
-                          </div>
-                          <div>
-                            <span>Shield</span>
-                            <strong>{member.shield}</strong>
-                          </div>
-                        </div>
-                        {statusEntries.length > 0 && (
-                          <div className="ua-statuses">
-                            {statusEntries.map(([status, value]) => {
-                              const info = statusDetails.get(normalizeKey(status));
-                              const tip = info
-                                ? `${status}\nMode: ${info.modeLabel}\nTurn End: ${info.turnEnd}`
-                                : null;
-                              return (
-                                <span
-                                  key={status}
-                                  className={`ua-pill${info ? " ua-tooltip ua-status-pill" : ""}`}
-                                  data-tip={tip ?? undefined}
-                                  tabIndex={info ? 0 : undefined}
-                                >
-                                  {status}: {value}
-                                </span>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             </div>
           );
         })}
+      </section>
+
+      <section className="ua-panel ua-panel--wide">
+        <div className="ua-panel__header">
+          <h2>Formation</h2>
+          <span className="ua-pill">Opposed rows</span>
+        </div>
+        <div className="ua-formation">
+          <div className="ua-formation__header">
+            <div className="ua-formation__team ua-formation__team--left">
+              {matchState.players.p1.name}
+            </div>
+            <div className="ua-formation__lane"></div>
+            <div className="ua-formation__team ua-formation__team--right">
+              {matchState.players.p2.name}
+            </div>
+          </div>
+          {formationRows.map((row) => (
+            <div key={row.index} className="ua-formation__row">
+              <div className="ua-formation__cell is-left">
+                {renderCharacterCard(row.left)}
+              </div>
+              <div className="ua-formation__lane">
+                <span className="ua-formation__slot">Line {row.index + 1}</span>
+              </div>
+              <div className="ua-formation__cell is-right">
+                {renderCharacterCard(row.right)}
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="ua-panel ua-panel--wide">
@@ -3806,6 +4341,7 @@ const App = () => {
         </p>
       </footer>
     </div>
+    </>
   );
 };
 

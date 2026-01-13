@@ -75,7 +75,7 @@
           "effect": [
             "Deal Power damage.",
             "On Hit: If the target has Stun: Gain 1 Stolen Blood.",
-            "If this character has The World: Time Stop: This card becomes Strike: Muda Barrage."
+            "Always: If this character has The World: Time Stop: This card becomes Strike: Muda Barrage."
           ],
           "effects": [
             {
@@ -180,7 +180,7 @@
           "effect": [
             "Gain Power Shield.",
             "Evade.",
-            "If this character has The World: Time Stop: This card becomes Defend: The World."
+            "Always: If this character has The World: Time Stop: This card becomes Defend: The World."
           ],
           "effects": [
             {
@@ -354,10 +354,10 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "This card's Multihit Count starts at 6.",
+            "Always: This card's Multihit Count starts at 6.",
             "Deal Power / 6 damage 6 times.",
             "On Hit: Inflict 1 Bleed.",
-            "If this character has The World: Time Stop: This card becomes Throwing Knives: Time Stop."
+            "Always: If this character has The World: Time Stop: This card becomes Throwing Knives: Time Stop."
           ],
           "effects": [
             {
@@ -406,7 +406,7 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "This card's Multihit Count starts at 10.",
+            "Always: This card's Multihit Count starts at 10.",
             "Deal Power / 10 damage 10 times.",
             "On Hit: Inflict 1 Bleed.",
             "Once per use, if the target has Stun: Deal 10 bonus damage."
@@ -730,7 +730,7 @@
           "speed": "Normal",
           "effect": [
             "Deal Power / 3 damage 3 times.",
-            "If this character has Kaioken: This card becomes Kaio-ken Attack."
+            "Always: If this character has Kaioken: This card becomes Kaio-ken Attack."
           ],
           "effects": [
             {
@@ -969,9 +969,10 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. On Hit: Gain 1 Reiatsu.",
-            "If this character has Hollow Interference: This card becomes Strike: White.",
-            "Otherwise, if this character has Bankai: Tensa Zangetsu: This card becomes Strike: Tensa Zangetsu."
+            "Deal Power damage.",
+            "On Hit: Gain 1 Reiatsu.",
+            "Always: If this character has Hollow Interference: This card becomes Strike: White.",
+            "Always: Otherwise, if this character has Bankai: Tensa Zangetsu: This card becomes Strike: Tensa Zangetsu."
           ],
           "effects": [
             {
@@ -1041,7 +1042,8 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "Deal Power damage. On Hit: Gain 1 Reiatsu."
+            "Deal Power damage.",
+            "On Hit: Gain 1 Reiatsu."
           ],
           "effects": [
             {
@@ -1095,7 +1097,8 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "Deal Power damage. On Hit: Gain 2 Reiatsu.",
+            "Deal Power damage.",
+            "On Hit: Gain 2 Reiatsu.",
             "Follow-Up.",
             "After Use: Gain 1 Vulnerable and +1 Vulnerable Count."
           ],
@@ -1240,10 +1243,11 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. On Hit: Gain 1 Reiatsu.",
+            "Deal Power damage.",
+            "On Hit: Gain 1 Reiatsu.",
             "Spend X Reiatsu (0-3)? Deal 4 times X bonus damage.",
             "Follow-Up.",
-            "If this character has Bankai: Tensa Zangetsu: This card becomes Getsuga Tensho: Tensa Zangetsu."
+            "Always: If this character has Bankai: Tensa Zangetsu: This card becomes Getsuga Tensho: Tensa Zangetsu."
           ],
           "effects": [
             {
@@ -1306,7 +1310,8 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "Deal Power damage. On Hit: Gain 1 Reiatsu.",
+            "Deal Power damage.",
+            "On Hit: Gain 1 Reiatsu.",
             "Spend X Reiatsu (0-4)? Deal 5 times X bonus damage."
           ],
           "effects": [
@@ -1546,7 +1551,8 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. Inflict 1 Bleed."
+            "Deal Power damage.",
+            "Inflict 1 Bleed."
           ],
           "effects": [
             {
@@ -1581,7 +1587,8 @@
           "target": "1 Ally",
           "speed": "Normal",
           "effect": [
-            "Gain Power Shield. Reload currently Equipped Weapon.",
+            "Gain Power Shield.",
+            "Reload currently Equipped Weapon.",
             "Evade."
           ],
           "effects": [
@@ -1614,11 +1621,11 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "This card's Multihit Count starts at 3.",
+            "Always: This card's Multihit Count starts at 3.",
             "Set X to this card's remaining Multihit Count (before resolving this card).",
             "Spend X Handgun Ammo: Deal Power / X damage once per Ammo spent.",
-            "If this character has Equip: Riot Gun: This card becomes Shoot: Riot Gun.",
-            "If this character has Equip: Chicago Typewriter: This card becomes Shoot: Chicago Typewriter."
+            "Always: If this character has Equip: Riot Gun: This card becomes Shoot: Riot Gun.",
+            "Always: If this character has Equip: Chicago Typewriter: This card becomes Shoot: Chicago Typewriter."
           ],
           "effects": [
             {
@@ -1863,7 +1870,7 @@
           "speed": "Normal",
           "effect": [
             "Spend 1 Rocket Launcher: Deal Power damage.",
-            "If this character doesn't have Rocket Launcher: this Ultimate becomes Purchase Rocket Launcher."
+            "Always: If this character doesn't have Rocket Launcher: this Ultimate becomes Purchase Rocket Launcher."
           ],
           "effects": [
             {
@@ -1978,7 +1985,8 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. On Hit: Inflict 1 Stolen Information.",
+            "Deal Power damage.",
+            "On Hit: Inflict 1 Stolen Information.",
             "On Hit: If the target has 3+ Stolen Information: Inflict 1 Slow and +1 Slow Count."
           ],
           "effects": [
@@ -2150,7 +2158,8 @@
           "speed": "Slow",
           "effect": [
             "Can only be played if the target has 6 Stolen Information.",
-            "Inflict 3 Death by Death Note. Set the target's Stolen Information Value to 0."
+            "Inflict 3 Death by Death Note.",
+            "Set the target's Stolen Information Value to 0."
           ],
           "restrictions": [
             {
@@ -2214,7 +2223,8 @@
           "speed": "Normal",
           "effect": [
             "Can only be played if the target has 6 Stolen Information or Death by Death Note.",
-            "If the target has 6 Stolen Information: Inflict 3 Death by Death Note. Set the target's Stolen Information Value to 0.",
+            "If the target has 6 Stolen Information: Inflict 3 Death by Death Note.",
+            "If the target has 6 Stolen Information: Set the target's Stolen Information Value to 0.",
             "Reduce the target's Death by Death Note Value by 1.",
             "Reduce by 1 additional per 10 Ultimate Meter spent (max 2; cannot reduce below 1)."
           ],
@@ -2400,8 +2410,8 @@
           "speed": "Normal",
           "effect": [
             "Deal Power damage.",
-            "If this character has Gear 2nd: This card becomes Gomu Gomu no Jet Pistol.",
-            "If this character has Gear 3rd: This card becomes Gomu Gomu no Gigant Pistol."
+            "Always: If this character has Gear 2nd: This card becomes Gomu Gomu no Jet Pistol.",
+            "Always: If this character has Gear 3rd: This card becomes Gomu Gomu no Gigant Pistol."
           ],
           "effects": [
             {
@@ -2499,8 +2509,8 @@
           "speed": "Normal",
           "effect": [
             "Deal Power damage.",
-            "If this character has Gear 2nd: This card becomes Gomu Gomu no Jet Bazooka.",
-            "If this character has Gear 3rd: This card becomes Gomu Gomu no Gigant Bazooka."
+            "Always: If this character has Gear 2nd: This card becomes Gomu Gomu no Jet Bazooka.",
+            "Always: If this character has Gear 3rd: This card becomes Gomu Gomu no Gigant Bazooka."
           ],
           "effects": [
             {
@@ -2678,8 +2688,11 @@
           "speed": "Fast",
           "effect": [
             "Can only be played if this character has Gear 2nd.",
-            "Deal Power / (X + 1) damage (X + 1) times. Inflict X Frail. Gain X Weak and +X Weak Count. Gain X Vulnerable and +X Vulnerable Count.",
-            "If this character has Gear 3rd: This Ultimate becomes Gomu Gomu no Gigant Rifle."
+            "Deal Power / (X + 1) damage (X + 1) times.",
+            "Inflict X Frail.",
+            "Gain X Weak and +X Weak Count.",
+            "Gain X Vulnerable and +X Vulnerable Count.",
+            "Always: If this character has Gear 3rd: This Ultimate becomes Gomu Gomu no Gigant Rifle."
           ],
           "restrictions": [
             {
@@ -2805,7 +2818,7 @@
           "effect": [
             "Can only be played if this character has Gear 3rd.",
             "Deal Power damage.",
-            "If this character has Gear 2nd: This Ultimate becomes Gomu Gomu no Jet Gatling."
+            "Always: If this character has Gear 2nd: This Ultimate becomes Gomu Gomu no Jet Gatling."
           ],
           "restrictions": [
             {
@@ -3101,7 +3114,7 @@
           "speed": "Slow",
           "effect": [
             "Deal Power damage.",
-            "If this character has 2+ Shadow Clones: This card becomes Rasengan: Clone Assist."
+            "Always: If this character has 2+ Shadow Clones: This card becomes Rasengan: Clone Assist."
           ],
           "effects": [
             {
@@ -3218,9 +3231,10 @@
           "target": "All Enemies",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. Inflict 1 Slow and +1 Slow Count.",
+            "Deal Power damage.",
+            "Inflict 1 Slow and +1 Slow Count.",
             "Gain 2 Summoned: Gamabunta.",
-            "If this character has One-Tail Cloak: This Ultimate becomes One-Tail Rasengan."
+            "Always: If this character has One-Tail Cloak: This Ultimate becomes One-Tail Rasengan."
           ],
           "effects": [
             {
@@ -3287,7 +3301,8 @@
           "effect": [
             "Can only be played if this character has One-Tail Cloak.",
             "Spend 2 Shadow Clones: Deal Power damage.",
-            "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count. Inflict 1 Slow and +1 Slow Count.",
+            "On Hit: Inflict 2 Vulnerable and +2 Vulnerable Count.",
+            "On Hit: Inflict 1 Slow and +1 Slow Count.",
             "Follow-Up.",
             "After Use: Reduce Kyuubi Chakra Count by 2."
           ],
@@ -3497,7 +3512,9 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. Gain 1 Diminutive Sound. Gain 1 Ultimate Meter."
+            "Deal Power damage.",
+            "Gain 1 Diminutive Sound.",
+            "Gain 1 Ultimate Meter."
           ],
           "effects": [
             {
@@ -3540,7 +3557,8 @@
           "target": "1 Ally",
           "speed": "Normal",
           "effect": [
-            "Gain Power Shield. Gain 1 Ultimate Meter.",
+            "Gain Power Shield.",
+            "Gain 1 Ultimate Meter.",
             "Evade."
           ],
           "effects": [
@@ -3578,7 +3596,8 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power / 2 damage 2 times. On Hit: Spend 1 Diminutive Sound: Inflict 2 Spectro Frazzle."
+            "Deal Power / 2 damage 2 times.",
+            "On Hit: Spend 1 Diminutive Sound: Inflict 2 Spectro Frazzle."
           ],
           "effects": [
             {
@@ -3626,7 +3645,8 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. Gain 1 Diminutive Sound."
+            "Deal Power damage.",
+            "Gain 1 Diminutive Sound."
           ],
           "effects": [
             {
@@ -3703,7 +3723,9 @@
           "target": "All Enemies",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. Heal for Power / 2 HP. On Hit: Inflict 6 Spectro Frazzle."
+            "Deal Power damage.",
+            "Heal for Power / 2 HP.",
+            "On Hit: Inflict 6 Spectro Frazzle."
           ],
           "effects": [
             {
@@ -3800,7 +3822,7 @@
           "speed": "Slow",
           "effect": [
             "Gain 1 State.",
-            "If this character has State: Normal or State: Serious, this card becomes Strike."
+            "Always: If this character has State: Normal or State: Serious, this card becomes Strike."
           ],
           "effects": [
             {
@@ -3845,7 +3867,8 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. Gain 1 State."
+            "Deal Power damage.",
+            "Gain 1 State."
           ],
           "effects": [
             {
@@ -3879,7 +3902,7 @@
           "speed": "Slow",
           "effect": [
             "Gain 1 State.",
-            "If this character has State: Normal or State: Serious, this card becomes Defend."
+            "Always: If this character has State: Normal or State: Serious, this card becomes Defend."
           ],
           "effects": [
             {
@@ -3923,7 +3946,8 @@
           "target": "1 Ally",
           "speed": "Normal",
           "effect": [
-            "Gain Power Shield. Gain 1 State.",
+            "Gain Power Shield.",
+            "Gain 1 State.",
             "Evade."
           ],
           "effects": [
@@ -3958,7 +3982,7 @@
           "speed": "Slow",
           "effect": [
             "Gain 1 State.",
-            "If this character has State: Normal or State: Serious, this card becomes Normal Punch."
+            "Always: If this character has State: Normal or State: Serious, this card becomes Normal Punch."
           ],
           "effects": [
             {
@@ -4003,8 +4027,9 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. Gain 1 State.",
-            "If this character has State: Serious, this card becomes Serious Punch."
+            "Deal Power damage.",
+            "Gain 1 State.",
+            "Always: If this character has State: Serious, this card becomes Serious Punch."
           ],
           "effects": [
             {
@@ -4050,7 +4075,8 @@
           "target": "All Enemies",
           "speed": "Fast",
           "effect": [
-            "Deal Power damage. Gain 1 State."
+            "Deal Power damage.",
+            "Gain 1 State."
           ],
           "effects": [
             {
@@ -4084,7 +4110,7 @@
           "speed": "Slow",
           "effect": [
             "Gain 1 State.",
-            "If this character has State: Normal or State: Serious, this card becomes Normal Punch."
+            "Always: If this character has State: Normal or State: Serious, this card becomes Normal Punch."
           ],
           "effects": [
             {
@@ -4129,8 +4155,9 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power damage. Gain 1 State.",
-            "If this character has State: Serious, this card becomes Serious Headbutt."
+            "Deal Power damage.",
+            "Gain 1 State.",
+            "Always: If this character has State: Serious, this card becomes Serious Headbutt."
           ],
           "effects": [
             {
@@ -4176,7 +4203,9 @@
           "target": "1 Enemy",
           "speed": "Fast",
           "effect": [
-            "Deal Power damage. Inflict 1 Stun. Gain 1 State."
+            "Deal Power damage.",
+            "Inflict 1 Stun.",
+            "Gain 1 State."
           ],
           "effects": [
             {
@@ -4219,7 +4248,7 @@
           "speed": "Slow",
           "effect": [
             "Gain 1 State.",
-            "If this character has State: Normal or State: Serious, this card becomes Consecutive Normal Punch."
+            "Always: If this character has State: Normal or State: Serious, this card becomes Consecutive Normal Punch."
           ],
           "effects": [
             {
@@ -4265,8 +4294,9 @@
           "target": "1 Enemy",
           "speed": "Normal",
           "effect": [
-            "Deal Power / (X + 1) damage (X + 1) times. Gain X State.",
-            "If this character has State: Serious, this card becomes Serious Consecutive Side Hops."
+            "Deal Power / (X + 1) damage (X + 1) times.",
+            "Gain X State.",
+            "Always: If this character has State: Serious, this card becomes Serious Consecutive Side Hops."
           ],
           "effects": [
             {
@@ -4320,7 +4350,9 @@
           "target": "All Enemies",
           "speed": "Fast",
           "effect": [
-            "Deal Power / 2 damage. Gain Power / 2 Shield. Gain 1 State.",
+            "Deal Power / 2 damage.",
+            "Gain Power / 2 Shield.",
+            "Gain 1 State.",
             "Evade."
           ],
           "effects": [
@@ -4424,7 +4456,8 @@
           "target": "All Enemies",
           "speed": "Fast",
           "effect": [
-            "Deal Power damage. Inflict 1 Stun."
+            "Deal Power damage.",
+            "Inflict 1 Stun."
           ],
           "effects": [
             {

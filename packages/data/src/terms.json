@@ -241,6 +241,18 @@
       "definition": "If a card is instructed to Reuse, do not discard it after its clash; keep it in the current zone so it can be paired again during the same zone resolution."
     },
     {
+      "section": "Combat",
+      "id": "term-follow-up",
+      "name": "Follow-Up",
+      "definition": "A keyword that lets you play a card immediately after another card from the same character is used. The Follow-Up resolves immediately, does not enter the zone stack, and does not clash with the next card; it must be played into the same zone if legal. See FAQ: faq.md#faq-follow-up-assist-attack."
+    },
+    {
+      "section": "Combat",
+      "id": "term-assist-attack",
+      "name": "Assist Attack",
+      "definition": "A keyword that lets you play a card immediately after another card used by a different character on your team. The Assist Attack resolves immediately, does not enter the zone stack, and does not clash with the next card; it must be played into the same zone if legal. See FAQ: faq.md#faq-follow-up-assist-attack."
+    },
+    {
       "section": "Defense",
       "id": "term-shield",
       "name": "Shield",

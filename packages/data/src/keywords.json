@@ -47,7 +47,7 @@
       "name": "Counter",
       "category": "Combat",
       "tier": "Core",
-      "description": "After Clash: If this Defense reduces the Attack's Power damage to 0, you may play any card targeting the attacker. This follows the same timing and play rules as Follow-Up and Assist Attack."
+      "description": "After Clash: If this Defense reduces the Attack's Power damage to 0, you may play any card targeting the attacker. This follows the same timing and play rules as Follow-Up and Assist Attack, and replaces any Follow-Up/Assist window from that clash."
     },
     {
       "id": "keyword-reuse",
@@ -61,14 +61,14 @@
       "name": "Follow-Up",
       "category": "Combat",
       "tier": "Core",
-      "description": "After Use: This card can be played after any other card from the same character."
+      "description": "After Use: You may play this card immediately after another card from the same character is used. It resolves immediately, does not enter the zone stack, and does not clash with the next card. It must be played into the same zone and be legal for that zone's Speed; pay costs and choose legal targets as normal. Cancelled or Negated cards are not used and do not allow Follow-Up."
     },
     {
       "id": "keyword-assist-attack",
       "name": "Assist Attack",
       "category": "Combat",
       "tier": "Core",
-      "description": "After Use: This card can be played after any other card used by a different character."
+      "description": "After Use: You may play this card immediately after another card used by a different character on your team. It resolves immediately and does not clash with the next card. It follows the same timing and play rules as Follow-Up."
     },
     {
       "id": "keyword-resist",

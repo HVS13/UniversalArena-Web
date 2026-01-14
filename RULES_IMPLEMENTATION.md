@@ -1,7 +1,7 @@
 # Rules Implementation Matrix
 
 Status key: Implemented, Partial, Missing, Not used in data.
-Last verified: 2026-01-10.
+Last verified: 2026-01-14.
 
 ## Keywords
 | Keyword | Status | Notes |
@@ -16,6 +16,8 @@ Last verified: 2026-01-10.
 | Reuse | Implemented | Keeps card in zone after clash. |
 | Follow-Up | Implemented | After Use window; same-character plays. |
 | Assist Attack | Implemented | After Use window; other-character plays. |
+| Close | Implemented | Distance-based Power modifier for single-target cards. |
+| Far | Implemented | Distance-based Power modifier for single-target cards. |
 | Resist X | Implemented | Parsed from text/innates/status rules; higher of flat/percent. |
 | Immune (Damage Type) | Implemented | Parsed from text/innates/status rules. |
 | Weakness X | Implemented | Parsed from text/innates/status rules. |
@@ -47,6 +49,7 @@ and the Strength/Dexterity/Frail/Weak/Fortified/Vulnerable modifiers.
 | Draw (reshuffle) | Implemented | Discard reshuffle when draw deck empty. |
 | Discard | Implemented | Hand cleanup and discard pile updates. |
 | Played / Used | Implemented | Logs + effect timings. |
+| Distance (Power adjustments) | Implemented | Single-target Power rolls adjust by distance; Close/Far modify. |
 | Cancelled | Implemented | Before Use onward skipped; Always applies. |
 | Negated | Implemented | Cards with Negate text negate the opposing clash card; negated cards skip all effects. |
 | Cannot Play Cards | Partial | Implemented via `block_play` (combat round only); requires structured effects. |

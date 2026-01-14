@@ -84,3 +84,4 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-14: Added parsing for Distance-based flat power penalties on card text (Leon Handgun).
 - 2026-01-14: Added On Hit Bleed to Leon RE4 Shoot cards via data export.
 - 2026-01-14: On Hit now resolves once per hit (multihit triggers multiple On Hit effects).
+- 2026-01-14: Updated the rules implementation matrix to include Close/Far and Distance power adjustments.

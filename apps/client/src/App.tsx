@@ -943,7 +943,7 @@ type LogGroup = {
   entries: LogEntry[];
 };
 
-type CombatPlaybackPhase = "pairing" | "roll" | "impact";
+type CombatPlaybackPhase = "pairing" | "roll" | "impact" | "result";
 
 type CombatLogEvent = {
   kind: "damage" | "shield" | "heal" | "overpower" | "cancelled" | "negate";
@@ -2288,9 +2288,10 @@ const App = () => {
     }
 
     const baseDurations: Record<CombatPlaybackPhase, number> = {
-      pairing: 720,
+      pairing: 380,
       roll: 620,
       impact: 900,
+      result: 1100,
     };
     const duration = baseDurations[phase] / combatSpeed;
     clearCombatTimer();
@@ -2304,6 +2305,9 @@ const App = () => {
           return { ...prev, phase: "impact" };
         }
         if (prev.phase === "impact") {
+          return { ...prev, phase: "result" };
+        }
+        if (prev.phase === "result") {
           const nextIndex = prev.stepIndex + 1;
           if (nextIndex >= totalSteps) {
             return null;
@@ -3221,6 +3225,7 @@ const App = () => {
             pairing: "Pairing",
             roll: "Roll",
             impact: "Impact",
+            result: "Result",
           };
           const getSide = (
             entry: CombatResolution["steps"][number]["left"],

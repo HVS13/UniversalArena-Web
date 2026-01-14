@@ -75,3 +75,6 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-13: Added cinematic combat playback data in core and a UI clash overlay with roll reveals, impact VFX, SFX cues, and a Skip Combat toggle.
 - 2026-01-14: Enforced zone-bound Follow-Up/Assist/Counter reaction windows with paused resolution and client reaction gating.
 - 2026-01-14: Follow-Up/Assist/Counter reactions now resolve immediately without entering the zone stack; resolution resumes with remaining cards.
+- 2026-01-14: Shifted clash overlay portraits to top-crop so faces stay visible in combat playback.
+- 2026-01-14: Adjusted clash playback pacing to 1s pre-roll and a 2s result linger after impact.
+- 2026-01-14: Tuned clash playback to 1s total for pairing+roll and 2s total for impact+result linger.

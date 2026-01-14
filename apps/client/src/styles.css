@@ -1148,6 +1148,7 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: top center;
   filter: saturate(1.1) contrast(1.05);
 }
 
@@ -1270,7 +1271,8 @@ button {
   color: rgba(255, 255, 255, 0.5);
 }
 
-.ua-combat-overlay.phase-impact .ua-combat-card {
+.ua-combat-overlay.phase-impact .ua-combat-card,
+.ua-combat-overlay.phase-result .ua-combat-card {
   border-color: rgba(255, 189, 102, 0.3);
   box-shadow: 0 0 20px rgba(255, 189, 102, 0.2);
 }

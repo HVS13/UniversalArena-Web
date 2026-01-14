@@ -308,7 +308,7 @@ const canAffordWithAdjustments = (
   );
   const variableUltimate =
     cost.variable?.type === "ultimate" ? cost.variable.multiplier * xValue : 0;
-  const ultimateCost = cost.ultimate + variableUltimate;
+  const ultimateCost = Math.max(0, cost.ultimate + variableUltimate);
   return team.energy >= energyCost && team.ultimate >= ultimateCost;
 };
 
@@ -320,6 +320,7 @@ const getMaxX = (
   followUpAdjustment = 0
 ) => {
   if (!cost.variable) return 0;
+  const ultimateBase = Math.max(0, cost.ultimate);
   const available =
     cost.variable.type === "energy"
       ? team.energy -
@@ -330,7 +331,7 @@ const getMaxX = (
             (cardInstance?.costAdjustment ?? 0) +
             followUpAdjustment
         )
-      : team.ultimate - cost.ultimate;
+      : team.ultimate - ultimateBase;
   if (available <= 0) return 0;
   return Math.floor(available / cost.variable.multiplier);
 };
@@ -2973,6 +2974,8 @@ const App = () => {
   }
 
   const activeTeam = matchState.players[matchState.activePlayerId];
+  const freeSwapsRemaining = activeTeam.movementFreeSwapsRemaining ?? 0;
+  const canAttemptMovementSwap = freeSwapsRemaining > 0 || activeTeam.energy >= 1;
   const isMovementRound = matchState.phase === "movement";
   const activeZoneLabel = matchState.activeZone ? zoneLabel(matchState.activeZone) : "None";
   const pausedZonesLabel = matchState.pausedZones.length
@@ -3670,7 +3673,10 @@ const App = () => {
         </p>
         {isMovementRound && (
           <div className="ua-movement">
-            <p>Spend 1 Energy to swap adjacent allies, or pass.</p>
+            <p>
+              Each team gets one free swap per turn; additional swaps cost 1 Energy. Free swaps
+              remaining: {freeSwapsRemaining}.
+            </p>
             <div className="ua-movement__actions">
               {movementPairs.map((pair) => (
                   <button
@@ -3679,7 +3685,7 @@ const App = () => {
                     disabled={
                       !canControlPlayer(activeTeam.id) ||
                       matchState.activePlayerId !== activeTeam.id ||
-                      activeTeam.energy < 1
+                      !canAttemptMovementSwap
                     }
                   onClick={() =>
                     dispatchAction({

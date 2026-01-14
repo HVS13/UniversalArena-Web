@@ -64,6 +64,7 @@ export type MatchTeam = {
   name: string;
   energy: number;
   ultimate: number;
+  movementFreeSwapsRemaining: number;
   deck: CardInstance[];
   hand: CardInstance[];
   discard: CardInstance[];
@@ -1144,12 +1145,15 @@ const getAdjustedCostTotals = (
   const energyAdjustment = getEnergyCostAdjustment(member, character);
   const instanceAdjustment = cardInstance?.costAdjustment ?? 0;
   const energy = Math.max(0, totals.energy + energyAdjustment + instanceAdjustment + followUpAdjustment);
-  return { energy, ultimate: totals.ultimate };
+  const ultimate = Math.max(0, totals.ultimate);
+  return { energy, ultimate };
 };
 
 export const canAfford = (team: MatchTeam, cost: CostBreakdown, xValue = 0) => {
   const totals = computeCost(cost, xValue);
-  return team.energy >= totals.energy && team.ultimate >= totals.ultimate;
+  const energy = Math.max(0, totals.energy);
+  const ultimate = Math.max(0, totals.ultimate);
+  return team.energy >= energy && team.ultimate >= ultimate;
 };
 
 export const rollPower = (powerText: string, xValue = 0, rng?: RngState) => {
@@ -3372,6 +3376,7 @@ const advanceTurn = (state: MatchState, characters: Character[]) => {
 
     Object.values(state.players).forEach((team) => {
       team.energy = 5;
+      team.movementFreeSwapsRemaining = 1;
     });
 
     const initiator = state.players[state.initiativePlayerId];
@@ -5335,6 +5340,7 @@ export const createMatchState = (
         name: first.name,
         energy: 5,
         ultimate: 0,
+        movementFreeSwapsRemaining: 1,
         deck: [],
         hand: [],
         discard: [],
@@ -5366,6 +5372,7 @@ export const createMatchState = (
         name: second.name,
         energy: 5,
         ultimate: 0,
+        movementFreeSwapsRemaining: 1,
         deck: [],
         hand: [],
         discard: [],
@@ -5855,7 +5862,8 @@ export const applyAction = (
       return finalize("Movement Round is not active.");
     }
     const team = next.players[action.playerId];
-    if (team.energy < 1) {
+    const hasFreeSwap = team.movementFreeSwapsRemaining > 0;
+    if (!hasFreeSwap && team.energy < 1) {
       return finalize("Insufficient energy for a movement swap.");
     }
     const first = team.characters.find((member) => member.id === action.firstId);
@@ -5867,8 +5875,13 @@ export const applyAction = (
       return finalize("Movement swaps require adjacent allies.");
     }
 
-    team.energy -= 1;
-    addLog(next, `${team.name} spends 1 Energy to attempt a swap.`);
+    if (hasFreeSwap) {
+      team.movementFreeSwapsRemaining -= 1;
+      addLog(next, `${team.name} uses their free swap to attempt a swap.`);
+    } else {
+      team.energy -= 1;
+      addLog(next, `${team.name} spends 1 Energy to attempt a swap.`);
+    }
     const swapped = trySwapAllies(next, action.playerId, first.id, second.id, characters);
     if (swapped) {
       addLog(next, `${first.name} swaps positions with ${second.name}.`);

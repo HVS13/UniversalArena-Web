@@ -78,3 +78,9 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-14: Shifted clash overlay portraits to top-crop so faces stay visible in combat playback.
 - 2026-01-14: Adjusted clash playback pacing to 1s pre-roll and a 2s result linger after impact.
 - 2026-01-14: Tuned clash playback to 1s total for pairing+roll and 2s total for impact+result linger.
+- 2026-01-14: Added Distance-based Power adjustments with Close/Far keywords and retargeted Attack vs Defense hits to the defending character.
+- 2026-01-14: Distance-based Power now uses redirected targets when Redirect/Cover applies before the roll.
+- 2026-01-14: Attack vs Defense Distance now uses each card's own target (attack uses the defender; defense uses its target).
+- 2026-01-14: Added parsing for Distance-based flat power penalties on card text (Leon Handgun).
+- 2026-01-14: Added On Hit Bleed to Leon RE4 Shoot cards via data export.
+- 2026-01-14: On Hit now resolves once per hit (multihit triggers multiple On Hit effects).

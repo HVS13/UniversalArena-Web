@@ -42,6 +42,8 @@ type EntryKeywords = {
   reuse?: boolean;
   followUp?: boolean;
   assistAttack?: boolean;
+  close?: boolean;
+  far?: boolean;
 };
 
 export type MatchCharacter = {
@@ -619,6 +621,17 @@ const areAdjacent = (left: number, right: number) => Math.abs(left - right) === 
 
 const areOpposed = (left: number, right: number) => left === right;
 
+const getDistance = (
+  state: MatchState,
+  sourceId: MatchCharacterId,
+  targetId: MatchCharacterId
+) => {
+  const source = getMatchCharacter(state, sourceId);
+  const target = getMatchCharacter(state, targetId);
+  if (!source || !target) return null;
+  return Math.abs(source.position - target.position);
+};
+
 const canMoveCharacter = (
   state: MatchState,
   characterId: MatchCharacterId,
@@ -1039,6 +1052,22 @@ const applyPowerModifiers = (
   actionType: ActionType
 ) => Math.max(0, Math.floor(power * getPowerMultiplier(member, character, actionType)));
 
+const applyPercentThenFlat = (power: number, percent: number, flat: number) => {
+  if (percent !== 0) {
+    const delta = Math.floor(power * Math.abs(percent));
+    power = percent >= 0 ? power + delta : power - delta;
+  }
+  power += flat;
+  return Math.max(0, power);
+};
+
+const hasDistanceFlatPenalty = (entry: StackEntry) =>
+  entry.effectText.some((line) =>
+    /distance\s*>\s*0\s*:\s*reduce\s+this\s+card'?s?\s+final\s+power\s+by\s+distance/i.test(
+      line.trim()
+    )
+  );
+
 const getDamageTakenMultiplier = (member: MatchCharacter, character: Character | null) => {
   const vulnerable = getStatusStatValue(member, "Vulnerable", "potency", character);
   const fortified = getStatusStatValue(member, "Fortified", "potency", character);
@@ -1351,6 +1380,20 @@ const getRedirectCandidates = (
     }
   }
   return candidates;
+};
+
+const getDistanceTargetIdForEntry = (
+  state: MatchState,
+  entry: StackEntry,
+  characters: Character[]
+) => {
+  if (!isSingleTargetEntry(entry)) return entry.targetId;
+  const candidates = getRedirectCandidates(state, entry, characters);
+  if (!candidates.length) return entry.targetId;
+  const preferred = entry.redirectTargetId
+    ? candidates.find((candidate) => candidate.targetId === entry.redirectTargetId) ?? null
+    : null;
+  return (preferred ?? candidates[0])?.targetId ?? entry.targetId;
 };
 
 const hasNegateText = (entry: StackEntry) =>
@@ -2298,6 +2341,8 @@ type KeywordFlags = {
   reuse: boolean;
   followUp: boolean;
   assistAttack: boolean;
+  close: boolean;
+  far: boolean;
 };
 
 type UseRestriction = {
@@ -2373,6 +2418,8 @@ const getKeywordFlags = (lines: string[]): KeywordFlags => {
     reuse: false,
     followUp: false,
     assistAttack: false,
+    close: false,
+    far: false,
   };
   lines.forEach((line) => {
     const normalized = line.trim().replace(/\.$/, "").toLowerCase();
@@ -2381,6 +2428,8 @@ const getKeywordFlags = (lines: string[]): KeywordFlags => {
     if (normalized === "reuse") flags.reuse = true;
     if (normalized === "follow-up") flags.followUp = true;
     if (normalized === "assist attack") flags.assistAttack = true;
+    if (normalized === "close") flags.close = true;
+    if (normalized === "far") flags.far = true;
   });
   return flags;
 };
@@ -2392,6 +2441,8 @@ const keywordFlagMap: Record<string, keyof KeywordFlags> = {
   "follow-up": "followUp",
   "follow up": "followUp",
   "assist attack": "assistAttack",
+  close: "close",
+  far: "far",
 };
 
 const grantEntryKeyword = (entry: StackEntry, keyword: string) => {
@@ -2411,6 +2462,8 @@ const getEntryKeywordFlags = (entry: StackEntry): KeywordFlags => {
     reuse: base.reuse || Boolean(extra?.reuse),
     followUp: base.followUp || Boolean(extra?.followUp),
     assistAttack: base.assistAttack || Boolean(extra?.assistAttack),
+    close: base.close || Boolean(extra?.close),
+    far: base.far || Boolean(extra?.far),
   };
 };
 
@@ -3374,6 +3427,80 @@ const resolveEffectAmount = (amount: EffectAmount, power: number, xValue: number
   if (amount.kind === "x_times") return xValue * amount.value;
   return 0;
 };
+
+const getHitCountFromStructuredEffects = (
+  state: MatchState,
+  entry: StackEntry,
+  characters: Character[]
+) => {
+  if (!entry.effects?.length) return 0;
+  const source = getMatchCharacter(state, entry.sourceId);
+  const target = getMatchCharacter(state, entry.targetId);
+  if (!source || !target) return 0;
+  const sourceCharacter = getCharacterById(characters, source.characterId);
+  const targetCharacter = getCharacterById(characters, target.characterId);
+  const snapshot = snapshotStatuses(state);
+  let hits = 0;
+
+  forEachStructuredEffect(entry.effects, "on_use", entry.choiceIndex, (effect) => {
+    if (effect.type !== "deal_damage" && effect.type !== "deal_damage_per_spent") return;
+    if (
+      !isConditionMet(
+        effect.condition,
+        snapshot,
+        entry.sourceId,
+        entry.targetId,
+        sourceCharacter,
+        targetCharacter
+      )
+    ) {
+      return;
+    }
+    if (effect.type === "deal_damage") {
+      const count = effect.hits === undefined ? 1 : resolveEffectScalar(effect.hits, entry.xValue);
+      if (count > 0) hits += count;
+      return;
+    }
+    const spent = entry.spentResources?.[effect.status] ?? 0;
+    if (spent > 0) hits += spent;
+  });
+
+  return hits;
+};
+
+const getHitCountFromText = (entry: StackEntry) => {
+  const segments = getTimedTextSegments(entry.effectText);
+  let hits = 0;
+  segments.forEach((segment) => {
+    if (segment.timing !== "on_use") return;
+    const normalized = normalizeText(segment.text).toLowerCase();
+    const multiMatch = normalized.match(
+      /deal power\s*\/\s*([a-z0-9+\-\s]+)\s+damage\s+([a-z0-9+\-\s]+)\s+times/
+    );
+    if (multiMatch) {
+      const times = parseXExpression(multiMatch[2], entry.xValue);
+      if (times > 0) hits += times;
+      return;
+    }
+    if (normalized.match(/deal power\s*\/\s*([a-z0-9+\-\s]+)\s+damage/)) {
+      hits += 1;
+      return;
+    }
+    if (normalized.includes("deal power damage")) {
+      hits += 1;
+    }
+  });
+  return hits;
+};
+
+const getHitCountForEntry = (
+  state: MatchState,
+  entry: StackEntry,
+  characters: Character[]
+) =>
+  entry.effects?.length
+    ? getHitCountFromStructuredEffects(state, entry, characters)
+    : getHitCountFromText(entry);
 
 const isConditionMet = (
   condition: EffectCondition | undefined,
@@ -4452,13 +4579,20 @@ const resolveUse = (
   isHit: boolean,
   characters: Character[],
   zoneName: ZoneName,
-  options?: { cancelled?: boolean; powerOverride?: number }
+  options?: { cancelled?: boolean; powerOverride?: number; targetOverrideId?: MatchCharacterId }
 ) => {
   const source = getMatchCharacter(state, entry.sourceId);
-  const target = getMatchCharacter(state, entry.targetId);
-  if (!source || !target) return;
+  if (!source) return;
   entry.redirected = false;
   const originalTargetId = entry.targetId;
+  if (options?.targetOverrideId) {
+    entry.targetId = options.targetOverrideId;
+  }
+  const target = getMatchCharacter(state, entry.targetId);
+  if (!target) {
+    entry.targetId = originalTargetId;
+    return;
+  }
 
   const power =
     options?.powerOverride ??
@@ -4524,15 +4658,18 @@ const resolveUse = (
     resolveEffectsForTiming(state, entry, power, "before_use", isHit, characters);
     resolveEffectsForTiming(state, entry, power, "on_use", isHit, characters);
     if (isHit) {
-      resolveEffectsForTiming(state, entry, power, "on_hit", true, characters);
-      if (getActionType(entry.types) === "attack") {
-        const hitTarget = getMatchCharacter(state, entry.targetId);
-        if (hitTarget) {
-          const targetCharacter = getCharacterById(characters, hitTarget.characterId);
-          const thorns = getActiveStatusState(hitTarget, "Thorns", targetCharacter);
-          if (thorns && thorns.potency > 0) {
-            const sourceCharacter = getCharacterById(characters, source.characterId);
-            applyStatusDamage(state, source.id, thorns.potency, "Thorns", sourceCharacter);
+      const hitCount = Math.max(1, getHitCountForEntry(state, entry, characters));
+      for (let hitIndex = 0; hitIndex < hitCount; hitIndex += 1) {
+        resolveEffectsForTiming(state, entry, power, "on_hit", true, characters);
+        if (getActionType(entry.types) === "attack") {
+          const hitTarget = getMatchCharacter(state, entry.targetId);
+          if (hitTarget) {
+            const targetCharacter = getCharacterById(characters, hitTarget.characterId);
+            const thorns = getActiveStatusState(hitTarget, "Thorns", targetCharacter);
+            if (thorns && thorns.potency > 0) {
+              const sourceCharacter = getCharacterById(characters, source.characterId);
+              applyStatusDamage(state, source.id, thorns.potency, "Thorns", sourceCharacter);
+            }
           }
         }
       }
@@ -4574,7 +4711,8 @@ const getModifiedEntryPower = (
   state: MatchState,
   entry: StackEntry,
   actionType: ActionType,
-  characters: Character[]
+  characters: Character[],
+  options?: { distanceTargetId?: MatchCharacterId }
 ) => {
   const base = entry.rolledPower ?? rollPower(entry.powerText, entry.xValue, state.rng);
   if (entry.rolledPower === undefined) {
@@ -4583,7 +4721,40 @@ const getModifiedEntryPower = (
   const source = getMatchCharacter(state, entry.sourceId);
   if (!source) return base;
   const character = getCharacterById(characters, source.characterId);
-  return applyPowerModifiers(base, source, character, actionType);
+  let power = applyPowerModifiers(base, source, character, actionType);
+
+  if (actionType === "special") return power;
+  if (!isSingleTargetEntry(entry)) return power;
+  const powerText = entry.powerText.trim();
+  if (!powerText || powerText === "-") return power;
+
+  const distanceTargetId = options?.distanceTargetId ?? entry.targetId;
+  const distance = getDistance(state, entry.sourceId, distanceTargetId);
+  if (distance === null) return power;
+
+  const keywords = getEntryKeywordFlags(entry);
+  let adjusted = power;
+  if (distance === 0) {
+    if (keywords.close) adjusted = applyPercentThenFlat(power, 0.1, 1);
+    if (keywords.far) adjusted = applyPercentThenFlat(power, -0.1, -1);
+  } else if (keywords.close) {
+    adjusted = applyPercentThenFlat(power, -0.2 * distance, -2 * distance);
+  } else if (keywords.far) {
+    if (distance === 1) {
+      adjusted = power;
+    } else {
+      const steps = distance - 1;
+      adjusted = applyPercentThenFlat(power, -0.1 * steps, -1 * steps);
+    }
+  } else {
+    adjusted = applyPercentThenFlat(power, -0.1 * distance, -1 * distance);
+  }
+
+  if (distance > 0 && hasDistanceFlatPenalty(entry)) {
+    adjusted = Math.max(0, adjusted - distance);
+  }
+
+  return adjusted;
 };
 
 const finalizeEntryCard = (state: MatchState, entry: StackEntry, characters: Character[]) => {
@@ -4710,7 +4881,9 @@ const resolveZone = (
 
     if (leftIndex < 0) {
       const rightType = getActionType(right.types);
-      const rightPower = getModifiedEntryPower(state, right, rightType, characters);
+      const rightPower = getModifiedEntryPower(state, right, rightType, characters, {
+        distanceTargetId: getDistanceTargetIdForEntry(state, right, characters),
+      });
       resolution.steps.push({
         right: snapshotEntry(right),
         rightPower,
@@ -4729,7 +4902,9 @@ const resolveZone = (
     const left = zone.cards[leftIndex];
     if (left.playedBy === right.playedBy) {
       const rightType = getActionType(right.types);
-      const rightPower = getModifiedEntryPower(state, right, rightType, characters);
+      const rightPower = getModifiedEntryPower(state, right, rightType, characters, {
+        distanceTargetId: getDistanceTargetIdForEntry(state, right, characters),
+      });
       resolution.steps.push({
         right: snapshotEntry(right),
         rightPower,
@@ -4748,8 +4923,20 @@ const resolveZone = (
     const rightType = getActionType(right.types);
     const leftType = getActionType(left.types);
 
-    const rightPower = getModifiedEntryPower(state, right, rightType, characters);
-    const leftPower = getModifiedEntryPower(state, left, leftType, characters);
+    const rightDistanceTargetId = getDistanceTargetIdForEntry(state, right, characters);
+    const leftDistanceTargetId = getDistanceTargetIdForEntry(state, left, characters);
+    const rightPower = getModifiedEntryPower(state, right, rightType, characters, {
+      distanceTargetId:
+        rightType === "attack" && leftType === "defense"
+          ? left.sourceId
+          : rightDistanceTargetId,
+    });
+    const leftPower = getModifiedEntryPower(state, left, leftType, characters, {
+      distanceTargetId:
+        leftType === "attack" && rightType === "defense"
+          ? right.sourceId
+          : leftDistanceTargetId,
+    });
 
     const rightNegates = !right.negated && hasNegateText(right);
     const leftNegates = !left.negated && hasNegateText(left);
@@ -4832,6 +5019,7 @@ const resolveZone = (
       const attack = rightType === "attack" ? right : left;
       const defensePower = defense === right ? rightPower : leftPower;
       const attackPower = attack === right ? rightPower : leftPower;
+      const clashTargetId = defense.sourceId;
 
       resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
       resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
@@ -4840,7 +5028,15 @@ const resolveZone = (
 
       const defenseCancelled = Boolean(defense.cancelledBeforeUse);
       const defenseKeywords = defenseCancelled
-        ? { evade: false, counter: false, reuse: false, followUp: false, assistAttack: false }
+        ? {
+            evade: false,
+            counter: false,
+            reuse: false,
+            followUp: false,
+            assistAttack: false,
+            close: false,
+            far: false,
+          }
         : getEntryKeywordFlags(defense);
       const attackKeywords = getEntryKeywordFlags(attack);
       let attackIsHit = true;
@@ -4856,7 +5052,7 @@ const resolveZone = (
           "on_use",
           characters
         );
-        const attackTarget = getMatchCharacter(state, attack.targetId);
+        const attackTarget = getMatchCharacter(state, clashTargetId);
         const targetShield = attackTarget?.shield ?? 0;
         damageAfterShield = Math.max(attackDamage - targetShield, 0);
       }
@@ -4881,7 +5077,10 @@ const resolveZone = (
       }
 
       attack.mitigationText = defenseCancelled ? undefined : defense.effectText;
-      resolveUse(state, attack, attackIsHit, characters, zoneName, { powerOverride: attackPower });
+      resolveUse(state, attack, attackIsHit, characters, zoneName, {
+        powerOverride: attackPower,
+        targetOverrideId: clashTargetId,
+      });
       attack.mitigationText = undefined;
 
       const keepDefense = !defenseCancelled && (defenseReuse || defenseKeywords.reuse);
@@ -5562,7 +5761,8 @@ export const applyAction = (
         next,
         entry,
         getActionType(entry.types),
-        characters
+        characters,
+        { distanceTargetId: getDistanceTargetIdForEntry(next, entry, characters) }
       );
       resolveEffectsForTiming(next, entry, playPower, "on_play", false, characters);
       resolveUse(next, entry, actionType === "attack", characters, pendingWindow.zone, {
@@ -5633,7 +5833,8 @@ export const applyAction = (
       next,
       entry,
       getActionType(entry.types),
-      characters
+      characters,
+      { distanceTargetId: getDistanceTargetIdForEntry(next, entry, characters) }
     );
     resolveEffectsForTiming(next, entry, playPower, "on_play", false, characters);
     if (pendingWindow) {

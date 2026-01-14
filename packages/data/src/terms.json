@@ -64,7 +64,7 @@
       "section": "Rules",
       "id": "term-on-hit",
       "name": "On Hit",
-      "definition": "A timing label that resolves when an Attack is a hit, even if it deals 0 damage. See FAQ: faq.md#faq-hit-vs-damage."
+      "definition": "A timing label that resolves when an Attack is a hit, even if it deals 0 damage. If the Attack hits multiple times, resolve On Hit once per hit. See FAQ: faq.md#faq-hit-vs-damage."
     },
     {
       "section": "Rules",
@@ -305,6 +305,12 @@
       "id": "term-opposed",
       "name": "Opposed",
       "definition": "Characters are opposed if they are in the same column on opposing team lines."
+    },
+    {
+      "section": "Targeting",
+      "id": "term-distance",
+      "name": "Distance",
+      "definition": "The absolute column difference between a source and its target. Distance 0 means the same column (opposed for enemies); distance 1 is adjacent, distance 2 is two columns away, and so on. If the target changes before the Power roll (Redirect/Cover), use the new target for Distance. Distance modifies Power for single-target cards with Power. See Close, Far, and FAQ: faq.md#faq-distance-power."
     },
     {
       "section": "Targeting",

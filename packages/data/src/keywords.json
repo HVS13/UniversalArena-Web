@@ -162,6 +162,20 @@
       "description": "Seek X (criteria, Y): Look at the top X cards of your draw pile. You may reveal and take up to Y cards that match the listed criteria or name, put them into your hand, then discard the rest."
     },
     {
+      "id": "keyword-close",
+      "name": "Close",
+      "category": "Positioning",
+      "tier": "Advanced",
+      "description": "Modifies Distance-based Power for single-target cards with Power. If the target is opposed, add 10% + 1 Power. If the target is not opposed, reduce Power by 20% + 2 per distance step. Apply the percent first, then the flat amount, rounding down."
+    },
+    {
+      "id": "keyword-far",
+      "name": "Far",
+      "category": "Positioning",
+      "tier": "Advanced",
+      "description": "Modifies Distance-based Power for single-target cards with Power. If the target is opposed, reduce Power by 10% + 1. If the target is 1 step away, there is no penalty. If the target is 2+ steps away, reduce Power by 10% + 1 per step beyond the first. Apply the percent first, then the flat amount, rounding down."
+    },
+    {
       "id": "keyword-redirect",
       "name": "Redirect (Target)",
       "category": "Targeting",

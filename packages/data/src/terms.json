@@ -20,6 +20,12 @@
     },
     {
       "section": "Resources",
+      "id": "term-cost-floor",
+      "name": "Cost Floor",
+      "definition": "After all modifiers, a card's Energy and Ultimate Meter costs cannot go below 0."
+    },
+    {
+      "section": "Resources",
       "id": "term-ultimate-card",
       "name": "Ultimate Card",
       "definition": "A card that starts outside the draw pile and is always available to play. It follows normal card rules and counts as an Ultimate type for effects."
@@ -46,7 +52,7 @@
       "section": "Turn Structure",
       "id": "term-movement-round",
       "name": "Movement Round",
-      "definition": "A phase after Turn Start where players alternate priority to spend 1 Energy to swap two adjacent allied characters or pass. Movement swaps are not card plays and do not grant Ultimate Meter. The round ends when both players pass consecutively. Rooted characters cannot be moved or swapped. See FAQ: faq.md#faq-movement-round."
+      "definition": "A phase after Turn Start where players alternate priority. Each team gets one free swap per turn; additional swaps cost 1 Energy. Movement swaps are not card plays and do not grant Ultimate Meter. The round ends when both players pass consecutively. Rooted characters cannot be moved or swapped. See FAQ: faq.md#faq-movement-round."
     },
     {
       "section": "Rules",
@@ -164,6 +170,12 @@
     },
     {
       "section": "Characters",
+      "id": "term-max-hp",
+      "name": "Max HP",
+      "definition": "The maximum HP a character can have. By default, max HP is 100 unless a scenario, mode, or character sets another value. Healing cannot raise HP above max HP."
+    },
+    {
+      "section": "Characters",
       "id": "term-resurrection",
       "name": "Resurrection",
       "definition": "An effect that returns a defeated character to play. The effect must explicitly state how it restores that character; otherwise the character remains defeated."
@@ -232,7 +244,7 @@
       "section": "Combat",
       "id": "term-power-roll",
       "name": "Power Roll",
-      "definition": "The rolled value from a card's Power used for clash comparisons, damage dealt, Shield gained, and HP recovered. Roll Power each time a card is used."
+      "definition": "The rolled value from a card's Power used for clash comparisons, damage dealt, Shield gained, and HP recovered. Roll a uniform integer between the printed min and max (inclusive) each time a card is used."
     },
     {
       "section": "Combat",

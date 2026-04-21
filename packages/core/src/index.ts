@@ -2349,23 +2349,17 @@ type KeywordFlags = {
   far: boolean;
 };
 
-type UseRestriction = {
-  kind: "require" | "forbid";
-  subject: "self" | "target";
-  statuses: { name: string; min?: number }[];
-  mode: "any" | "all";
-  raw?: string;
-};
+type UseRestriction = NonNullable<Card["restrictions"]>[number];
+type StatusUseRestriction = Extract<UseRestriction, { statuses: { name: string; min?: number }[] }>;
+type WindowUseRestriction = Extract<UseRestriction, { window: string }>;
+type UseRestrictionWindow = WindowUseRestriction["window"];
 
-type UseRestrictionWindow = "assist_attack" | "follow_up" | "after_use";
+const isWindowUseRestriction = (
+  restriction: UseRestriction
+): restriction is WindowUseRestriction =>
+  restriction.kind === "require_window" || restriction.kind === "forbid_window";
 
-type UseRestrictionWindowRule = {
-  kind: "require_window" | "forbid_window";
-  window: UseRestrictionWindow;
-  raw?: string;
-};
-
-type UseRestrictionRule = UseRestriction | UseRestrictionWindowRule;
+const isFinished = (state: MatchState) => state.phase === "finished";
 
 const timingLabelMap: Record<string, Effect["timing"]> = {
   "on play": "on_play",
@@ -2612,7 +2606,7 @@ const getFixedXFromText = (lines: string[]) => {
 };
 
 const formatRestrictionRaw = (
-  restriction: UseRestriction,
+  restriction: StatusUseRestriction,
   statuses: { name: string; min: number }[]
 ) => {
   const subject = restriction.subject === "target" ? "the target" : "this character";
@@ -3599,7 +3593,7 @@ const getUseRestrictionError = (
     : null;
 
   for (const restriction of restrictions) {
-    if (restriction.kind === "require_window" || restriction.kind === "forbid_window") {
+    if (isWindowUseRestriction(restriction)) {
       const meets = isWindowRestrictionMet(restriction.window, state, sourceId);
       const raw = restriction.raw ?? formatWindowRestrictionRaw(restriction.window);
       if (restriction.kind === "require_window" && !meets) {
@@ -5776,7 +5770,7 @@ export const applyAction = (
         powerOverride: playPower,
       });
       finalizeEntryCard(next, entry, characters);
-      if (next.phase === "finished") {
+      if (isFinished(next)) {
         return finalize();
       }
       if (pauseForReactionWindow(next, pendingWindow.zone, characters, pendingWindow.resolvedBy)) {

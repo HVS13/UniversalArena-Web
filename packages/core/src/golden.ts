@@ -3418,8 +3418,6 @@ const runCounterTest = (): GoldenResult => {
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
 
   state = applyOrThrow(state, playFromHand(state, "p2", "2", "normal"), characters);
-  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
-  state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
 
   const snapshot = {
     counterLog: state.log.some((line) => line.includes("can Counter")),
@@ -3440,8 +3438,6 @@ const runCounterTest = (): GoldenResult => {
         { action: { type: "pass", playerId: "p1" } },
         { action: { type: "pass", playerId: "p2" } },
         { action: { type: "play_card", playerId: "p2", zone: "normal", hasCardInstance: true } },
-        { action: { type: "pass", playerId: "p1" } },
-        { action: { type: "pass", playerId: "p2" } },
       ],
     },
   };

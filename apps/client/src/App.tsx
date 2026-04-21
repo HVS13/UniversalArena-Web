@@ -81,6 +81,8 @@ const sortRoster = (list: Character[]) =>
   [...list].sort((a, b) => `${a.name} ${a.version}`.localeCompare(`${b.name} ${b.version}`));
 
 const getCharacter = (list: Character[], id: string) => list.find((entry) => entry.id === id);
+const getCharacterArtUrl = (character?: Character | null) =>
+  character?.art ? `/assets/characters/${character.art}` : null;
 
 type Team = MatchState["players"][PlayerId];
 type TeamMember = Team["characters"][number];
@@ -2763,28 +2765,53 @@ const App = () => {
 
   if (stage === "setup") {
     return (
-      <div className="ua-shell">
-      <header className="ua-header">
-        <div>
-          <p className="ua-kicker">Universal Arena</p>
-          <h1>{isMultiplayer ? "Multiplayer Setup" : "Local Match Setup"}</h1>
-          <p className="ua-subtitle">
-            Pick three characters per team from the current roster and start a match.
-          </p>
+      <div className="ua-app">
+        <div className="ua-app__chrome" aria-hidden="true">
+          <span className="ua-app__orb ua-app__orb--alpha"></span>
+          <span className="ua-app__orb ua-app__orb--beta"></span>
+          <span className="ua-app__grid"></span>
         </div>
-        <div className="ua-header__actions">
-          {soundControls}
-          <label className="ua-toggle">
-            <input type="checkbox" checked={skipCombat} onChange={toggleSkipCombat} />
-            Skip Combat
-          </label>
-          <div className="ua-badge">Prototype Engine</div>
-        </div>
-      </header>
+        <div className="ua-shell">
+        <header className="ua-header">
+          <div>
+            <p className="ua-kicker">Universal Arena</p>
+            <h1>{isMultiplayer ? "Multiplayer Setup" : "Local Match Setup"}</h1>
+            <p className="ua-subtitle">
+              Draft the squad, wire the relay, and lock the lobby before the first clash.
+            </p>
+          </div>
+          <div className="ua-header__actions">
+            {soundControls}
+            <label className="ua-toggle">
+              <input type="checkbox" checked={skipCombat} onChange={toggleSkipCombat} />
+              Skip Combat
+            </label>
+            <div className="ua-badge">Tactical Build</div>
+          </div>
+        </header>
 
-      {message && <div className="ua-toast">{message}</div>}
+        {message && <div className="ua-toast">{message}</div>}
 
-      <section className="ua-panel ua-panel--wide">
+        <section className="ua-command-bar" aria-label="Setup summary">
+          <div className="ua-command-bar__item">
+            <span>Mode</span>
+            <strong>{isMultiplayer ? "Relay Multiplayer" : "Local Hot-Seat"}</strong>
+          </div>
+          <div className="ua-command-bar__item">
+            <span>Relay</span>
+            <strong>{relayStatusLabel}</strong>
+          </div>
+          <div className="ua-command-bar__item">
+            <span>Roster</span>
+            <strong>{rosterSorted.length} fighters online</strong>
+          </div>
+          <div className="ua-command-bar__item">
+            <span>Format</span>
+            <strong>3v3 shared deck</strong>
+          </div>
+        </section>
+
+        <section className="ua-panel ua-panel--wide">
         <div className="ua-panel__header">
           <h2>Multiplayer (Relay)</h2>
           <span className="ua-panel__tag">{relayStatusLabel}</span>
@@ -2917,18 +2944,28 @@ const App = () => {
                 </div>
                 {selectedCharacters.length > 0 && (
                   <div className="ua-team-preview">
-                    {selectedCharacters.map((character) => (
-                      <div key={character.id} className="ua-team-preview__card">
-                        <p className="ua-character-title">
-                          {character.name} <span>({character.version})</span>
-                        </p>
-                        <p className="ua-character-origin">{character.origin}</p>
-                        <p className="ua-character-roles">{formatRoles(character.roles)}</p>
-                        <p className="ua-character-difficulty">
-                          Difficulty: {character.difficulty}
-                        </p>
-                      </div>
-                    ))}
+                    {selectedCharacters.map((character) => {
+                      const artUrl = getCharacterArtUrl(character);
+                      return (
+                        <div key={character.id} className="ua-team-preview__card">
+                          {artUrl && (
+                            <div className="ua-team-preview__art">
+                              <img src={artUrl} alt={character.name} loading="lazy" />
+                            </div>
+                          )}
+                          <div className="ua-team-preview__body">
+                            <p className="ua-character-title">
+                              {character.name} <span>({character.version})</span>
+                            </p>
+                            <p className="ua-character-origin">{character.origin}</p>
+                            <p className="ua-character-roles">{formatRoles(character.roles)}</p>
+                            <p className="ua-character-difficulty">
+                              Difficulty: {character.difficulty}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -2939,20 +2976,28 @@ const App = () => {
         <section className="ua-panel ua-panel--wide">
           <h2>Roster Overview</h2>
           <div className="ua-roster-grid">
-            {rosterSorted.map((entry) => (
-              <article key={entry.id} className="ua-roster-card">
-                <div>
-                  <h3>
-                    {entry.name} <span>({entry.version})</span>
-                  </h3>
-                  <p>{entry.origin}</p>
-                </div>
-                <div>
-                  <span className="ua-pill">{formatRoles(entry.roles)}</span>
-                  <span className="ua-pill">Difficulty: {entry.difficulty}</span>
-                </div>
-              </article>
-            ))}
+            {rosterSorted.map((entry) => {
+              const artUrl = getCharacterArtUrl(entry);
+              return (
+                <article key={entry.id} className="ua-roster-card">
+                  {artUrl && (
+                    <div className="ua-roster-card__art">
+                      <img src={artUrl} alt={entry.name} loading="lazy" />
+                    </div>
+                  )}
+                  <div>
+                    <h3>
+                      {entry.name} <span>({entry.version})</span>
+                    </h3>
+                    <p>{entry.origin}</p>
+                  </div>
+                  <div>
+                    <span className="ua-pill">{formatRoles(entry.roles)}</span>
+                    <span className="ua-pill">Difficulty: {entry.difficulty}</span>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
 
@@ -2964,6 +3009,7 @@ const App = () => {
           >
             Start Match
           </button>
+        </div>
         </div>
       </div>
     );
@@ -2982,6 +3028,11 @@ const App = () => {
     ? matchState.pausedZones.map(zoneLabel).join(", ")
     : "None";
   const pendingWindow = getPendingWindow(matchState);
+  const pendingWindowLabel = pendingWindow
+    ? pendingWindow.type === "counter"
+      ? "Counter"
+      : "After Use"
+    : "Open play";
   const allReactivePlayers = getReactivePlayers(matchState);
   const reactivePlayers = allReactivePlayers.filter(
     (playerId) => playerId !== matchState.activePlayerId
@@ -3159,9 +3210,15 @@ const App = () => {
       );
     }
     const character = getCharacter(roster, member.characterId);
+    const artUrl = getCharacterArtUrl(character);
     const statusEntries = formatStatusList(member.statuses);
     return (
       <div className={`ua-character-card${member.defeated ? " is-defeated" : ""}`}>
+        {artUrl && (
+          <div className="ua-character-card__art">
+            <img src={artUrl} alt={member.name} loading="lazy" />
+          </div>
+        )}
         <div className="ua-character-card__header">
           <div>
             <p className="ua-character-title">
@@ -3367,8 +3424,13 @@ const App = () => {
       : null;
 
   return (
-    <>
+    <div className="ua-app">
       {combatOverlay}
+      <div className="ua-app__chrome" aria-hidden="true">
+        <span className="ua-app__orb ua-app__orb--alpha"></span>
+        <span className="ua-app__orb ua-app__orb--beta"></span>
+        <span className="ua-app__grid"></span>
+      </div>
       <div className="ua-shell">
       <header className="ua-header">
         <div>
@@ -3400,6 +3462,29 @@ const App = () => {
       </header>
 
       {message && <div className="ua-toast">{message}</div>}
+
+      <section className="ua-command-bar" aria-label="Match summary">
+        <div className="ua-command-bar__item">
+          <span>Phase</span>
+          <strong>{matchState.phase}</strong>
+        </div>
+        <div className="ua-command-bar__item">
+          <span>Active Zone</span>
+          <strong>{activeZoneLabel}</strong>
+        </div>
+        <div className="ua-command-bar__item">
+          <span>Paused</span>
+          <strong>{pausedZonesLabel}</strong>
+        </div>
+        <div className="ua-command-bar__item">
+          <span>Window</span>
+          <strong>{pendingWindowLabel}</strong>
+        </div>
+        <div className="ua-command-bar__item">
+          <span>Reactors</span>
+          <strong>{reactionNames.length ? reactionNames.join(", ") : "None"}</strong>
+        </div>
+      </section>
 
       <section className="ua-panel ua-panel--wide ua-zone-banner">
         <div>
@@ -4424,7 +4509,7 @@ const App = () => {
         </p>
       </footer>
     </div>
-    </>
+    </div>
   );
 };
 

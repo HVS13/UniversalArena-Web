@@ -86,3 +86,5 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-14: On Hit now resolves once per hit (multihit triggers multiple On Hit effects).
 - 2026-01-14: Updated the rules implementation matrix to include Close/Far and Distance power adjustments.
 - 2026-01-14: Added a free Movement Round swap per team per turn, clamped Ultimate costs to a 0 floor, and updated movement UI messaging.
+- 2026-03-09: Reworked the client presentation into a darker HUD/codex style, added setup/match command bars, and surfaced character art directly in team preview, roster, and formation cards.
+- 2026-04-21: Fixed core restriction typing to use the exported card data contract and aligned the Counter golden fixture with immediate reaction resolution.

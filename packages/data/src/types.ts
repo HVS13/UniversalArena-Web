@@ -1,3 +1,12 @@
+export type DataManifest = {
+  schemaVersion: number;
+  sourceRepository: string;
+  sourceCommit: string;
+  generatedAt: string;
+  contentHash: `sha256:${string}`;
+  rosterCount: number;
+};
+
 export type Innate = {
   id: string;
   name: string;

@@ -4,9 +4,11 @@ import statusEffectsRaw from "./status-effects.json";
 import termsRaw from "./terms.json";
 import cardTypesRaw from "./card-types.json";
 import rolesRaw from "./roles.json";
+import manifestRaw from "./manifest.json";
 import type {
   CardType,
   Character,
+  DataManifest,
   Keyword,
   Role,
   StatusEffectDefinition,
@@ -18,6 +20,7 @@ export type {
   CardType,
   CardTransform,
   Character,
+  DataManifest,
   Effect,
   EffectAmount,
   EffectCondition,
@@ -45,3 +48,4 @@ export const statusEffects = (statusEffectsRaw as {
 export const terms = (termsRaw as { terms: Term[] }).terms;
 export const cardTypes = (cardTypesRaw as { cardTypes: CardType[] }).cardTypes;
 export const roles = (rolesRaw as { roles: Role[] }).roles;
+export const dataManifest = manifestRaw as DataManifest;

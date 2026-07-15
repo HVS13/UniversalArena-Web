@@ -36,6 +36,8 @@ node export-game-data.mjs --out C:\Git\UniversalArena-Web\packages\data\src --as
 
 Do not edit `packages/data/src/characters.json` by hand.
 
+Each export also writes `packages/data/src/manifest.json`. The manifest exposes the canonical source repository and commit, schema version, deterministic content hash, generation timestamp, and roster count through `@ua/data` as `dataManifest`.
+
 Auto-export note: The docs repo includes a GitHub Actions workflow (`.github/workflows/export-game-data.yml`) that can push data updates into this repo, but it only runs if `UA_GAME_REPO` and `UA_SYNC_TOKEN` are configured. Until that is set, manual export is still required.
 
 ## Cross-repo workflow

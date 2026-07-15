@@ -93,3 +93,4 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-07-15: Added structured execution for all roster innates, including Saitama state thresholds, DIO's optional survival decision, applied-delta triggers, compound mitigation, and non-recursive Rover amplification; added roster golden coverage and removed innate prose parsing.
 - 2026-07-15: Enforced initial multiplayer readiness in the relay, preserved setup metadata across match snapshots, reset readiness on authoritative setup changes, and added relay protocol regression coverage.
 - 2026-07-15: Captured the Friend Alpha technical baseline and defined the `v0.2.0-friend-alpha` acceptance contract, release blockers, evidence requirements, and explicit non-goals.
+- 2026-07-15: Added `@ua/data` manifest compatibility metadata for canonical source revision, schema version, deterministic content hash, generation timestamp, and roster count, with golden validation.

@@ -1,4 +1,4 @@
-import { characters as roster } from "@ua/data";
+import { characters as roster, dataManifest } from "@ua/data";
 import type { Character, Effect } from "@ua/data";
 import {
   applyAction,
@@ -326,6 +326,22 @@ const snapshotStatuses = (state: MatchState, playerId: PlayerId, names: string[]
       ];
     })
   );
+};
+
+const runDataManifestTest = (): GoldenResult => {
+  try {
+    if (dataManifest.schemaVersion !== 1) throw new Error(`Unsupported schema version ${dataManifest.schemaVersion}.`);
+    if (dataManifest.sourceRepository !== "HVS13/UniversalArena") throw new Error("Unexpected canonical repository.");
+    if (!/^[0-9a-f]{40}$/.test(dataManifest.sourceCommit)) throw new Error("Source commit is not a clean full SHA.");
+    if (!/^sha256:[0-9a-f]{64}$/.test(dataManifest.contentHash)) throw new Error("Content hash is malformed.");
+    if (dataManifest.rosterCount !== roster.length || roster.length !== 9) {
+      throw new Error(`Manifest roster count ${dataManifest.rosterCount} does not match ${roster.length}.`);
+    }
+    if (Number.isNaN(Date.parse(dataManifest.generatedAt))) throw new Error("Generation timestamp is invalid.");
+    return { label: "Exported data manifest identifies the canonical nine-character build", ok: true };
+  } catch (error) {
+    return { label: "Exported data manifest identifies the canonical nine-character build", ok: false, details: String(error) };
+  }
 };
 
 const snapshotPositions = (state: MatchState, playerId: PlayerId) =>
@@ -4317,6 +4333,7 @@ const runStructuredInnateMitigationTest = (): GoldenResult => {
 };
 
 export const runGoldenTests = () => [
+  runDataManifestTest(),
   runInterruptChainTest(),
   runCancelledAlwaysTest(),
   runCannotPlayTest(),

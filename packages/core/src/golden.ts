@@ -4,6 +4,7 @@ import {
   applyAction,
   createMatchState,
   exportTranscript,
+  getCardPlayOptions,
   hashMatchState,
   replayTranscript,
   type Action,
@@ -4383,6 +4384,48 @@ const runStructuredInnateMitigationTest = (): GoldenResult => {
   }
 };
 
+const runCardPlayQueryTest = (): GoldenResult => {
+  const label = "Card-play queries match reducer legality";
+  try {
+    const characters = [...roster, ...fillerCharacters];
+    const players = [
+      { id: "p1" as const, name: "Query One", characterIds: [roster[0].id, "filler-1", "filler-2"] },
+      { id: "p2" as const, name: "Query Two", characterIds: [roster[1].id, "filler-1", "filler-2"] },
+    ];
+    const movement = createMatchState(characters, players, { seed: goldenSeed });
+    const movementCard = movement.players.p1.hand[0];
+    const blocked = getCardPlayOptions(movement, {
+      playerId: "p1",
+      cardInstanceId: movementCard.id,
+    }, characters);
+    if (blocked.playable || blocked.reason !== "Movement Round in progress.") {
+      throw new Error(`Movement query returned ${blocked.reason ?? "playable"}.`);
+    }
+
+    const combat = createSeededCombatState(characters, players);
+    const card = combat.players.p1.hand[0];
+    const options = getCardPlayOptions(combat, {
+      playerId: "p1",
+      cardInstanceId: card.id,
+    }, characters);
+    if (!options.playable || !options.options.length) throw new Error(options.reason ?? "No options.");
+    if (options.targetIds.some((targetId) => targetId.startsWith("p1:"))) {
+      throw new Error("Enemy-target card query included an allied target.");
+    }
+    const option = options.options[0];
+    const result = applyAction(combat, {
+      type: "play_card",
+      playerId: "p1",
+      cardInstanceId: card.id,
+      ...option,
+    }, characters);
+    if (result.error) throw new Error(`Reducer rejected query option: ${result.error}`);
+    return { label, ok: true };
+  } catch (error) {
+    return { label, ok: false, details: String(error) };
+  }
+};
+
 export const runGoldenTests = () => [
   runDataManifestTest(),
   runStateHashAndTranscriptCompatibilityTest(),
@@ -4417,6 +4460,7 @@ export const runGoldenTests = () => [
   runStructuredInnateTriggerTest(),
   runHpThresholdAndReplacementInnateTest(),
   runStructuredInnateMitigationTest(),
+  runCardPlayQueryTest(),
 ];
 
 if (process.argv[1]?.includes("golden")) {

@@ -5,6 +5,7 @@ import {
   applyAction,
   createMatchState,
   engineVersion,
+  getCardPlayOptions,
   getLegalTargets,
   hashMatchState,
   parseCost,
@@ -319,45 +320,6 @@ const getEnergyCostAdjustment = (member: TeamMember) => {
   return strain - focus - bloodFocus;
 };
 
-const getAdjustedEnergyCost = (
-  member: TeamMember,
-  cost: ReturnType<typeof parseCost>,
-  xValue: number,
-  cardInstance?: CardInstance,
-  followUpAdjustment = 0
-) => {
-  const variableEnergy =
-    cost.variable?.type === "energy" ? cost.variable.multiplier * xValue : 0;
-  const base =
-    cost.energy +
-    variableEnergy +
-    getEnergyCostAdjustment(member) +
-    (cardInstance?.costAdjustment ?? 0) +
-    followUpAdjustment;
-  return Math.max(0, base);
-};
-
-const canAffordWithAdjustments = (
-  team: Team,
-  member: TeamMember,
-  cost: ReturnType<typeof parseCost>,
-  xValue: number,
-  cardInstance?: CardInstance,
-  followUpAdjustment = 0
-) => {
-  const energyCost = getAdjustedEnergyCost(
-    member,
-    cost,
-    xValue,
-    cardInstance,
-    followUpAdjustment
-  );
-  const variableUltimate =
-    cost.variable?.type === "ultimate" ? cost.variable.multiplier * xValue : 0;
-  const ultimateCost = Math.max(0, cost.ultimate + variableUltimate);
-  return team.energy >= energyCost && team.ultimate >= ultimateCost;
-};
-
 const getMaxX = (
   team: Team,
   member: TeamMember,
@@ -554,16 +516,6 @@ const getPlayableZones = (
   return legal.filter(
     (zone) => zone === state.activeZone || zoneRank[zone] > zoneRank[state.activeZone!]
   );
-};
-
-const getCardKeywords = (card: Card) => {
-  const flags = { followUp: false, assistAttack: false };
-  card.effect.forEach((line) => {
-    const normalized = line.trim().replace(/\.$/, "").toLowerCase();
-    if (normalized === "follow-up") flags.followUp = true;
-    if (normalized === "assist attack") flags.assistAttack = true;
-  });
-  return flags;
 };
 
 const getTextChoiceOptions = (card: Card) => {
@@ -902,52 +854,6 @@ const needsPushDirection = (
   const targetEntry = getMemberById(state, targetId);
   if (!sourceEntry || !targetEntry) return false;
   return sourceEntry.member.position === targetEntry.member.position;
-};
-
-const canReactAfterUse = (
-  state: MatchState,
-  card: Card,
-  sourceId: MatchCharacterId
-) => {
-  const pendingWindow = getPendingWindow(state);
-  if (!pendingWindow || pendingWindow.type !== "after_use") return false;
-  const window = state.afterUseWindow;
-  if (!window || window.validForAction !== state.actionId + 1) return false;
-  const teamId = getTeamIdFromMatchCharacterId(sourceId);
-  if (!teamId || teamId !== pendingWindow.playerId) return false;
-  const ownerEntry = getMemberById(state, sourceId);
-  if (!ownerEntry || ownerEntry.member.defeated) return false;
-  const zones = getPlayableZones(card, state, ownerEntry.member);
-  if (!zones.length) return false;
-  const flags = getCardKeywords(card);
-  let followUpAllowed = flags.followUp;
-  if (!followUpAllowed) {
-    const lastUsed = getMemberById(state, window.lastUsedCharacterId);
-    const timeStop = lastUsed
-      ? isStatusActive(lastUsed.member.statuses["The World: Time Stop"])
-      : false;
-    if (timeStop && card.types.some((type) => type.toLowerCase() === "attack")) {
-      followUpAllowed = true;
-    }
-  }
-  if (followUpAllowed && window.lastUsedCharacterId === sourceId) return true;
-  if (flags.assistAttack && window.lastUsedCharacterId !== sourceId) return true;
-  return false;
-};
-
-const canReactCounter = (state: MatchState, card: Card, sourceId: MatchCharacterId) => {
-  const pendingWindow = getPendingWindow(state);
-  if (!pendingWindow || pendingWindow.type !== "counter") return false;
-  const teamId = getTeamIdFromMatchCharacterId(sourceId);
-  if (!teamId || teamId !== pendingWindow.playerId) return false;
-  const ownerEntry = getMemberById(state, sourceId);
-  if (!ownerEntry || ownerEntry.member.defeated) return false;
-  const zones = getPlayableZones(card, state, ownerEntry.member);
-  if (!zones.length) return false;
-  const targetId = pendingWindow.counterTargetId;
-  if (!targetId) return false;
-  const legalTargets = getLegalTargets(card, sourceId, state, roster);
-  return legalTargets.includes(targetId);
 };
 
 const getReactivePlayers = (state: MatchState) => {
@@ -2676,63 +2582,32 @@ const App = () => {
       reportMessage("Not your team.");
       return;
     }
-    if (matchState.phase === "movement") {
-      reportMessage("Movement Round in progress.");
-      return;
-    }
-    const team = matchState.players[playerId];
     const ownerEntry = getMemberById(matchState, sourceId);
     if (!ownerEntry || ownerEntry.teamId !== playerId) {
       reportMessage("Card source not found.");
       return;
     }
-    const member = ownerEntry.member;
-    let targets = getLegalTargets(card, sourceId, matchState, roster).map((targetId) => ({
+    const coreOptions = getCardPlayOptions(
+      matchState,
+      cardInstanceId
+        ? { playerId, cardInstanceId }
+        : { playerId, cardSlot: card.slot, sourceId },
+      roster
+    );
+    if (!coreOptions.playable) {
+      reportMessage(coreOptions.reason ?? "No legal card play available.");
+      return;
+    }
+    let targets = coreOptions.targetIds.map((targetId) => ({
       id: targetId,
       label: formatMemberLabel(matchState, targetId),
     }));
-    if (!targets.length) {
-      reportMessage("No legal targets.");
-      return;
-    }
-    const pendingWindow = getPendingWindow(matchState);
-    if (pendingWindow?.type === "counter" && pendingWindow.counterTargetId) {
-      targets = targets.filter((target) => target.id === pendingWindow.counterTargetId);
-      if (!targets.length) {
-        reportMessage("Counter must target the attacker.");
-        return;
-      }
-    }
     const initialTargetId = targets[0].id;
     const playCard = resolveCardForDisplay(card, sourceId, initialTargetId);
-    const zones = getPlayableZones(playCard, matchState, member);
-    if (!zones.length) {
-      reportMessage("No legal zones available.");
-      return;
-    }
-    const cardInstance = cardInstanceId
-      ? team.hand.find((instance) => instance.id === cardInstanceId)
-      : undefined;
+    const zones = coreOptions.zones;
     const cost = parseCost(playCard.cost);
     const xRange = getXRangeFromText(playCard);
-    const isAfterUse =
-      pendingWindow?.type === "after_use" &&
-      matchState.afterUseWindow &&
-      matchState.afterUseWindow.validForAction === matchState.actionId + 1;
-    const isFollowUpPlay =
-      Boolean(isAfterUse) && matchState.afterUseWindow?.lastUsedCharacterId === sourceId;
-    const followUpAdjustment = isFollowUpPlay ? getFollowUpCostAdjustment(playCard) : 0;
-    const max = cost.variable
-      ? getMaxX(team, member, cost, cardInstance, followUpAdjustment)
-      : 0;
-    const baseAffordable = canAffordWithAdjustments(
-      team,
-      member,
-      cost,
-      0,
-      cardInstance,
-      followUpAdjustment
-    );
+    const max = cost.variable ? Math.max(...coreOptions.xValues, 0) : 0;
     const choices = getCardChoices(playCard);
     const targetText = playCard.target.toLowerCase();
     if (targetText.includes("all enemies") || targetText.includes("all allies")) {
@@ -2766,14 +2641,6 @@ const App = () => {
       Boolean(xRange) ||
       targets.length > 1 ||
       needsMetaModal;
-    if (cost.variable && !baseAffordable) {
-      reportMessage("Insufficient resources.");
-      return;
-    }
-    if (!cost.variable && xRange && !baseAffordable) {
-      reportMessage("Insufficient resources.");
-      return;
-    }
     if (xRange && xRange.max < xRange.min) {
       reportMessage("Invalid X range.");
       return;
@@ -4045,6 +3912,11 @@ const App = () => {
           <div className="ua-card-grid">
             {activeHand.map((entry, index) => {
               const { instance, card, owner } = entry;
+              const corePlayable = getCardPlayOptions(
+                matchState,
+                { playerId: activeTeam.id, cardInstanceId: instance.id },
+                roster
+              ).playable;
               const displayCard = resolveCardForDisplay(card, owner.id);
               const cost = parseCost(displayCard.cost);
               const isVariable = Boolean(cost.variable);
@@ -4059,24 +3931,8 @@ const App = () => {
               const followUpAdjustment = isFollowUpPlay
                 ? getFollowUpCostAdjustment(displayCard)
                 : 0;
-              const baseAffordable = canAffordWithAdjustments(
-                activeTeam,
-                owner,
-                cost,
-                0,
-                instance,
-                followUpAdjustment
-              );
-                const canReact = pendingWindow
-                  ? pendingWindow.type === "counter"
-                    ? canReactCounter(matchState, displayCard, owner.id)
-                    : canReactAfterUse(matchState, displayCard, owner.id)
-                  : false;
-                const canAct = pendingWindow
-                  ? canReact
-                  : matchState.activePlayerId === activeTeam.id;
                 const canControl = canControlPlayer(activeTeam.id);
-                const disabled = !canControl || !canAct || !baseAffordable || owner.defeated;
+                const disabled = !canControl || !corePlayable;
               const adjustment =
                 getEnergyCostAdjustment(owner) +
                 (instance.costAdjustment ?? 0) +
@@ -4125,37 +3981,16 @@ const App = () => {
               <div className="ua-card-grid">
                 {activeUltimates.map((entry) => {
                   const { card, member } = entry;
+                  const corePlayable = getCardPlayOptions(
+                    matchState,
+                    { playerId: activeTeam.id, cardSlot: card.slot, sourceId: member.id },
+                    roster
+                  ).playable;
                   const displayCard = resolveCardForDisplay(card, member.id);
                   const cost = parseCost(displayCard.cost);
                   const isVariable = Boolean(cost.variable);
-                  const isAfterUse =
-                    pendingWindow?.type === "after_use" &&
-                    matchState.afterUseWindow &&
-                    matchState.afterUseWindow.validForAction === matchState.actionId + 1;
-                  const isFollowUpPlay =
-                    Boolean(isAfterUse) &&
-                    matchState.afterUseWindow?.lastUsedCharacterId === member.id;
-                  const followUpAdjustment = isFollowUpPlay
-                    ? getFollowUpCostAdjustment(displayCard)
-                    : 0;
-                  const baseAffordable = canAffordWithAdjustments(
-                    activeTeam,
-                    member,
-                    cost,
-                    0,
-                    undefined,
-                    followUpAdjustment
-                  );
-                    const canReact = pendingWindow
-                      ? pendingWindow.type === "counter"
-                        ? canReactCounter(matchState, displayCard, member.id)
-                        : canReactAfterUse(matchState, displayCard, member.id)
-                      : false;
-                    const canAct = pendingWindow
-                      ? canReact
-                      : matchState.activePlayerId === activeTeam.id;
                     const canControl = canControlPlayer(activeTeam.id);
-                    const disabled = !canControl || !canAct || !baseAffordable || member.defeated;
+                    const disabled = !canControl || !corePlayable;
                   return (
                     <button
                       key={`${member.id}-${card.slot}`}
@@ -4209,6 +4044,11 @@ const App = () => {
             <div className="ua-card-grid">
               {handEntries.map((entry, index) => {
                 const { instance, card, owner } = entry;
+                const corePlayable = getCardPlayOptions(
+                  matchState,
+                  { playerId, cardInstanceId: instance.id },
+                  roster
+                ).playable;
                 const displayCard = resolveCardForDisplay(card, owner.id);
                 const cost = parseCost(displayCard.cost);
                 const isVariable = Boolean(cost.variable);
@@ -4223,21 +4063,8 @@ const App = () => {
                 const followUpAdjustment = isFollowUpPlay
                   ? getFollowUpCostAdjustment(displayCard)
                   : 0;
-                const baseAffordable = canAffordWithAdjustments(
-                  team,
-                  owner,
-                  cost,
-                  0,
-                  instance,
-                  followUpAdjustment
-                );
-                  const canReact = pendingWindow
-                    ? pendingWindow.type === "counter"
-                      ? canReactCounter(matchState, displayCard, owner.id)
-                      : canReactAfterUse(matchState, displayCard, owner.id)
-                    : false;
                   const canControl = canControlPlayer(playerId);
-                  const disabled = !canControl || !canReact || !baseAffordable || owner.defeated;
+                  const disabled = !canControl || !corePlayable;
                 const adjustment =
                   getEnergyCostAdjustment(owner) +
                   (instance.costAdjustment ?? 0) +
@@ -4286,34 +4113,16 @@ const App = () => {
                 <div className="ua-card-grid">
                   {ultimateEntries.map((entry) => {
                     const { card, member } = entry;
+                    const corePlayable = getCardPlayOptions(
+                      matchState,
+                      { playerId, cardSlot: card.slot, sourceId: member.id },
+                      roster
+                    ).playable;
                     const displayCard = resolveCardForDisplay(card, member.id);
                     const cost = parseCost(displayCard.cost);
                     const isVariable = Boolean(cost.variable);
-                    const isAfterUse =
-                      pendingWindow?.type === "after_use" &&
-                      matchState.afterUseWindow &&
-                      matchState.afterUseWindow.validForAction === matchState.actionId + 1;
-                    const isFollowUpPlay =
-                      Boolean(isAfterUse) &&
-                      matchState.afterUseWindow?.lastUsedCharacterId === member.id;
-                    const followUpAdjustment = isFollowUpPlay
-                      ? getFollowUpCostAdjustment(displayCard)
-                      : 0;
-                    const baseAffordable = canAffordWithAdjustments(
-                      team,
-                      member,
-                      cost,
-                      0,
-                      undefined,
-                      followUpAdjustment
-                    );
-                    const canReact = pendingWindow
-                      ? pendingWindow.type === "counter"
-                        ? canReactCounter(matchState, displayCard, member.id)
-                        : canReactAfterUse(matchState, displayCard, member.id)
-                      : false;
                     const canControl = canControlPlayer(playerId);
-                    const disabled = !canControl || !canReact || !baseAffordable || member.defeated;
+                    const disabled = !canControl || !corePlayable;
                     return (
                       <button
                         key={`${member.id}-${card.slot}`}

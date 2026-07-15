@@ -296,6 +296,30 @@ export const exportTranscript = (state: MatchState): MatchTranscript | null => {
   return transcript;
 };
 
+export type CardPlayQuery = {
+  playerId: PlayerId;
+  cardInstanceId?: string;
+  cardSlot?: string;
+  sourceId?: MatchCharacterId;
+};
+
+export type CardPlayOption = {
+  zone: ZoneName;
+  targetId: MatchCharacterId;
+  xValue?: number;
+  choiceIndex?: number;
+};
+
+export type CardPlayOptions = {
+  playable: boolean;
+  reason?: string;
+  options: CardPlayOption[];
+  zones: ZoneName[];
+  targetIds: MatchCharacterId[];
+  xValues: number[];
+  choiceIndexes: number[];
+};
+
 const recordTranscriptEntry = (
   state: MatchState,
   action: Action,
@@ -6420,4 +6444,97 @@ export const replayTranscript = (
     }
   }
   return { state };
+};
+
+export const getCardPlayOptions = (
+  state: MatchState,
+  query: CardPlayQuery,
+  characters: Character[]
+): CardPlayOptions => {
+  const team = state.players[query.playerId];
+  const instance = query.cardInstanceId
+    ? team.hand.find((candidate) => candidate.id === query.cardInstanceId)
+    : undefined;
+  const sourceId = instance?.ownerId ?? query.sourceId;
+  const source = sourceId ? getMatchCharacter(state, sourceId) : null;
+  const card = instance
+    ? findCard(characters, instance.characterId, instance.cardSlot)
+    : source && query.cardSlot
+      ? findCard(characters, source.characterId, query.cardSlot)
+      : null;
+
+  const empty = (reason: string): CardPlayOptions => ({
+    playable: false,
+    reason,
+    options: [],
+    zones: [],
+    targetIds: [],
+    xValues: [],
+    choiceIndexes: [],
+  });
+  if (!sourceId || !source || !card) {
+    return empty(instance ? "Card not found." : query.cardInstanceId ? "Card not in hand." : "Card source not found.");
+  }
+
+  const targetIds = [...state.players.p1.characters, ...state.players.p2.characters]
+    .filter((member) => !member.defeated)
+    .map((member) => member.id);
+  const zones: ZoneName[] = ["fast", "normal", "slow"];
+  const options: CardPlayOption[] = [];
+  let firstError: string | undefined;
+
+  for (const targetId of targetIds) {
+    const resolvedCard = resolveCardTransforms(card, state, sourceId, targetId, characters);
+    const legalTargets = getLegalTargets(resolvedCard, sourceId, state, characters);
+    if (!legalTargets.includes(targetId)) continue;
+    const structuredChoice = resolvedCard.effects?.find((effect) => effect.type === "choose");
+    const textChoices = structuredChoice ? [] : getTextChoiceOptions(resolvedCard.effect);
+    const choiceCount = structuredChoice?.type === "choose"
+      ? structuredChoice.options.length
+      : textChoices.length;
+    const choiceIndexes: Array<number | undefined> = choiceCount
+      ? Array.from({ length: choiceCount }, (_, index) => index)
+      : [undefined];
+    const xRange = getXRangeFromText(resolvedCard.effect);
+    const cost = parseCost(resolvedCard.cost);
+    const xValues: Array<number | undefined> = xRange
+      ? Array.from({ length: xRange.max - xRange.min + 1 }, (_, index) => xRange.min + index)
+      : cost.variable
+        ? Array.from({ length: 21 }, (_, index) => index)
+        : [undefined];
+    for (const zone of zones) {
+      for (const choiceIndex of choiceIndexes) {
+        for (const xValue of xValues) {
+          const action: Action = {
+            type: "play_card",
+            playerId: query.playerId,
+            cardInstanceId: query.cardInstanceId,
+            cardSlot: query.cardInstanceId ? undefined : query.cardSlot,
+            sourceId: query.cardInstanceId ? undefined : sourceId,
+            zone,
+            targetId,
+            choiceIndex,
+            xValue,
+          };
+          const result = applyAction(state, action, characters);
+          if (!result.error) {
+            options.push({ zone, targetId, choiceIndex, xValue });
+          } else if (!firstError) {
+            firstError = result.error;
+          }
+        }
+      }
+    }
+  }
+
+  const unique = <T>(values: T[]) => [...new Set(values)];
+  return {
+    playable: options.length > 0,
+    reason: options.length ? undefined : firstError ?? "No legal card play available.",
+    options,
+    zones: unique(options.map((option) => option.zone)),
+    targetIds: unique(options.map((option) => option.targetId)),
+    xValues: unique(options.flatMap((option) => option.xValue === undefined ? [] : [option.xValue])),
+    choiceIndexes: unique(options.flatMap((option) => option.choiceIndex === undefined ? [] : [option.choiceIndex])),
+  };
 };

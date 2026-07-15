@@ -93,6 +93,11 @@ seat can restore the current setup or match after reconnecting.
 - Golden tests live in `packages/core/src/golden.ts` and are executed via `pnpm golden`.
 - If you change core rules, run `pnpm golden` after syncing data.
 
+## Card-play legality
+
+- `getCardPlayOptions` in `@ua/core` is the authoritative query for whether a hand card or Ultimate can be played and which zone, target, X, and choice combinations are legal.
+- The client uses this query to enable cards and seed the play dialog; final execution still passes through `applyAction`, so queries and mutations share the same reducer validation.
+
 ## Current limitations
 
 - Structured effects now cover optional spend/bonus damage/draw/create mechanics; legacy text parsing still handles unique triggers and any remaining unmodeled text.

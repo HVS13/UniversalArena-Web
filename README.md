@@ -3,6 +3,7 @@
 Web-based Universal Arena prototype (local hot-seat 3v3 with shared team deck/hand). Data is exported from the docs repo and the rules engine is still incomplete.
 
 Friend Alpha stabilization is governed by [`FRIEND_ALPHA.md`](FRIEND_ALPHA.md), with the captured starting state in [`BASELINE.md`](BASELINE.md).
+Structured milestone-10 browser evidence and remaining release blockers are recorded in [`PLAYTEST_REPORT.md`](PLAYTEST_REPORT.md).
 
 ## Repo layout
 

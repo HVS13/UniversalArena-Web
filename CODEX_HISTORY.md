@@ -1,5 +1,7 @@
 # Codex History
 
+- 2026-07-15: Recorded structured local and independent two-browser Friend Alpha playtest evidence, verified relay recovery and bidirectional action propagation, hardened debug-download cleanup, and documented the remaining full-flow and remote-match release blockers.
+
 - 2026-07-15: Decomposed relay protocol/session concerns from the React application and cost parsing/affordability from the core engine, preserving the existing public core API and gameplay behavior.
 
 - 2026-07-15: Added a privacy-conscious, downloadable Friend Alpha debug bundle with pseudonymized transcript/log data, complete build and canonical-data identity, final state evidence, and deterministic replay verification.

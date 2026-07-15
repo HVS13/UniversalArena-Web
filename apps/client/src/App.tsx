@@ -2201,8 +2201,10 @@ const App = () => {
       const link = document.createElement("a");
       link.href = url;
       link.download = `universal-arena-debug-${bundle.final.stateHash.slice(0, 12)}.json`;
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
       reportMessage("Debug bundle exported. Player names and relay connection details were excluded.");
     } catch (error) {
       reportMessage(error instanceof Error ? error.message : "Failed to export debug bundle.");

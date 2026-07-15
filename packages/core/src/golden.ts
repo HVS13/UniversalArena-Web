@@ -3,11 +3,13 @@ import type { Character, Effect } from "@ua/data";
 import {
   applyAction,
   auditCardTextCoverage,
+  createDebugBundle,
   createMatchState,
   exportTranscript,
   getCardPlayOptions,
   hashMatchState,
   replayTranscript,
+  verifyDebugBundle,
   type Action,
   type MatchCharacterId,
   type MatchState,
@@ -394,6 +396,43 @@ const runStateHashAndTranscriptCompatibilityTest = (): GoldenResult => {
     return { label: "State hashing and transcript v3 reject incompatible replay data", ok: true };
   } catch (error) {
     return { label: "State hashing and transcript v3 reject incompatible replay data", ok: false, details: String(error) };
+  }
+};
+
+const runDebugBundleTest = (): GoldenResult => {
+  const label = "Debug bundle is anonymous, versioned, and reproducible";
+  try {
+    const players = [
+      { id: "p1" as const, name: "Alice Example", characterIds: roster.slice(0, 3).map(({ id }) => id) },
+      { id: "p2" as const, name: "Bob Example", characterIds: roster.slice(3, 6).map(({ id }) => id) },
+    ];
+    const state = createMatchState(roster, players, { seed: goldenSeed, enableTranscript: true });
+    state.log.push("Alice Example challenged Bob Example.");
+    const bundle = createDebugBundle(state, {
+      exportedAt: "2026-07-15T00:00:00.000Z",
+      clientVersion: "0.1.0",
+      relayVersion: "0.1.0",
+      protocolVersion: 1,
+    });
+    const serialized = JSON.stringify(bundle);
+    if (serialized.includes("Alice Example") || serialized.includes("Bob Example")) {
+      throw new Error("Debug bundle leaked player display names.");
+    }
+    if (bundle.data.sourceCommit !== dataManifest.sourceCommit) {
+      throw new Error("Debug bundle omitted canonical source identity.");
+    }
+    const verification = verifyDebugBundle(bundle, roster);
+    if (!verification.ok || !verification.state) throw new Error(verification.error ?? "Bundle replay failed.");
+    if (hashMatchState(verification.state) !== bundle.final.stateHash) {
+      throw new Error("Debug bundle replay produced a different state hash.");
+    }
+    const incompatible = verifyDebugBundle({ ...bundle, bundleVersion: 2 }, roster);
+    if (incompatible.ok || !incompatible.error?.includes("Unsupported debug bundle version")) {
+      throw new Error("Unsupported debug bundle version was accepted.");
+    }
+    return { label, ok: true };
+  } catch (error) {
+    return { label, ok: false, details: String(error) };
   }
 };
 
@@ -4513,6 +4552,7 @@ const runFinisherCleanupEffectsTest = (): GoldenResult => {
 export const runGoldenTests = () => [
   runDataManifestTest(),
   runStateHashAndTranscriptCompatibilityTest(),
+  runDebugBundleTest(),
   runInterruptChainTest(),
   runCancelledAlwaysTest(),
   runCannotPlayTest(),

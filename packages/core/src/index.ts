@@ -276,6 +276,13 @@ export const transcriptVersion = 3;
 export const serializeMatchState = (state: MatchState) => serializeGameplayState(state);
 export const hashMatchState = (state: MatchState) => hashGameplayState(state);
 
+export {
+  createDebugBundle,
+  debugBundleVersion,
+  verifyDebugBundle,
+  type DebugBundle,
+} from "./debug-bundle.js";
+
 const cloneAction = (action: Action): Action => ({ ...action });
 
 export const createMatchTranscript = (

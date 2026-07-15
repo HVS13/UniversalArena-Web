@@ -3,6 +3,7 @@ import { characters as roster, dataManifest, keywords, statusEffects } from "@ua
 import type { Card, Character, Keyword, StatusEffectDefinition } from "@ua/data";
 import {
   applyAction,
+  createDebugBundle,
   createMatchState,
   engineVersion,
   getCardPlayOptions,
@@ -55,8 +56,12 @@ type StateSyncPayload = SetupSyncPayload & {
   dataContentHash: string;
 };
 
+const clientVersion = "0.1.0";
+const relayVersion = "0.1.0";
+const relayProtocolVersion = 1;
+
 const validateStateSyncPayload = (data: Partial<StateSyncPayload>) => {
-  if (data.protocolVersion !== 1) return "Relay protocol version mismatch.";
+  if (data.protocolVersion !== relayProtocolVersion) return "Relay protocol version mismatch.";
   if (data.engineVersion !== engineVersion) return "Engine version mismatch; resync required.";
   if (data.dataSchemaVersion !== dataManifest.schemaVersion) return "Data schema mismatch; resync required.";
   if (data.dataContentHash !== dataManifest.contentHash) return "Data content mismatch; resync required.";
@@ -73,7 +78,7 @@ const createStateSyncPayload = (
   state: MatchState,
   setup?: Partial<SetupSyncPayload>
 ) => ({
-  protocolVersion: 1,
+  protocolVersion: relayProtocolVersion,
   state,
   actionId: state.actionId,
   stateHash: hashMatchState(state),
@@ -2279,6 +2284,27 @@ const App = () => {
   );
   const combatSpeed = 1;
 
+  const downloadDebugBundle = () => {
+    if (!matchState) return;
+    try {
+      const bundle = createDebugBundle(matchState, {
+        clientVersion,
+        relayVersion,
+        protocolVersion: relayProtocolVersion,
+      });
+      const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `universal-arena-debug-${bundle.final.stateHash.slice(0, 12)}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      reportMessage("Debug bundle exported. Player names and relay connection details were excluded.");
+    } catch (error) {
+      reportMessage(error instanceof Error ? error.message : "Failed to export debug bundle.");
+    }
+  };
+
   const startMatch = () => {
     try {
       if (isMultiplayer && !isHost) {
@@ -2294,10 +2320,14 @@ const App = () => {
         return;
       }
       resetVisualState();
-      const state = createMatchState(roster, [
-        { id: "p1", name: names.p1.trim() || "Player 1", characterIds: selection.p1 },
-        { id: "p2", name: names.p2.trim() || "Player 2", characterIds: selection.p2 },
-      ]);
+      const state = createMatchState(
+        roster,
+        [
+          { id: "p1", name: names.p1.trim() || "Player 1", characterIds: selection.p1 },
+          { id: "p2", name: names.p2.trim() || "Player 2", characterIds: selection.p2 },
+        ],
+        { enableTranscript: true }
+      );
       setMatchState(state);
       setStage("match");
       setMessage(null);
@@ -3893,6 +3923,13 @@ const App = () => {
         <div className="ua-panel__header">
           <h2>Event Log</h2>
           <div className="ua-inline-actions">
+            <button
+              type="button"
+              className="ua-button ua-button--ghost"
+              onClick={downloadDebugBundle}
+            >
+              Export Debug Bundle
+            </button>
               <button
                 className="ua-button ua-button--ghost"
                 disabled={!canControlPlayer(matchState.activePlayerId)}

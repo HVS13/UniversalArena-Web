@@ -92,6 +92,8 @@ seat can restore the current setup or match after reconnecting.
 - `hashMatchState` produces a synchronous SHA-256 identity over canonical gameplay state while excluding presentation-only logs, names, transcript data, and resolution animation details.
 - Golden tests live in `packages/core/src/golden.ts` and are executed via `pnpm golden`.
 - If you change core rules, run `pnpm golden` after syncing data.
+- Every match records a transcript. Use **Export Debug Bundle** in the Event Log to download a versioned JSON bundle containing the pseudonymized replay, final state hash, canonical data identity, software/protocol versions, and recent pseudonymized gameplay log. Relay URLs, lobby codes, client IDs, and player display names are not included.
+- `verifyDebugBundle` replays an exported bundle and confirms that it reaches the recorded canonical state hash.
 
 ## Card-play legality
 

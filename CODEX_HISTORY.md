@@ -23,6 +23,7 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - Full roster exported from the docs repo.
 
 ## Log
+- 2026-07-15: Added executable card-text coverage auditing, found and structured two silent finisher cleanup gaps (DIO Time Stop reset and Naruto Chakra decay), and added behavioral regression tests for both.
 - 2026-07-15: Hardened relay protocol version 1 with compare-and-set guest actions, request deduplication, seat/event authority checks, monotonic compatible snapshots, client-side state-hash verification, and automatic mismatch resync.
 - 2026-07-15: Added the core `getCardPlayOptions` legality query, migrated client card enablement and initial play options to it, and added golden coverage proving returned options are accepted by the reducer without leaking illegal targets.
 - 2026-01-03: Bootstrapped the monorepo, wired data export from docs, implemented a local hot-seat UI, and added a minimal rules engine with current character roster.

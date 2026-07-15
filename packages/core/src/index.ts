@@ -2,6 +2,8 @@ import { dataManifest, statusEffects } from "@ua/data";
 import { createRngState, nextFloat, nextInt } from "./rng.ts";
 import type { RngState } from "./rng.ts";
 import { hashGameplayState, serializeGameplayState } from "./state-hash.ts";
+export { auditCardTextCoverage } from "./text-coverage.ts";
+export type { CardTextCoverageIssue } from "./text-coverage.ts";
 import type {
   Card,
   Character,

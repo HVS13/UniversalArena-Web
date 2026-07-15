@@ -77,3 +77,8 @@ Current structured effect types in data are fully supported in core:
 `set_status`, `reduce_status`, `spend_status`, `deal_damage_per_spent`,
 `draw_cards`, `create_card`, `reload_equipped`, `switch_equip`, `choose`,
 `grant_keyword`, `retain`.
+
+Every effect line across the exported nine-character roster and created-card set is checked by
+`auditCardTextCoverage`. The golden suite fails when a line has neither a matching structured
+effect/restriction/transform nor an explicitly supported parser or lifecycle contract. Behavioral
+regressions additionally cover DIO's Time Stop cleanup and One-Tail Rasengan's Chakra decay.

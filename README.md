@@ -100,8 +100,8 @@ seat can restore the current setup or match after reconnecting.
 
 ## Current limitations
 
-- Structured effects now cover optional spend/bonus damage/draw/create mechanics; legacy text parsing still handles unique triggers and any remaining unmodeled text.
-- Status/keyword handling covers timing windows, caps/expiry, and cost/speed/power/damage modifiers plus spend/draw/creation hooks, but not all unique triggers.
+- Structured effects cover every canonical gameplay effect in the Friend Alpha roster. A golden text-coverage audit guards the remaining explicit text contracts used for timing, keywords, X selection, cost adjustments, distance, transforms, restrictions, and lifecycle metadata.
+- Status/keyword handling covers timing windows, caps/expiry, cost/speed/power/damage modifiers, spend/draw/creation hooks, and the current roster-specific triggers.
 - Movement Round swaps are implemented; movement is mandatory before combat.
 - Multi-target AoE/Splash/Bounce resolution is implemented; text-only edge cases still rely on legacy parsing.
 - Push/Pull/Swap and Redirect/Cover resolve in core; UI prompts send redirect/push choices with deterministic fallback.

@@ -16,6 +16,7 @@
 - DONE: Turn End triggers for Barrier, Invulnerable, Regen, Renewal, Thorns, Disarm, Root, Seal, Silence, Stagger, Taunt, Wound, Wither, and Cover/Stun expiry.
 - DONE: Thorns on-hit damage and Wound/Wither healing reduction across all healing (including Regen/Renewal).
 - DONE: Audit remaining status/keyword effects; no current cards use unimplemented keywords.
+- DONE: Audit every canonical card line against structured effects and explicit parser contracts; golden coverage prevents silent rules-text no-ops.
 - DONE: regression test ensures transform-target cards are not dealt into the deck/hand.
 - DONE: Enforced combat-round "cannot play cards" via structured `block_play` + golden test.
 - Track remaining core gaps in `RULES_IMPLEMENTATION.md` as new mechanics land.

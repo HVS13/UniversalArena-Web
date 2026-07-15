@@ -701,6 +701,16 @@
                 "kind": "flat",
                 "value": 1
               }
+            },
+            {
+              "timing": "after_use",
+              "type": "set_status",
+              "status": "The World: Time Stop",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 0
+              }
             }
           ]
         }
@@ -3690,6 +3700,16 @@
               "condition": {
                 "kind": "self_has_status",
                 "status": "One-Tail Cloak"
+              }
+            },
+            {
+              "timing": "after_use",
+              "type": "reduce_status",
+              "status": "Kyuubi Chakra",
+              "stat": "count",
+              "amount": {
+                "kind": "flat",
+                "value": 2
               }
             }
           ]

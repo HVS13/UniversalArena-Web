@@ -2,6 +2,7 @@ import { characters as roster, dataManifest } from "@ua/data";
 import type { Character, Effect } from "@ua/data";
 import {
   applyAction,
+  auditCardTextCoverage,
   createMatchState,
   exportTranscript,
   getCardPlayOptions,
@@ -4426,6 +4427,89 @@ const runCardPlayQueryTest = (): GoldenResult => {
   }
 };
 
+const runCardTextCoverageAudit = (): GoldenResult => {
+  const issues = auditCardTextCoverage(roster);
+  const label = "Every canonical card line has an executable rules contract";
+  if (issues.length) {
+    return {
+      label,
+      ok: false,
+      details: issues.map((issue) => `${issue.characterId}/${issue.cardSlot}: ${issue.line} (${issue.reason})`).join(" | "),
+    };
+  }
+  const negativeControl = JSON.parse(JSON.stringify(roster)) as Character[];
+  const dioUltimate = negativeControl
+    .find((character) => character.id === "dio-brando-part-3")
+    ?.cards.find((card) => card.slot === "ultimate");
+  if (!dioUltimate) return { label, ok: false, details: "Missing DIO audit fixture." };
+  dioUltimate.effects = dioUltimate.effects?.filter((effect) => effect.type !== "set_status");
+  dioUltimate.effect.push("Teleport behind the target.");
+  const negativeIssues = auditCardTextCoverage(negativeControl);
+  if (!negativeIssues.some((issue) => /status set/.test(issue.reason))) {
+    return { label, ok: false, details: "Audit did not detect a removed structured cleanup effect." };
+  }
+  if (!negativeIssues.some((issue) => /No supported/.test(issue.reason))) {
+    return { label, ok: false, details: "Audit did not detect unknown rules wording." };
+  }
+  return { label, ok: true };
+};
+
+const runFinisherCleanupEffectsTest = (): GoldenResult => {
+  const label = "Structured finisher cleanup effects execute after use";
+  const runFinisher = (
+    characterId: string,
+    cardSlot: string,
+    statuses: Record<string, ReturnType<typeof potencyStatus> | ReturnType<typeof valueStatus>>
+  ) => {
+    const character = roster.find((entry) => entry.id === characterId);
+    if (!character) throw new Error(`Missing ${characterId}.`);
+    const characters = [character, ...fillerCharacters];
+    const players = [
+      { id: "p1" as const, name: "Finisher", characterIds: [characterId, "filler-1", "filler-2"] },
+      { id: "p2" as const, name: "Target", characterIds: ["filler-1", "filler-2", characterId] },
+    ];
+    let state = createSeededCombatState(characters, players);
+    const source = state.players.p1.characters[0];
+    Object.assign(source.statuses, statuses);
+    state.players.p1.ultimate = 100;
+    state = applyOrThrow(state, {
+      type: "play_card",
+      playerId: "p1",
+      cardSlot,
+      sourceId: source.id,
+      zone: cardSlot === "ultimate" ? "fast" : "normal",
+      targetId: state.players.p2.characters[0].id,
+      xValue: 0,
+    }, characters);
+    state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+    return applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  };
+
+  try {
+    const dioState = runFinisher("dio-brando-part-3", "ultimate", {
+      "The World: Time Stop": potencyStatus(1, 3),
+      "Stolen Blood": valueStatus(0),
+    });
+    const dio = dioState.players.p1.characters[0];
+    if ((dio.statuses["The World: Time Stop"]?.count ?? 0) !== 0) {
+      throw new Error("ROAD ROLLER DA! did not clear Time Stop Count.");
+    }
+
+    const narutoState = runFinisher("naruto-uzumaki-pre-timeskip", "ultimate-2", {
+      "One-Tail Cloak": stackStatus(1),
+      "Shadow Clones": valueStatus(2),
+      "Kyuubi Chakra": potencyStatus(1, 5),
+    });
+    const naruto = narutoState.players.p1.characters[0];
+    if (naruto.statuses["Kyuubi Chakra"]?.count !== 3) {
+      throw new Error("One-Tail Rasengan did not reduce Kyuubi Chakra Count by 2.");
+    }
+    return { label, ok: true };
+  } catch (error) {
+    return { label, ok: false, details: String(error) };
+  }
+};
+
 export const runGoldenTests = () => [
   runDataManifestTest(),
   runStateHashAndTranscriptCompatibilityTest(),
@@ -4461,6 +4545,8 @@ export const runGoldenTests = () => [
   runHpThresholdAndReplacementInnateTest(),
   runStructuredInnateMitigationTest(),
   runCardPlayQueryTest(),
+  runCardTextCoverageAudit(),
+  runFinisherCleanupEffectsTest(),
 ];
 
 if (process.argv[1]?.includes("golden")) {

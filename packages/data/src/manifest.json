@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "sourceRepository": "HVS13/UniversalArena",
-  "sourceCommit": "4bef7275e36023aa1c3b89b181fa447113ec609a",
-  "generatedAt": "2026-07-15T15:41:41+07:00",
-  "contentHash": "sha256:fe61d4ea4eb8c241caf46c60abd774f3c1f89f5337c60c687cded5a60dbc7f11",
+  "sourceCommit": "546baba6da30a7359bd91addd85c8f8680b6c257",
+  "generatedAt": "2026-07-15T17:15:55+07:00",
+  "contentHash": "sha256:53b9ba0b035458dec1702de2c34e313c73b6a380d8d1d240c598e71077f71600",
   "rosterCount": 9
 }

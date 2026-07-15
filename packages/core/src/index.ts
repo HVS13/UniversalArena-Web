@@ -262,7 +262,7 @@ export type MatchTranscript = {
 
 const cloneState = (state: MatchState) => JSON.parse(JSON.stringify(state)) as MatchState;
 
-export const engineVersion = "0.1.0";
+export const engineVersion = "0.2.0-friend-alpha";
 export const transcriptVersion = 3;
 export const serializeMatchState = (state: MatchState) => serializeGameplayState(state);
 export const hashMatchState = (state: MatchState) => hashGameplayState(state);

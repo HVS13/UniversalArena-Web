@@ -126,4 +126,6 @@ The release checklist must link or record:
 
 ## Current status
 
-Milestone 0 baseline evidence is recorded in [`BASELINE.md`](BASELINE.md). Requirements in this contract are acceptance targets; a listed requirement is not considered complete until its required evidence exists.
+Milestones 0-11 have prepared a locally verified `0.2.0-friend-alpha` candidate. Automated gates and structured smoke evidence are recorded in [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) and [`PLAYTEST_REPORT.md`](PLAYTEST_REPORT.md).
+
+The current release decision is **NO-GO**. Full local/relay winner flows, special-window recovery, relay-restart behavior, a real remote friend match, and manual verification of the completed-match download remain required. A listed requirement is not considered complete until its evidence exists.

@@ -331,6 +331,7 @@ const runRestrictionTest = (characters: Character[]): HarnessResult[] => {
   state = applyOrThrow(state, playFromHand(state, "p1", "5", "normal"), characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
 
   const allowed = applyAction(state, playFromHand(state, "p1", "6", "normal"), characters);
   if (allowed.error) {

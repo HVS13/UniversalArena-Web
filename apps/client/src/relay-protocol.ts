@@ -29,8 +29,8 @@ export type StateSyncPayload = SetupSyncPayload & {
   dataContentHash: string;
 };
 
-export const clientVersion = "0.1.0";
-export const relayVersion = "0.1.0";
+export const clientVersion = "0.2.0-friend-alpha";
+export const relayVersion = "0.2.0-friend-alpha";
 export const relayProtocolVersion = 1;
 export const defaultRelayUrl = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
 export const multiplayerSeatCount = 2;

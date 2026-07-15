@@ -410,8 +410,8 @@ const runDebugBundleTest = (): GoldenResult => {
     state.log.push("Alice Example challenged Bob Example.");
     const bundle = createDebugBundle(state, {
       exportedAt: "2026-07-15T00:00:00.000Z",
-      clientVersion: "0.1.0",
-      relayVersion: "0.1.0",
+      clientVersion: "0.2.0-friend-alpha",
+      relayVersion: "0.2.0-friend-alpha",
       protocolVersion: 1,
     });
     const serialized = JSON.stringify(bundle);

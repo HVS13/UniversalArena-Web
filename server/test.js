@@ -72,7 +72,7 @@ const run = async () => {
   };
   const compatibility = {
     protocolVersion: 1,
-    engineVersion: "0.1.0",
+    engineVersion: "0.2.0-friend-alpha",
     dataSchemaVersion: 1,
     dataContentHash: `sha256:${"a".repeat(64)}`,
   };

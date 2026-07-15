@@ -1,12 +1,13 @@
 {
   "name": "@ua/core",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0-friend-alpha",
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "scripts": {
-    "golden": "tsx src/golden.ts"
+    "golden": "tsx src/golden.ts",
+    "harness": "tsx src/harness.ts"
   },
   "exports": {
     ".": "./src/index.ts"

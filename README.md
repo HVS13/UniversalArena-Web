@@ -4,6 +4,7 @@ Web-based Universal Arena prototype (local hot-seat 3v3 with shared team deck/ha
 
 Friend Alpha stabilization is governed by [`FRIEND_ALPHA.md`](FRIEND_ALPHA.md), with the captured starting state in [`BASELINE.md`](BASELINE.md).
 Structured milestone-10 browser evidence and remaining release blockers are recorded in [`PLAYTEST_REPORT.md`](PLAYTEST_REPORT.md).
+The final reproducible gate and current ship decision are recorded in [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md); run `pnpm release:check` for the combined web/core/relay check.
 
 ## Repo layout
 

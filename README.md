@@ -2,6 +2,8 @@
 
 Web-based Universal Arena prototype (local hot-seat 3v3 with shared team deck/hand). Data is exported from the docs repo and the rules engine is still incomplete.
 
+Friend Alpha stabilization is governed by [`FRIEND_ALPHA.md`](FRIEND_ALPHA.md), with the captured starting state in [`BASELINE.md`](BASELINE.md).
+
 ## Repo layout
 
 - `apps/client`: React + Vite UI.
@@ -110,5 +112,5 @@ seat can restore the current setup or match after reconnecting.
 
 ## What's next
 
-See `TODO.md` for the planned roadmap.
+See `FRIEND_ALPHA.md` for the v0.2 acceptance contract and `TODO.md` for the broader roadmap.
 

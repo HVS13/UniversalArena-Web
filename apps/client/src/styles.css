@@ -221,6 +221,50 @@ button {
   color: var(--ua-muted);
 }
 
+.ua-lobby-status {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ua-lobby-status__players {
+  color: var(--ua-muted);
+  font-size: 0.85rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.ua-lobby-status__player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 9px 12px;
+  border: 1px solid var(--ua-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ua-muted);
+}
+
+.ua-lobby-status__player strong {
+  color: var(--ua-ink);
+}
+
+.ua-status-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--ua-danger);
+  box-shadow: 0 0 12px rgba(255, 111, 122, 0.45);
+}
+
+.ua-status-dot.is-online {
+  background: var(--ua-success);
+  box-shadow: 0 0 12px rgba(42, 213, 141, 0.42);
+}
+
 .ua-command-bar {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

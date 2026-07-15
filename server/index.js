@@ -3,6 +3,7 @@ const { WebSocketServer, WebSocket } = require("ws");
 
 const PORT = Number(process.env.PORT) || 8787;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 2;
+const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 120000;
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
@@ -13,7 +14,7 @@ const wss = new WebSocketServer({ server });
 const lobbies = new Map();
 
 const send = (ws, payload) => {
-  if (ws.readyState === WebSocket.OPEN) {
+  if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(payload));
   }
 };
@@ -30,6 +31,8 @@ const lobbySnapshot = (lobby) => ({
   players: Array.from(lobby.players.values()).map((player) => ({
     id: player.id,
     name: player.name,
+    connected: player.connected,
+    ready: player.ready,
   })),
 });
 
@@ -49,14 +52,57 @@ const createLobbyCode = () => {
 const closeLobby = (lobby, reason) => {
   broadcast(lobby, { type: "lobby_closed", reason });
   lobby.players.forEach((player) => {
-    if (player.ws.uaClient) {
+    if (player.cleanupTimer) {
+      clearTimeout(player.cleanupTimer);
+      player.cleanupTimer = null;
+    }
+    if (player.ws?.uaClient) {
       player.ws.uaClient.lobbyCode = null;
     }
   });
   lobbies.delete(lobby.code);
 };
 
-const leaveLobby = (client) => {
+const removePlayer = (lobby, playerId) => {
+  const player = lobby.players.get(playerId);
+  if (!player) return;
+
+  if (player.cleanupTimer) {
+    clearTimeout(player.cleanupTimer);
+    player.cleanupTimer = null;
+  }
+
+  lobby.players.delete(playerId);
+
+  if (!lobby.players.size) {
+    lobbies.delete(lobby.code);
+    return;
+  }
+
+  if (lobby.hostId === playerId) {
+    closeLobby(lobby, "Host left the lobby.");
+    return;
+  }
+
+  sendSnapshot(lobby);
+};
+
+const schedulePlayerCleanup = (lobby, player) => {
+  if (player.cleanupTimer) {
+    clearTimeout(player.cleanupTimer);
+  }
+
+  player.cleanupTimer = setTimeout(() => {
+    player.cleanupTimer = null;
+    const currentLobby = lobbies.get(lobby.code);
+    if (!currentLobby) return;
+    const currentPlayer = currentLobby.players.get(player.id);
+    if (!currentPlayer || currentPlayer.connected) return;
+    removePlayer(currentLobby, player.id);
+  }, RECONNECT_GRACE_MS);
+};
+
+const leaveLobby = (client, options = {}) => {
   const code = client.lobbyCode;
   if (!code) return;
 
@@ -66,20 +112,63 @@ const leaveLobby = (client) => {
     return;
   }
 
-  lobby.players.delete(client.id);
+  const player = lobby.players.get(client.id);
   client.lobbyCode = null;
+  if (!player) return;
 
-  if (!lobby.players.size) {
-    lobbies.delete(code);
+  if (options.intentional) {
+    removePlayer(lobby, client.id);
     return;
   }
 
-  if (lobby.hostId === client.id) {
-    closeLobby(lobby, "Host left the lobby.");
-    return;
-  }
-
+  player.connected = false;
+  player.ready = false;
+  player.ws = null;
+  player.disconnectedAt = Date.now();
+  schedulePlayerCleanup(lobby, player);
   sendSnapshot(lobby);
+};
+
+const attachPlayer = (lobby, client) => {
+  const existing = lobby.players.get(client.id);
+  if (existing) {
+    if (existing.cleanupTimer) {
+      clearTimeout(existing.cleanupTimer);
+      existing.cleanupTimer = null;
+    }
+    if (existing.ws && existing.ws !== client.ws && existing.ws.readyState === WebSocket.OPEN) {
+      if (existing.ws.uaClient) {
+        existing.ws.uaClient.lobbyCode = null;
+      }
+      send(existing.ws, { type: "session_replaced" });
+      existing.ws.close();
+    }
+    existing.name = client.name;
+    existing.ws = client.ws;
+    existing.connected = true;
+    existing.disconnectedAt = null;
+    client.lobbyCode = lobby.code;
+    sendSnapshot(lobby);
+    return true;
+  }
+
+  if (lobby.players.size >= MAX_PLAYERS) {
+    send(client.ws, { type: "error", message: "Lobby is full." });
+    return false;
+  }
+
+  lobby.players.set(client.id, {
+    id: client.id,
+    name: client.name,
+    ws: client.ws,
+    connected: true,
+    ready: false,
+    disconnectedAt: null,
+    cleanupTimer: null,
+  });
+  client.lobbyCode = lobby.code;
+  sendSnapshot(lobby);
+  return true;
 };
 
 wss.on("connection", (ws) => {
@@ -109,6 +198,7 @@ wss.on("connection", (ws) => {
       }
       client.id = message.clientId;
       client.name = message.name.toString().slice(0, 20);
+      client.ws = ws;
       send(ws, { type: "hello_ack", id: client.id });
       return;
     }
@@ -132,14 +222,12 @@ wss.on("connection", (ws) => {
         hostId: client.id,
         players: new Map(),
       };
-      lobby.players.set(client.id, { id: client.id, name: client.name, ws });
-      client.lobbyCode = code;
       lobbies.set(code, lobby);
-      sendSnapshot(lobby);
+      attachPlayer(lobby, client);
       return;
     }
 
-    if (message.type === "join_lobby") {
+    if (message.type === "join_lobby" || message.type === "rejoin_lobby") {
       if (client.lobbyCode) {
         send(ws, { type: "error", message: "Already in a lobby." });
         return;
@@ -150,18 +238,32 @@ wss.on("connection", (ws) => {
         send(ws, { type: "error", message: "Lobby not found." });
         return;
       }
-      if (lobby.players.size >= MAX_PLAYERS) {
-        send(ws, { type: "error", message: "Lobby is full." });
+      if (message.type === "rejoin_lobby" && !lobby.players.has(client.id)) {
+        send(ws, { type: "error", message: "Your previous seat is no longer in that lobby." });
         return;
       }
-      lobby.players.set(client.id, { id: client.id, name: client.name, ws });
-      client.lobbyCode = code;
-      sendSnapshot(lobby);
+      attachPlayer(lobby, client);
       return;
     }
 
     if (message.type === "leave_lobby") {
-      leaveLobby(client);
+      leaveLobby(client, { intentional: true });
+      return;
+    }
+
+    if (message.type === "set_ready") {
+      const lobby = lobbies.get(client.lobbyCode);
+      if (!lobby) {
+        send(ws, { type: "error", message: "Not in a lobby." });
+        return;
+      }
+      const player = lobby.players.get(client.id);
+      if (!player) {
+        send(ws, { type: "error", message: "Not in a lobby." });
+        return;
+      }
+      player.ready = Boolean(message.ready);
+      sendSnapshot(lobby);
       return;
     }
 
@@ -188,6 +290,13 @@ wss.on("connection", (ws) => {
       ) {
         send(ws, { type: "error", message: "Only the host can update the match state." });
         return;
+      }
+
+      if (message.type === "lobby_event" && message.event === "return_to_lobby") {
+        lobby.players.forEach((player) => {
+          player.ready = false;
+        });
+        sendSnapshot(lobby);
       }
 
       broadcast(lobby, {

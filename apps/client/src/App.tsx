@@ -26,7 +26,7 @@ type RelayConnectionStatus = "idle" | "connecting" | "connected";
 type RelayLobbySnapshot = {
   code: string;
   hostId: string;
-  players: { id: string; name: string }[];
+  players: { id: string; name: string; connected?: boolean; ready?: boolean }[];
 };
 
 type RelayEventMessage = {
@@ -42,6 +42,8 @@ type SetupSyncPayload = {
 };
 
 const defaultRelayUrl = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
+const storedLobbyCodeKey = "ua-relay-lobby-code";
+const multiplayerSeatCount = 2;
 
 const createClientId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -64,6 +66,21 @@ const getStoredClientId = () => {
 const getStoredSkipCombat = () => {
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem("ua-skip-combat") === "true";
+};
+
+const getStoredLobbyCode = () => {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(storedLobbyCodeKey) ?? "";
+};
+
+const storeLobbyCode = (code: string) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(storedLobbyCodeKey, code);
+};
+
+const clearStoredLobbyCode = () => {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(storedLobbyCodeKey);
 };
 
 const defaultSelection = (): SelectionState => {
@@ -1577,7 +1594,7 @@ const App = () => {
   const [relayUrl, setRelayUrl] = useState(defaultRelayUrl);
   const [relayName, setRelayName] = useState("Player 1");
   const [relayStatus, setRelayStatus] = useState<RelayConnectionStatus>("idle");
-  const [lobbyCode, setLobbyCode] = useState("");
+  const [lobbyCode, setLobbyCode] = useState(getStoredLobbyCode);
   const [lobby, setLobby] = useState<RelayLobbySnapshot | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -1598,6 +1615,7 @@ const App = () => {
   const clientIdRef = useRef(getStoredClientId());
   const socketRef = useRef<WebSocket | null>(null);
   const lobbyRef = useRef<RelayLobbySnapshot | null>(null);
+  const intentionalDisconnectRef = useRef(false);
   const selectionRef = useRef(selection);
   const namesRef = useRef(names);
   const matchStateRef = useRef<MatchState | null>(null);
@@ -1624,6 +1642,26 @@ const App = () => {
   const isHost = lobby?.hostId === clientId;
   const localSeat = isMultiplayer ? (isHost ? "p1" : "p2") : null;
   const hasRemotePlayer = (lobby?.players.length ?? 0) > 1;
+  const localLobbyPlayer = lobby?.players.find((player) => player.id === clientId) ?? null;
+  const connectedLobbyPlayers = lobby?.players.filter((player) => player.connected !== false) ?? [];
+  const localReady = Boolean(localLobbyPlayer?.ready);
+  const allLobbyPlayersConnected = Boolean(
+    lobby && connectedLobbyPlayers.length === multiplayerSeatCount
+  );
+  const allLobbyPlayersReady = Boolean(
+    lobby &&
+    lobby.players.length === multiplayerSeatCount &&
+    lobby.players.every((player) => player.ready)
+  );
+  const canStartMultiplayer = !isMultiplayer || (allLobbyPlayersConnected && allLobbyPlayersReady);
+  const multiplayerStartBlocker =
+    !isMultiplayer
+      ? null
+      : !allLobbyPlayersConnected
+        ? "Waiting for both players to connect."
+        : !allLobbyPlayersReady
+          ? "Both players must lock Ready before the host can start."
+          : null;
   useEffect(() => {
     selectionRef.current = selection;
   }, [selection]);
@@ -1681,6 +1719,41 @@ const App = () => {
     },
     [reportMessage]
   );
+  const setLocalReady = useCallback(
+    (ready: boolean) => {
+      if (!lobbyRef.current) return;
+      sendRelay({ type: "set_ready", ready });
+    },
+    [sendRelay]
+  );
+  const requestRelaySync = useCallback(() => {
+    if (!lobbyRef.current) return;
+    if (!isConnected) {
+      reportMessage("Reconnect to the relay before resyncing.");
+      return;
+    }
+    if (lobbyRef.current.hostId === clientIdRef.current) {
+      if (matchStateRef.current) {
+        sendRelay({
+          type: "game_event",
+          event: "state_update",
+          data: {
+            state: matchStateRef.current,
+            selection: selectionRef.current,
+            names: namesRef.current,
+          },
+        });
+      } else {
+        sendRelay({
+          type: "game_event",
+          event: "selection_update",
+          data: { selection: selectionRef.current, names: namesRef.current },
+        });
+      }
+      return;
+    }
+    sendRelay({ type: "game_event", event: "sync_request", data: {} });
+  }, [isConnected, reportMessage, sendRelay]);
   const broadcastSelectionState = useCallback(
     (payload: SetupSyncPayload) => {
       if (!isMultiplayer || !isHost) return;
@@ -1714,6 +1787,9 @@ const App = () => {
       }
       setSelection(nextSelection);
       setNames(nextNames);
+      if (isMultiplayer && isConnected && localReady && localSeat === playerId) {
+        setLocalReady(false);
+      }
       if (!isMultiplayer) return;
       if (isHost) {
         broadcastSelectionState({ selection: nextSelection, names: nextNames });
@@ -1723,7 +1799,16 @@ const App = () => {
         requestSelectionUpdate(playerId, nextSelection[playerId], nextNames[playerId]);
       }
     },
-    [broadcastSelectionState, isHost, isMultiplayer, localSeat, requestSelectionUpdate]
+    [
+      broadcastSelectionState,
+      isConnected,
+      isHost,
+      isMultiplayer,
+      localReady,
+      localSeat,
+      requestSelectionUpdate,
+      setLocalReady,
+    ]
   );
   const applyActionAndSync = useCallback(
     (action: Parameters<typeof applyAction>[1]) => {
@@ -1774,6 +1859,10 @@ const App = () => {
   );
   const dispatchAction = useCallback(
     (action: Parameters<typeof applyAction>[1]) => {
+      if (isMultiplayer && !isConnected) {
+        reportMessage("Reconnect to the relay before taking match actions.");
+        return;
+      }
       if (isMultiplayer && localSeat && action.playerId !== localSeat) {
         reportMessage("Not your team.");
         return;
@@ -1788,14 +1877,16 @@ const App = () => {
       }
       sendRelay({ type: "game_event", event: "action_request", data: { action } });
     },
-    [applyActionAndSync, isHost, isMultiplayer, localSeat, reportMessage, sendRelay]
+    [applyActionAndSync, isConnected, isHost, isMultiplayer, localSeat, reportMessage, sendRelay]
   );
   const canEditSetup = (playerId: PlayerId) => {
     if (!isMultiplayer) return true;
+    if (!isConnected) return false;
     if (!hasRemotePlayer) return true;
     return localSeat === playerId;
   };
-  const canControlPlayer = (playerId: PlayerId) => !isMultiplayer || localSeat === playerId;
+  const canControlPlayer = (playerId: PlayerId) =>
+    !isMultiplayer || (isConnected && localSeat === playerId);
   const relayStatusLabel =
     relayStatus === "connecting"
       ? "Connecting"
@@ -1803,7 +1894,9 @@ const App = () => {
         ? isMultiplayer
           ? "In Lobby"
           : "Connected"
-        : "Offline";
+        : isMultiplayer
+          ? "Disconnected"
+          : "Offline";
   const handleRelayEvent = useCallback(
     (message: RelayEventMessage) => {
       if (message.type === "lobby_event") {
@@ -1946,6 +2039,10 @@ const App = () => {
       if (!parsed || typeof parsed !== "object") return;
       const message = parsed as { type?: string; [key: string]: unknown };
       if (message.type === "hello_ack") return;
+      if (message.type === "session_replaced") {
+        reportMessage("This relay session was opened somewhere else.");
+        return;
+      }
       if (message.type === "error" && typeof message.message === "string") {
         reportMessage(message.message);
         return;
@@ -1953,9 +2050,11 @@ const App = () => {
       if (message.type === "lobby_snapshot") {
         const snapshot = message.lobby as RelayLobbySnapshot | undefined;
         if (!snapshot) return;
+        storeLobbyCode(snapshot.code);
+        setLobbyCode(snapshot.code);
         setLobby(snapshot);
-        if (snapshot.hostId !== clientId && !syncRequestedRef.current) {
-          syncRequestedRef.current = true;
+        const hostPlayer = snapshot.players.find((player) => player.id === snapshot.hostId);
+        if (snapshot.hostId !== clientId && hostPlayer?.connected !== false) {
           sendRelay({ type: "game_event", event: "sync_request", data: {} });
         }
         return;
@@ -1964,6 +2063,7 @@ const App = () => {
         const reason =
           typeof message.reason === "string" ? message.reason : "Lobby closed.";
         setLobby(null);
+        clearStoredLobbyCode();
         syncRequestedRef.current = false;
         setMatchState(null);
         setStage("setup");
@@ -1985,6 +2085,7 @@ const App = () => {
       reportMessage("Relay URL is required.");
       return;
     }
+    intentionalDisconnectRef.current = false;
     setRelayStatus("connecting");
     const socket = new WebSocket(target);
     socketRef.current = socket;
@@ -1993,6 +2094,10 @@ const App = () => {
       syncRequestedRef.current = false;
       const name = relayName.trim() || "Player";
       sendRelay({ type: "hello", clientId, name });
+      const rejoinCode = lobbyRef.current?.code ?? getStoredLobbyCode();
+      if (rejoinCode) {
+        sendRelay({ type: "rejoin_lobby", code: rejoinCode });
+      }
     };
     socket.onmessage = (event) => {
       handleRelayMessage(event.data);
@@ -2004,23 +2109,30 @@ const App = () => {
       setRelayStatus("idle");
       socketRef.current = null;
       syncRequestedRef.current = false;
+      if (intentionalDisconnectRef.current) {
+        intentionalDisconnectRef.current = false;
+        return;
+      }
       if (lobbyRef.current) {
-        setLobby(null);
-        setMatchState(null);
-        setStage("setup");
-        setPendingPlay(null);
-        resetVisualState();
+        reportMessage(`Relay disconnected. Reconnect to rejoin lobby ${lobbyRef.current.code}.`);
       }
     };
   }, [clientId, handleRelayMessage, relayName, relayStatus, relayUrl, reportMessage, resetVisualState, sendRelay]);
   const disconnectRelay = useCallback(() => {
     const socket = socketRef.current;
     if (!socket) return;
+    intentionalDisconnectRef.current = true;
     if (lobbyRef.current) {
       sendRelay({ type: "leave_lobby" });
+      clearStoredLobbyCode();
+      setLobby(null);
+      setMatchState(null);
+      setStage("setup");
+      setPendingPlay(null);
+      resetVisualState();
     }
     socket.close();
-  }, [sendRelay]);
+  }, [resetVisualState, sendRelay]);
   const createLobby = useCallback(() => {
     if (!isConnected) {
       reportMessage("Connect to the relay first.");
@@ -2043,8 +2155,11 @@ const App = () => {
     sendRelay({ type: "join_lobby", code });
   }, [isConnected, isMultiplayer, lobbyCode, reportMessage, sendRelay]);
   const leaveLobby = useCallback(() => {
-    if (!isConnected || !lobby) return;
-    sendRelay({ type: "leave_lobby" });
+    if (!lobby) return;
+    if (isConnected) {
+      sendRelay({ type: "leave_lobby" });
+    }
+    clearStoredLobbyCode();
     setLobby(null);
     syncRequestedRef.current = false;
     setMatchState(null);
@@ -2128,6 +2243,14 @@ const App = () => {
         reportMessage("Only the host can start the match.");
         return;
       }
+      if (isMultiplayer && !isConnected) {
+        reportMessage("Reconnect to the relay before starting the match.");
+        return;
+      }
+      if (isMultiplayer && !canStartMultiplayer) {
+        reportMessage(multiplayerStartBlocker ?? "Lobby is not ready.");
+        return;
+      }
       resetVisualState();
       const state = createMatchState(roster, [
         { id: "p1", name: names.p1.trim() || "Player 1", characterIds: selection.p1 },
@@ -2151,6 +2274,10 @@ const App = () => {
   };
 
   const resetMatch = () => {
+    if (isMultiplayer && (!isHost || !isConnected)) {
+      reportMessage("Only the connected host can return to setup.");
+      return;
+    }
     setMatchState(null);
     setStage("setup");
     setMessage(null);
@@ -2878,12 +3005,42 @@ const App = () => {
           >
             Leave Lobby
           </button>
+          <button
+            className={localReady ? "ua-button ua-button--ghost" : "ua-button"}
+            disabled={!isConnected || !isMultiplayer}
+            onClick={() => setLocalReady(!localReady)}
+          >
+            {localReady ? "Unready" : "Ready"}
+          </button>
+          <button
+            className="ua-button ua-button--ghost"
+            disabled={!isConnected || !isMultiplayer}
+            onClick={requestRelaySync}
+          >
+            Resync
+          </button>
         </div>
         {isMultiplayer ? (
-          <p className="ua-zone-status">
-            Lobby {lobby?.code} • {isHost ? "Host (P1)" : "Guest (P2)"} • Players:{" "}
-            {lobby?.players.map((player) => player.name).join(", ")}
-          </p>
+          <div className="ua-lobby-status">
+            <p className="ua-zone-status">
+              Lobby {lobby?.code} | {isHost ? "Host (P1)" : "Guest (P2)"} |{" "}
+              {multiplayerStartBlocker ?? "Ready to start."}
+            </p>
+            <div className="ua-lobby-status__players">
+              {lobby?.players.map((player) => {
+                const connected = player.connected !== false;
+                return (
+                  <div key={player.id} className="ua-lobby-status__player">
+                    <span className={connected ? "ua-status-dot is-online" : "ua-status-dot"}></span>
+                    <strong>{player.name}</strong>
+                    <span>{player.id === lobby?.hostId ? "Host" : "Guest"}</span>
+                    <span>{connected ? "Online" : "Disconnected"}</span>
+                    <span>{player.ready ? "Ready" : "Not ready"}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         ) : (
           <p className="ua-zone-status">
             Use the relay to play remotely. The match setup below controls the in-game names.
@@ -3004,7 +3161,7 @@ const App = () => {
         <div className="ua-actions">
           <button
             className="ua-button ua-button--primary"
-            disabled={isMultiplayer && !isHost}
+            disabled={isMultiplayer && (!isHost || !isConnected || !canStartMultiplayer)}
             onClick={startMatch}
           >
             Start Match
@@ -3437,11 +3594,11 @@ const App = () => {
           <p className="ua-kicker">Universal Arena</p>
           <h1>{isMultiplayer ? "Multiplayer Match" : "Local Match"}</h1>
           <p className="ua-subtitle">
-            Turn {matchState.turn} • Active: {activeTeam.name}
+            Turn {matchState.turn} | Active: {activeTeam.name}
           </p>
           {isMultiplayer && lobby && (
             <p className="ua-zone-status">
-              Lobby {lobby.code} • {isHost ? "Host (P1)" : "Guest (P2)"}
+              Lobby {lobby.code} | {isHost ? "Host (P1)" : "Guest (P2)"}
             </p>
           )}
         </div>
@@ -3451,9 +3608,18 @@ const App = () => {
               <input type="checkbox" checked={skipCombat} onChange={toggleSkipCombat} />
               Skip Combat
             </label>
+            {isMultiplayer && (
+              <button
+                className="ua-button ua-button--ghost"
+                disabled={!isConnected}
+                onClick={requestRelaySync}
+              >
+                Resync
+              </button>
+            )}
             <button
               className="ua-button ua-button--ghost"
-              disabled={isMultiplayer && !isHost}
+              disabled={isMultiplayer && (!isHost || !isConnected)}
               onClick={resetMatch}
             >
               Back to Setup
@@ -3484,6 +3650,12 @@ const App = () => {
           <span>Reactors</span>
           <strong>{reactionNames.length ? reactionNames.join(", ") : "None"}</strong>
         </div>
+        {isMultiplayer && (
+          <div className="ua-command-bar__item">
+            <span>Relay</span>
+            <strong>{relayStatusLabel}</strong>
+          </div>
+        )}
       </section>
 
       <section className="ua-panel ua-panel--wide ua-zone-banner">

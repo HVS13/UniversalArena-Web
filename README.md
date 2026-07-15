@@ -75,6 +75,11 @@ the free session-only playit.gg tunnel setup. HTTPS-hosted clients will require
 a `wss://` endpoint. The client now connects via the setup screen; you can set
 `VITE_RELAY_URL` or paste a relay URL in the UI.
 
+Multiplayer is host-authoritative: the host creates the lobby as P1, the guest
+joins as P2, both players lock Ready, and the host starts the match. If a socket
+drops, reconnect to the same relay and the client will try to reclaim the saved
+lobby code, then request a state resync from the host.
+
 ## Deterministic replay and transcripts
 
 - Deterministic replay is built into `@ua/core`. Matches can be seeded and recorded.
@@ -89,7 +94,9 @@ a `wss://` endpoint. The client now connects via the setup screen; you can set
 - Multi-target AoE/Splash/Bounce resolution is implemented; text-only edge cases still rely on legacy parsing.
 - Push/Pull/Swap and Redirect/Cover resolve in core; UI prompts send redirect/push choices with deterministic fallback.
 - Scry/Search/Seek prompt for discard/reorder/take/pick inputs and fall back deterministically if left on Auto.
-- Multiplayer is relay-based and host-authoritative; reconnect/resync UX is still basic.
+- Multiplayer is relay-based and host-authoritative; lobbies support Ready state,
+  manual resync, and short reconnect recovery, but they are still in-memory
+  session lobbies rather than persistent accounts.
 - Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines, surfaced in UI tooltips.
 
 ## Gameplay notes

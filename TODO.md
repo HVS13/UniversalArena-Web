@@ -35,7 +35,8 @@
 
 ## Multiplayer
 - DONE: relay client hookup (create/join lobby, host authority, selection sync, state updates).
-- Add reconnect/resync UX, lobby readiness, and connection loss handling polish.
+- DONE: reconnect/resync UX, lobby readiness, and connection loss handling polish.
+- Test with a real remote play session and tune reconnect grace / relay hosting instructions as needed.
 
 ## Tooling
 - DONE: golden test runner for core engine (seeded replay + transcript snapshot).

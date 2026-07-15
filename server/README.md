@@ -33,8 +33,17 @@ Stop the agent when the session ends; it is not always-on hosting.
 
 - `PORT` (default: 8787)
 - `MAX_PLAYERS` (default: 2)
+- `RECONNECT_GRACE_MS` (default: 120000)
 
 ## Client wiring
 
 The web client connects to the relay from the setup screen. Use `ws://localhost:8787`
 for local testing or your public relay URL from playit/hosting.
+
+Lobby notes:
+- Each browser keeps a local client id and saved lobby code.
+- If a player refreshes or briefly loses connection, they can reconnect to reclaim
+  their previous seat before `RECONNECT_GRACE_MS` expires.
+- Both connected players must mark Ready in the client before the host can start.
+- The host remains authoritative for match state; guests send action requests and
+  can request a resync if their client falls behind.

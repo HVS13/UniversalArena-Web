@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { characters as roster, keywords, statusEffects } from "@ua/data";
+import { characters as roster, dataManifest, keywords, statusEffects } from "@ua/data";
 import type { Card, Character, Keyword, StatusEffectDefinition } from "@ua/data";
 import {
   applyAction,
   createMatchState,
+  engineVersion,
   getLegalTargets,
+  hashMatchState,
   parseCost,
   type CombatResolution,
   type MatchCharacterId,
@@ -41,6 +43,19 @@ type SetupSyncPayload = {
   selection: SelectionState;
   names: { p1: string; p2: string };
 };
+
+const createStateSyncPayload = (
+  state: MatchState,
+  setup?: Partial<SetupSyncPayload>
+) => ({
+  state,
+  actionId: state.actionId,
+  stateHash: hashMatchState(state),
+  engineVersion,
+  dataSchemaVersion: dataManifest.schemaVersion,
+  dataContentHash: dataManifest.contentHash,
+  ...setup,
+});
 
 const defaultRelayUrl = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
 const storedLobbyCodeKey = "ua-relay-lobby-code";
@@ -1752,11 +1767,10 @@ const App = () => {
         sendRelay({
           type: "game_event",
           event: "state_update",
-          data: {
-            state: matchStateRef.current,
+          data: createStateSyncPayload(matchStateRef.current, {
             selection: selectionRef.current,
             names: namesRef.current,
-          },
+          }),
         });
       } else {
         sendRelay({
@@ -1833,7 +1847,7 @@ const App = () => {
       matchStateRef.current = result.state;
       setMatchState(result.state);
       if (lobbyRef.current && lobbyRef.current.hostId === clientIdRef.current) {
-        sendRelay({ type: "game_event", event: "state_update", data: { state: result.state } });
+        sendRelay({ type: "game_event", event: "state_update", data: createStateSyncPayload(result.state) });
         if (result.error) {
           sendRelay({
             type: "game_event",
@@ -2016,11 +2030,10 @@ const App = () => {
           sendRelay({
             type: "game_event",
             event: "state_update",
-            data: {
-              state: matchStateRef.current,
+            data: createStateSyncPayload(matchStateRef.current, {
               selection: selectionRef.current,
               names: namesRef.current,
-            },
+            }),
           });
         } else {
           sendRelay({
@@ -2280,7 +2293,7 @@ const App = () => {
         sendRelay({
           type: "game_event",
           event: "state_update",
-          data: { state, selection, names },
+          data: createStateSyncPayload(state, { selection, names }),
         });
       }
     } catch (error) {

@@ -69,6 +69,20 @@ const playersReadyToStart = (lobby) =>
   lobby.players.size === MAX_PLAYERS &&
   Array.from(lobby.players.values()).every((player) => player.connected && player.ready);
 
+const isSha256 = (value) => typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
+
+const hasValidStateMetadata = (data) =>
+  data &&
+  Number.isInteger(data.actionId) &&
+  data.actionId >= 0 &&
+  data.state?.actionId === data.actionId &&
+  isSha256(data.stateHash) &&
+  isSha256(data.dataContentHash) &&
+  Number.isInteger(data.dataSchemaVersion) &&
+  data.dataSchemaVersion > 0 &&
+  typeof data.engineVersion === "string" &&
+  data.engineVersion.length > 0;
+
 const resetReadyForChangedSetup = (lobby, nextSnapshot) => {
   const previous = lobby.selectionSnapshot;
   if (!previous?.selection || !previous?.names || !nextSnapshot?.selection || !nextSnapshot?.names) {
@@ -361,6 +375,10 @@ wss.on("connection", (ws) => {
       }
 
       if (message.type === "game_event" && message.event === "state_update") {
+        if (!hasValidStateMetadata(message.data)) {
+          send(ws, { type: "error", message: "Invalid state snapshot compatibility metadata." });
+          return;
+        }
         if (!lobby.matchSnapshot && !playersReadyToStart(lobby)) {
           send(ws, { type: "error", message: "Both connected players must be Ready before starting." });
           return;

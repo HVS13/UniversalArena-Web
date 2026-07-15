@@ -88,6 +88,8 @@ seat can restore the current setup or match after reconnecting.
 ## Deterministic replay and transcripts
 
 - Deterministic replay is built into `@ua/core`. Matches can be seeded and recorded.
+- Transcript version 3 records the engine version, data schema version, and canonical data content hash. Replay rejects unsupported versions, incompatible data, missing characters, malformed actions, and final-state hash mismatches.
+- `hashMatchState` produces a synchronous SHA-256 identity over canonical gameplay state while excluding presentation-only logs, names, transcript data, and resolution animation details.
 - Golden tests live in `packages/core/src/golden.ts` and are executed via `pnpm golden`.
 - If you change core rules, run `pnpm golden` after syncing data.
 

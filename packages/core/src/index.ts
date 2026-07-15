@@ -1,6 +1,7 @@
-import { statusEffects } from "@ua/data";
+import { dataManifest, statusEffects } from "@ua/data";
 import { createRngState, nextFloat, nextInt } from "./rng.ts";
 import type { RngState } from "./rng.ts";
+import { hashGameplayState, serializeGameplayState } from "./state-hash.ts";
 import type {
   Card,
   Character,
@@ -244,10 +245,14 @@ export type TranscriptEntry = {
 };
 
 export type MatchTranscript = {
-  version: 2;
+  version: 3;
+  engineVersion: string;
+  dataSchemaVersion: number;
+  dataContentHash: string;
   seed: number;
   players: { id: PlayerId; name: string; characterIds: string[] }[];
   actions: TranscriptEntry[];
+  finalStateHash?: string;
 };
 
 export type CostVariable = {
@@ -264,20 +269,32 @@ export type CostBreakdown = {
 
 const cloneState = (state: MatchState) => JSON.parse(JSON.stringify(state)) as MatchState;
 
+export const engineVersion = "0.1.0";
+export const transcriptVersion = 3;
+export const serializeMatchState = (state: MatchState) => serializeGameplayState(state);
+export const hashMatchState = (state: MatchState) => hashGameplayState(state);
+
 const cloneAction = (action: Action): Action => ({ ...action });
 
 export const createMatchTranscript = (
   seed: number,
   players: { id: PlayerId; name: string; characterIds: string[] }[]
 ): MatchTranscript => ({
-  version: 2,
+  version: transcriptVersion,
+  engineVersion,
+  dataSchemaVersion: dataManifest.schemaVersion,
+  dataContentHash: dataManifest.contentHash,
   seed,
   players: players.map((player) => ({ ...player })),
   actions: [],
 });
 
-export const exportTranscript = (state: MatchState): MatchTranscript | null =>
-  state.transcript ? (JSON.parse(JSON.stringify(state.transcript)) as MatchTranscript) : null;
+export const exportTranscript = (state: MatchState): MatchTranscript | null => {
+  if (!state.transcript) return null;
+  const transcript = JSON.parse(JSON.stringify(state.transcript)) as MatchTranscript;
+  transcript.finalStateHash = hashMatchState(state);
+  return transcript;
+};
 
 const recordTranscriptEntry = (
   state: MatchState,
@@ -6282,16 +6299,102 @@ export const applyAction = (
   return finalize();
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const isPlayerId = (value: unknown): value is PlayerId => value === "p1" || value === "p2";
+
+const isOptionalString = (value: unknown) => value === undefined || typeof value === "string";
+const isOptionalStringArray = (value: unknown) =>
+  value === undefined || (Array.isArray(value) && value.every((entry) => typeof entry === "string"));
+const isOptionalInteger = (value: unknown) => value === undefined || Number.isInteger(value);
+const isOptionalFiniteNumber = (value: unknown) =>
+  value === undefined || (typeof value === "number" && Number.isFinite(value));
+
+const isReplayAction = (value: unknown): value is Action => {
+  if (!isRecord(value) || typeof value.type !== "string" || !isPlayerId(value.playerId)) return false;
+  if (value.type === "play_card") {
+    return (
+      (value.zone === "fast" || value.zone === "normal" || value.zone === "slow") &&
+      (typeof value.cardInstanceId === "string" ||
+        (typeof value.cardSlot === "string" && typeof value.sourceId === "string")) &&
+      isOptionalString(value.cardSlot) &&
+      isOptionalString(value.cardInstanceId) &&
+      isOptionalString(value.sourceId) &&
+      isOptionalString(value.targetId) &&
+      isOptionalFiniteNumber(value.xValue) &&
+      isOptionalInteger(value.choiceIndex) &&
+      isOptionalString(value.redirectTargetId) &&
+      isOptionalStringArray(value.scryDiscardIds) &&
+      isOptionalStringArray(value.scryOrderIds) &&
+      isOptionalStringArray(value.seekTakeIds) &&
+      isOptionalString(value.searchPickId) &&
+      (value.pushDirection === undefined || value.pushDirection === "left" || value.pushDirection === "right")
+    );
+  }
+  if (value.type === "move_swap") {
+    return typeof value.firstId === "string" && typeof value.secondId === "string";
+  }
+  if (value.type === "resolve_innate_decision") return typeof value.accept === "boolean";
+  return value.type === "pass" || value.type === "end_turn" || value.type === "clear_log";
+};
+
+const validateReplayTranscript = (value: unknown): string | null => {
+  if (!isRecord(value)) return "Transcript must be an object.";
+  if (value.version !== transcriptVersion) {
+    return `Unsupported transcript version ${String(value.version)}; expected ${transcriptVersion}.`;
+  }
+  if (value.engineVersion !== engineVersion) {
+    return `Engine version mismatch: transcript uses ${String(value.engineVersion)}, build uses ${engineVersion}.`;
+  }
+  if (value.dataSchemaVersion !== dataManifest.schemaVersion) {
+    return `Data schema mismatch: transcript uses ${String(value.dataSchemaVersion)}, build uses ${dataManifest.schemaVersion}.`;
+  }
+  if (value.dataContentHash !== dataManifest.contentHash) {
+    return `Data content hash mismatch: transcript uses ${String(value.dataContentHash)}, build uses ${dataManifest.contentHash}.`;
+  }
+  if (!Number.isInteger(value.seed)) return "Transcript seed must be an integer.";
+  if (!Array.isArray(value.players) || value.players.length !== 2) return "Transcript requires exactly two players.";
+  const playersValid = value.players.every((player, index) =>
+    isRecord(player) &&
+    player.id === (index === 0 ? "p1" : "p2") &&
+    typeof player.name === "string" &&
+    Array.isArray(player.characterIds) &&
+    player.characterIds.length === defaultLineSize &&
+    player.characterIds.every((id) => typeof id === "string")
+  );
+  if (!playersValid) return "Transcript players are invalid.";
+  if (!Array.isArray(value.actions)) return "Transcript actions must be an array.";
+  const invalidAction = value.actions.findIndex((entry) =>
+    !isRecord(entry) || !isReplayAction(entry.action) || (entry.error !== undefined && typeof entry.error !== "string")
+  );
+  if (invalidAction >= 0) return `Transcript action ${invalidAction + 1} is invalid.`;
+  if (value.finalStateHash !== undefined && !/^sha256:[0-9a-f]{64}$/.test(String(value.finalStateHash))) {
+    return "Transcript final state hash is invalid.";
+  }
+  return null;
+};
+
 export const replayTranscript = (
   characters: Character[],
-  transcript: MatchTranscript
-): { state: MatchState; error?: string; actionIndex?: number } => {
-  let state = createMatchState(characters, transcript.players, {
-    seed: transcript.seed,
+  transcript: MatchTranscript | unknown
+): { state?: MatchState; error?: string; actionIndex?: number } => {
+  const compatibilityError = validateReplayTranscript(transcript);
+  if (compatibilityError) return { error: compatibilityError };
+  const compatibleTranscript = transcript as MatchTranscript;
+  const rosterIds = new Set(characters.map((character) => character.id));
+  const missingIds = compatibleTranscript.players
+    .flatMap((player) => player.characterIds)
+    .filter((id) => !rosterIds.has(id));
+  if (missingIds.length) {
+    return { error: `Transcript requires missing character ID(s): ${[...new Set(missingIds)].join(", ")}.` };
+  }
+  let state = createMatchState(characters, compatibleTranscript.players, {
+    seed: compatibleTranscript.seed,
   });
 
-  for (let index = 0; index < transcript.actions.length; index += 1) {
-    const entry = transcript.actions[index];
+  for (let index = 0; index < compatibleTranscript.actions.length; index += 1) {
+    const entry = compatibleTranscript.actions[index];
     const result = applyAction(state, entry.action, characters);
     const expectedError = Boolean(entry.error);
     const actualError = Boolean(result.error);
@@ -6307,5 +6410,14 @@ export const replayTranscript = (
     state = result.state;
   }
 
+  if (compatibleTranscript.finalStateHash) {
+    const replayHash = hashMatchState(state);
+    if (replayHash !== compatibleTranscript.finalStateHash) {
+      return {
+        state,
+        error: `Transcript final state hash mismatch: expected ${compatibleTranscript.finalStateHash}, got ${replayHash}.`,
+      };
+    }
+  }
   return { state };
 };

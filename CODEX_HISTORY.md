@@ -94,3 +94,4 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-07-15: Enforced initial multiplayer readiness in the relay, preserved setup metadata across match snapshots, reset readiness on authoritative setup changes, and added relay protocol regression coverage.
 - 2026-07-15: Captured the Friend Alpha technical baseline and defined the `v0.2.0-friend-alpha` acceptance contract, release blockers, evidence requirements, and explicit non-goals.
 - 2026-07-15: Added `@ua/data` manifest compatibility metadata for canonical source revision, schema version, deterministic content hash, generation timestamp, and roster count, with golden validation.
+- 2026-07-15: Added canonical SHA-256 gameplay-state hashing, transcript v3 engine/data compatibility fields, explicit incompatible replay rejection, replay final-hash verification, and compatibility metadata on authoritative relay snapshots.

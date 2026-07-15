@@ -4,6 +4,7 @@ import {
   applyAction,
   createMatchState,
   exportTranscript,
+  hashMatchState,
   replayTranscript,
   type Action,
   type MatchCharacterId,
@@ -11,6 +12,7 @@ import {
   type PlayerId,
   type ZoneName,
 } from "./index.js";
+import { sha256 } from "./state-hash.js";
 
 type GoldenResult = {
   label: string;
@@ -344,6 +346,55 @@ const runDataManifestTest = (): GoldenResult => {
   }
 };
 
+const runStateHashAndTranscriptCompatibilityTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Hash One", characterIds: roster.slice(0, 3).map((entry) => entry.id) },
+    { id: "p2" as const, name: "Hash Two", characterIds: roster.slice(3, 6).map((entry) => entry.id) },
+  ];
+  try {
+    if (sha256("abc") !== "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") {
+      throw new Error("SHA-256 implementation failed the standard abc vector.");
+    }
+    const initial = createMatchState(roster, players, { seed: 424242, enableTranscript: true });
+    const initialHash = hashMatchState(initial);
+    const presentationOnly = JSON.parse(JSON.stringify(initial)) as MatchState;
+    presentationOnly.log.push("Presentation-only entry.");
+    presentationOnly.players.p1.name = "Renamed display";
+    if (hashMatchState(presentationOnly) !== initialHash) {
+      throw new Error("Presentation-only state changed the gameplay hash.");
+    }
+    const advanced = applyAction(initial, { type: "pass", playerId: "p1" }, roster).state;
+    if (hashMatchState(advanced) === initialHash) throw new Error("Accepted gameplay action did not change the state hash.");
+    const transcript = exportTranscript(advanced);
+    if (!transcript || transcript.version !== 3 || !transcript.finalStateHash) {
+      throw new Error("Transcript v3 compatibility fields are missing.");
+    }
+    const replay = replayTranscript(roster, transcript);
+    if (replay.error || !replay.state) throw new Error(replay.error ?? "Replay state missing.");
+    if (hashMatchState(replay.state) !== transcript.finalStateHash) throw new Error("Replay hash differs from the original.");
+
+    const wrongVersion = replayTranscript(roster, { ...transcript, version: 2 });
+    if (!wrongVersion.error?.includes("Unsupported transcript version")) throw new Error("Unsupported version was accepted.");
+    const wrongData = replayTranscript(roster, { ...transcript, dataContentHash: "sha256:" + "0".repeat(64) });
+    if (!wrongData.error?.includes("Data content hash mismatch")) throw new Error("Mismatched data was accepted.");
+    const missingCharacter = replayTranscript(roster, {
+      ...transcript,
+      players: transcript.players.map((player, index) =>
+        index === 0 ? { ...player, characterIds: ["missing-character", ...player.characterIds.slice(1)] } : player
+      ),
+    });
+    if (!missingCharacter.error?.includes("missing character ID")) throw new Error("Missing character was accepted.");
+    const invalidAction = replayTranscript(roster, {
+      ...transcript,
+      actions: [{ action: { type: "unknown", playerId: "p1" } }],
+    });
+    if (!invalidAction.error?.includes("action 1 is invalid")) throw new Error("Invalid action structure was accepted.");
+    return { label: "State hashing and transcript v3 reject incompatible replay data", ok: true };
+  } catch (error) {
+    return { label: "State hashing and transcript v3 reject incompatible replay data", ok: false, details: String(error) };
+  }
+};
+
 const snapshotPositions = (state: MatchState, playerId: PlayerId) =>
   Object.fromEntries(
     state.players[playerId].characters.map((member) => [member.id, member.position])
@@ -394,7 +445,7 @@ const runReplaySnapshot = (characters: Character[], state: MatchState) => {
     throw new Error("Transcript missing.");
   }
   const replay = replayTranscript(withFillers(characters), transcript);
-  if (replay.error) {
+  if (replay.error || !replay.state) {
     throw new Error(replay.error);
   }
   return replay.state;
@@ -429,7 +480,7 @@ const runInterruptChainTest = (): GoldenResult => {
     activeZone: "fast",
     pausedZones: ["slow", "normal"],
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players: goldenPlayers,
       actions: [
@@ -489,7 +540,7 @@ const runCancelledAlwaysTest = (): GoldenResult => {
       "OnUse Buff": { potency: 0, count: 0, stack: 0, value: 0 },
     },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players: goldenPlayers,
       actions: [
@@ -785,7 +836,7 @@ const runTimingWindowsTest = (): GoldenResult => {
       "After Buff": valueStatus(1),
     },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -928,7 +979,7 @@ const runStatusExpiryTest = (): GoldenResult => {
       },
     },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -1043,7 +1094,7 @@ const runCostSpeedModifierTest = (): GoldenResult => {
       Strain: potencyStatus(1, 1),
     },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -1158,7 +1209,7 @@ const runMitigationStackingTest = (): GoldenResult => {
     activeZone: null,
     p2Hp: 96,
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -1295,7 +1346,7 @@ const runSpendFlowTest = (): GoldenResult => {
       "Test Ammo": valueStatus(1),
     },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -1495,7 +1546,7 @@ const runHealingReductionTest = (): GoldenResult => {
       },
     },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -1623,7 +1674,7 @@ const runThornsOnHitTest = (): GoldenResult => {
       Thorns: potencyStatus(3, 1),
     },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -1859,7 +1910,7 @@ const runTurnEndDecayTest = (): GoldenResult => {
       Stun: stackStatus(0),
     },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -1989,7 +2040,7 @@ const runCreatedCardDestinationTest = (): GoldenResult => {
     createdInDiscard: 1,
     createdInHand: false,
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -2100,7 +2151,7 @@ const runNegatedTest = (): GoldenResult => {
     p2Hp: 100,
     p2Shield: 8,
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -2216,7 +2267,7 @@ const runRedirectTest = (): GoldenResult => {
       state.players.p1.characters.slice(1).map((member) => [member.id, 0])
     ),
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -3451,7 +3502,7 @@ const runCounterTest = (): GoldenResult => {
     counterLog: true,
     p1Hp: 93,
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -3633,7 +3684,7 @@ const runPurgeKeywordTest = (): GoldenResult => {
       Strength: { potency: 0, count: 0, stack: 0, value: 0 },
     },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -3858,7 +3909,7 @@ const runAoeMultiTargetTest = (): GoldenResult => {
   const expected = {
     p2Hp: [93, 93, 93],
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -3948,7 +3999,7 @@ const runSplashAdjacencyTest = (): GoldenResult => {
   const expected = {
     p2Hp: [92, 92, 100],
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [
@@ -4097,7 +4148,7 @@ const runTransformTargetExclusionTest = (): GoldenResult => {
     p1Slots: { "1": 1, "3": 1 },
     p2Slots: { "1": 1, "3": 1 },
     transcript: {
-      version: 2,
+      version: 3,
       seed: goldenSeed,
       players,
       actions: [],
@@ -4334,6 +4385,7 @@ const runStructuredInnateMitigationTest = (): GoldenResult => {
 
 export const runGoldenTests = () => [
   runDataManifestTest(),
+  runStateHashAndTranscriptCompatibilityTest(),
   runInterruptChainTest(),
   runCancelledAlwaysTest(),
   runCannotPlayTest(),

@@ -70,10 +70,21 @@ const run = async () => {
     selection: { p1: ["a", "b", "c"], p2: ["d", "e", "f"] },
     names: { p1: "Alpha", p2: "Bravo" },
   };
+  const compatibility = {
+    engineVersion: "0.1.0",
+    dataSchemaVersion: 1,
+    dataContentHash: `sha256:${"a".repeat(64)}`,
+  };
+  const stateUpdate = (turn, actionId) => ({
+    state: { turn, actionId },
+    actionId,
+    stateHash: `sha256:${String(actionId).padStart(64, "0")}`,
+    ...compatibility,
+  });
   host.send(JSON.stringify({ type: "game_event", event: "selection_update", data: setup }));
   const blocked = await sendAndWait(
     host,
-    { type: "game_event", event: "state_update", data: { state: { turn: 1 }, ...setup } },
+    { type: "game_event", event: "state_update", data: { ...stateUpdate(1, 0), ...setup } },
     (message) => message.type === "error" && /Ready/.test(message.message),
     "server readiness rejection"
   );
@@ -92,10 +103,10 @@ const run = async () => {
     (message) => message.type === "game_event" && message.event === "state_update" && message.data?.state?.turn === 1,
     "initial state"
   );
-  host.send(JSON.stringify({ type: "game_event", event: "state_update", data: { state: { turn: 1 }, ...setup } }));
+  host.send(JSON.stringify({ type: "game_event", event: "state_update", data: { ...stateUpdate(1, 0), ...setup } }));
   await initialState;
 
-  host.send(JSON.stringify({ type: "game_event", event: "state_update", data: { state: { turn: 2 } } }));
+  host.send(JSON.stringify({ type: "game_event", event: "state_update", data: stateUpdate(2, 1) }));
   const restored = await sendAndWait(
     guest,
     { type: "game_event", event: "sync_request", data: {} },
@@ -104,6 +115,9 @@ const run = async () => {
   );
   if (!restored.data.selection || !restored.data.names) {
     throw new Error("Later state update discarded setup metadata.");
+  }
+  if (restored.data.actionId !== 1 || !restored.data.stateHash || restored.data.dataContentHash !== compatibility.dataContentHash) {
+    throw new Error("Authoritative snapshot discarded compatibility metadata.");
   }
 
   const returned = await sendAndWait(

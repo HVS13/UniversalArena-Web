@@ -49,6 +49,9 @@ non-recursive status amplification, and a serializable optional defeat replaceme
 Innate display text is not parsed for gameplay.
 
 ## Rules / Terms / Flow
+
+Friend Alpha compatibility uses transcript version 3 and a canonical SHA-256 gameplay-state hash. Hash input includes turn flow, action ID, RNG, ordered piles, character state, zones, windows, decisions, resources, and winner; presentation-only logs, names, transcript data, and last-resolution display details are excluded.
+
 | Rule / Term | Status | Notes |
 | --- | --- | --- |
 | Turn Start (Energy reset + draw to hand size) | Implemented | Energy set to 5, draw to size 5. |

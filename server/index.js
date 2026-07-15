@@ -4,6 +4,7 @@ const { WebSocketServer, WebSocket } = require("ws");
 const PORT = Number(process.env.PORT) || 8787;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 2;
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 120000;
+const PROTOCOL_VERSION = 1;
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
@@ -73,6 +74,7 @@ const isSha256 = (value) => typeof value === "string" && /^sha256:[0-9a-f]{64}$/
 
 const hasValidStateMetadata = (data) =>
   data &&
+  data.protocolVersion === PROTOCOL_VERSION &&
   Number.isInteger(data.actionId) &&
   data.actionId >= 0 &&
   data.state?.actionId === data.actionId &&
@@ -82,6 +84,39 @@ const hasValidStateMetadata = (data) =>
   data.dataSchemaVersion > 0 &&
   typeof data.engineVersion === "string" &&
   data.engineVersion.length > 0;
+
+const stateCompatibilityMatches = (previous, next) =>
+  !previous || (
+    previous.protocolVersion === next.protocolVersion &&
+    previous.engineVersion === next.engineVersion &&
+    previous.dataSchemaVersion === next.dataSchemaVersion &&
+    previous.dataContentHash === next.dataContentHash
+  );
+
+const getSnapshotSequenceError = (previous, next) => {
+  if (!previous) return next.actionId === 0 ? null : "Initial state snapshot must use action ID 0.";
+  if (!stateCompatibilityMatches(previous, next)) return "State snapshot compatibility changed during the match.";
+  if (next.actionId < previous.actionId) return "Stale state snapshot rejected.";
+  if (next.actionId === previous.actionId && next.stateHash !== previous.stateHash) {
+    return "Conflicting state snapshot rejected.";
+  }
+  if (next.actionId > previous.actionId + 1) return "State snapshot skipped an action ID.";
+  return null;
+};
+
+const hasValidActionRequest = (data) =>
+  data &&
+  data.protocolVersion === PROTOCOL_VERSION &&
+  typeof data.requestId === "string" &&
+  data.requestId.length > 0 &&
+  data.requestId.length <= 80 &&
+  Number.isInteger(data.baseActionId) &&
+  data.baseActionId >= 0 &&
+  isSha256(data.baseStateHash) &&
+  data.action &&
+  typeof data.action === "object" &&
+  typeof data.action.type === "string" &&
+  (data.action.playerId === "p1" || data.action.playerId === "p2");
 
 const resetReadyForChangedSetup = (lobby, nextSnapshot) => {
   const previous = lobby.selectionSnapshot;
@@ -289,6 +324,7 @@ wss.on("connection", (ws) => {
         players: new Map(),
         selectionSnapshot: null,
         matchSnapshot: null,
+        actionRequestIds: new Set(),
       };
       lobbies.set(code, lobby);
       attachPlayer(lobby, client);
@@ -325,6 +361,7 @@ wss.on("connection", (ws) => {
         send(ws, { type: "error", message: "Not in a lobby." });
         return;
       }
+
       const player = lobby.players.get(client.id);
       if (!player) {
         send(ws, { type: "error", message: "Not in a lobby." });
@@ -360,8 +397,46 @@ wss.on("connection", (ws) => {
         return;
       }
 
+      const allowedEvents = message.type === "lobby_event"
+        ? new Set(["start_match", "return_to_lobby"])
+        : new Set(["selection_update", "selection_request", "state_update", "action_request", "action_error", "sync_request"]);
+      if (!allowedEvents.has(message.event)) {
+        send(ws, { type: "error", message: "Unsupported relay event." });
+        return;
+      }
+
+      if (message.type === "game_event" && message.event === "action_error" && lobby.hostId !== client.id) {
+        send(ws, { type: "error", message: "Only the host can report action errors." });
+        return;
+      }
+
+      if (message.type === "game_event" && message.event === "selection_request") {
+        const guest = Array.from(lobby.players.values()).find((player) => player.id !== lobby.hostId);
+        const data = message.data;
+        if (
+          !guest || guest.id !== client.id ||
+          data?.playerId !== "p2" ||
+          !Array.isArray(data.selection) ||
+          data.selection.length !== 3 ||
+          !data.selection.every((id) => typeof id === "string" && id.length > 0) ||
+          typeof data.name !== "string"
+        ) {
+          send(ws, { type: "error", message: "Invalid selection request." });
+          return;
+        }
+        const host = lobby.players.get(lobby.hostId);
+        send(host?.ws, {
+          type: "game_event",
+          event: "selection_request",
+          data: { playerId: "p2", selection: data.selection, name: data.name.slice(0, 40) },
+          from: client.id,
+        });
+        return;
+      }
+
       if (message.type === "lobby_event" && message.event === "return_to_lobby") {
         lobby.matchSnapshot = null;
+        lobby.actionRequestIds.clear();
         lobby.players.forEach((player) => {
           player.ready = false;
         });
@@ -383,6 +458,14 @@ wss.on("connection", (ws) => {
           send(ws, { type: "error", message: "Both connected players must be Ready before starting." });
           return;
         }
+        const sequenceError = getSnapshotSequenceError(lobby.matchSnapshot, message.data);
+        if (sequenceError) {
+          send(ws, { type: "error", message: sequenceError });
+          return;
+        }
+        if (lobby.matchSnapshot && message.data.actionId > lobby.matchSnapshot.actionId) {
+          lobby.actionRequestIds.clear();
+        }
         lobby.matchSnapshot = {
           ...(lobby.matchSnapshot ?? {}),
           ...(message.data ?? {}),
@@ -395,6 +478,46 @@ wss.on("connection", (ws) => {
             names: message.data.names,
           };
         }
+      }
+
+      if (message.type === "game_event" && message.event === "action_request") {
+        if (client.id === lobby.hostId) {
+          send(ws, { type: "error", message: "The host applies actions directly." });
+          return;
+        }
+        if (!hasValidActionRequest(message.data)) {
+          send(ws, { type: "error", message: "Invalid action request metadata." });
+          return;
+        }
+        if (!lobby.matchSnapshot) {
+          send(ws, { type: "error", message: "Match is not running." });
+          return;
+        }
+        const guest = Array.from(lobby.players.values()).find((player) => player.id !== lobby.hostId);
+        if (!guest || guest.id !== client.id || message.data.action.playerId !== "p2") {
+          send(ws, { type: "error", message: "Not your team." });
+          return;
+        }
+        if (lobby.actionRequestIds.has(message.data.requestId)) {
+          send(ws, { type: "error", message: "Duplicate action request rejected." });
+          return;
+        }
+        if (
+          message.data.baseActionId !== lobby.matchSnapshot.actionId ||
+          message.data.baseStateHash !== lobby.matchSnapshot.stateHash
+        ) {
+          send(ws, { type: "error", message: "Stale action request rejected; resync required." });
+          return;
+        }
+        lobby.actionRequestIds.add(message.data.requestId);
+        const host = lobby.players.get(lobby.hostId);
+        send(host?.ws, {
+          type: "game_event",
+          event: "action_request",
+          data: message.data,
+          from: client.id,
+        });
+        return;
       }
 
       if (message.type === "game_event" && message.event === "sync_request") {

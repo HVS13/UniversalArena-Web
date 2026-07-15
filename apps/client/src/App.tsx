@@ -45,10 +45,35 @@ type SetupSyncPayload = {
   names: { p1: string; p2: string };
 };
 
+type StateSyncPayload = SetupSyncPayload & {
+  protocolVersion: number;
+  state: MatchState;
+  actionId: number;
+  stateHash: string;
+  engineVersion: string;
+  dataSchemaVersion: number;
+  dataContentHash: string;
+};
+
+const validateStateSyncPayload = (data: Partial<StateSyncPayload>) => {
+  if (data.protocolVersion !== 1) return "Relay protocol version mismatch.";
+  if (data.engineVersion !== engineVersion) return "Engine version mismatch; resync required.";
+  if (data.dataSchemaVersion !== dataManifest.schemaVersion) return "Data schema mismatch; resync required.";
+  if (data.dataContentHash !== dataManifest.contentHash) return "Data content mismatch; resync required.";
+  if (!data.state || !Number.isInteger(data.actionId) || data.state.actionId !== data.actionId) {
+    return "Invalid authoritative action ID; resync required.";
+  }
+  if (typeof data.stateHash !== "string" || hashMatchState(data.state) !== data.stateHash) {
+    return "Authoritative state hash mismatch; resync required.";
+  }
+  return null;
+};
+
 const createStateSyncPayload = (
   state: MatchState,
   setup?: Partial<SetupSyncPayload>
 ) => ({
+  protocolVersion: 1,
   state,
   actionId: state.actionId,
   stateHash: hashMatchState(state),
@@ -1553,6 +1578,7 @@ const App = () => {
   const namesRef = useRef(names);
   const matchStateRef = useRef<MatchState | null>(null);
   const syncRequestedRef = useRef(false);
+  const actionRequestSequenceRef = useRef(0);
   const winnerRef = useRef<string | null>(null);
   const deckCountsRef = useRef<Record<PlayerId, number>>({ p1: 0, p2: 0 });
   const logIndexRef = useRef(0);
@@ -1810,7 +1836,23 @@ const App = () => {
         applyActionAndSync(action);
         return;
       }
-      sendRelay({ type: "game_event", event: "action_request", data: { action } });
+      const currentState = matchStateRef.current;
+      if (!currentState) {
+        reportMessage("Match is not running.");
+        return;
+      }
+      actionRequestSequenceRef.current += 1;
+      sendRelay({
+        type: "game_event",
+        event: "action_request",
+        data: {
+          protocolVersion: 1,
+          requestId: `${clientIdRef.current}:${actionRequestSequenceRef.current}`,
+          baseActionId: currentState.actionId,
+          baseStateHash: hashMatchState(currentState),
+          action,
+        },
+      });
     },
     [applyActionAndSync, isConnected, isHost, isMultiplayer, localSeat, reportMessage, sendRelay]
   );
@@ -1882,10 +1924,49 @@ const App = () => {
 
       if (message.event === "state_update") {
         if (message.from === clientId) return;
-        const data = message.data as
-          | { state?: MatchState; selection?: SelectionState; names?: { p1: string; p2: string } }
-          | undefined;
+        const lobbySnapshot = lobbyRef.current;
+        if (
+          message.from !== "relay" &&
+          (!lobbySnapshot || message.from !== lobbySnapshot.hostId)
+        ) {
+          reportMessage("Rejected a non-authoritative state update.");
+          return;
+        }
+        const data = message.data as Partial<StateSyncPayload> | undefined;
         if (!data?.state) return;
+        let validationError: string | null = null;
+        try {
+          validationError = validateStateSyncPayload(data);
+        } catch {
+          validationError = "Invalid authoritative state payload; resync required.";
+        }
+        const currentState = matchStateRef.current;
+        if (!validationError && currentState && data.actionId! < currentState.actionId) {
+          validationError = "Stale authoritative state rejected; resync required.";
+        }
+        if (
+          !validationError && currentState &&
+          data.actionId === currentState.actionId &&
+          data.stateHash !== hashMatchState(currentState)
+        ) {
+          validationError = "Conflicting authoritative state rejected; resync required.";
+        }
+        if (!validationError && currentState && data.actionId! > currentState.actionId + 1) {
+          validationError = "Authoritative state skipped an action ID; resync required.";
+        }
+        if (validationError) {
+          reportMessage(validationError);
+          if (
+            !syncRequestedRef.current &&
+            lobbySnapshot &&
+            lobbySnapshot.hostId !== clientIdRef.current
+          ) {
+            syncRequestedRef.current = true;
+            sendRelay({ type: "game_event", event: "sync_request", data: {} });
+          }
+          return;
+        }
+        syncRequestedRef.current = false;
         if (!matchStateRef.current) {
           resetVisualState();
         }
@@ -1904,8 +1985,15 @@ const App = () => {
       if (message.event === "action_request") {
         const lobbySnapshot = lobbyRef.current;
         if (!lobbySnapshot || lobbySnapshot.hostId !== clientIdRef.current) return;
-        const data = message.data as { action?: Parameters<typeof applyAction>[1] } | undefined;
+        const data = message.data as {
+          protocolVersion?: number;
+          requestId?: string;
+          baseActionId?: number;
+          baseStateHash?: string;
+          action?: Parameters<typeof applyAction>[1];
+        } | undefined;
         if (!data?.action) return;
+        if (data.protocolVersion !== 1) return;
         if (message.from) {
           const seat = message.from === lobbySnapshot.hostId ? "p1" : "p2";
           if (data.action.playerId && data.action.playerId !== seat) {
@@ -1922,6 +2010,17 @@ const App = () => {
             type: "game_event",
             event: "action_error",
             data: { message: "Match is not running." },
+          });
+          return;
+        }
+        if (
+          data.baseActionId !== matchStateRef.current.actionId ||
+          data.baseStateHash !== hashMatchState(matchStateRef.current)
+        ) {
+          sendRelay({
+            type: "game_event",
+            event: "action_error",
+            data: { requestId: data.requestId, message: "Stale action request rejected; resync required." },
           });
           return;
         }
@@ -1979,6 +2078,15 @@ const App = () => {
       }
       if (message.type === "error" && typeof message.message === "string") {
         reportMessage(message.message);
+        if (
+          /resync required/i.test(message.message) &&
+          lobbyRef.current &&
+          lobbyRef.current.hostId !== clientIdRef.current &&
+          !syncRequestedRef.current
+        ) {
+          syncRequestedRef.current = true;
+          sendRelay({ type: "game_event", event: "sync_request", data: {} });
+        }
         return;
       }
       if (message.type === "lobby_snapshot") {

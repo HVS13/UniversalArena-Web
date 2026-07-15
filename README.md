@@ -109,6 +109,9 @@ seat can restore the current setup or match after reconnecting.
 - Multiplayer is relay-based and host-authoritative; lobbies support Ready state,
   manual resync, and short reconnect recovery, but they are still in-memory
   session lobbies rather than persistent accounts.
+- Relay protocol version 1 uses state-hash/action-ID preconditions for guest actions,
+  rejects duplicate or stale requests and non-monotonic snapshots, and makes clients
+  verify authoritative snapshot hashes before adoption.
 - Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines, surfaced in UI tooltips.
 
 ## Gameplay notes

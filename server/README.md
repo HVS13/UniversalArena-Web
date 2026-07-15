@@ -51,8 +51,12 @@ Lobby notes:
 - The relay keeps the latest host-approved setup and match snapshots in memory so
   either seat can restore the current stage after reconnecting. Snapshots disappear
   when the lobby closes or the relay process restarts.
-- Authoritative match snapshots must include an action ID, state hash, engine version,
-  data schema version, and data content hash. The relay validates the metadata shape
-  and preserves it during resync; client-side mismatch handling is added in the
-  versioned action protocol milestone.
-- Run `npm test` to verify readiness enforcement, snapshot merging/resync, and lobby reset behavior.
+- Protocol version 1 authoritative snapshots include an action ID, state hash, engine
+  version, data schema version, and data content hash. The relay rejects stale,
+  conflicting, skipped, malformed, or mid-match-incompatible snapshots.
+- Guest action requests include a unique request ID plus the authoritative action ID
+  and state hash they were based on. The relay rejects duplicates, stale requests,
+  wrong-seat actions, forged host events, and unsupported event names before forwarding.
+- Clients independently verify snapshot compatibility, action sequence, and canonical
+  state hash. A rejected or mismatched guest state triggers an explicit resync request.
+- Run `npm test` to verify authority, sequencing, deduplication, resync, readiness, and lobby reset behavior.

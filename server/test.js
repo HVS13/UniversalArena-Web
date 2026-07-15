@@ -71,6 +71,7 @@ const run = async () => {
     names: { p1: "Alpha", p2: "Bravo" },
   };
   const compatibility = {
+    protocolVersion: 1,
     engineVersion: "0.1.0",
     dataSchemaVersion: 1,
     dataContentHash: `sha256:${"a".repeat(64)}`,
@@ -82,6 +83,28 @@ const run = async () => {
     ...compatibility,
   });
   host.send(JSON.stringify({ type: "game_event", event: "selection_update", data: setup }));
+  await sendAndWait(
+    guest,
+    {
+      type: "game_event",
+      event: "selection_request",
+      data: { playerId: "p1", selection: ["x", "y", "z"], name: "Impostor" },
+    },
+    (message) => message.type === "error" && /Invalid selection/.test(message.message),
+    "selection seat rejection"
+  );
+  await sendAndWait(
+    guest,
+    { type: "game_event", event: "action_error", data: { message: "forged" } },
+    (message) => message.type === "error" && /Only the host/.test(message.message),
+    "forged action error rejection"
+  );
+  await sendAndWait(
+    guest,
+    { type: "game_event", event: "unknown_event", data: {} },
+    (message) => message.type === "error" && /Unsupported/.test(message.message),
+    "unknown event rejection"
+  );
   const blocked = await sendAndWait(
     host,
     { type: "game_event", event: "state_update", data: { ...stateUpdate(1, 0), ...setup } },
@@ -106,7 +129,76 @@ const run = async () => {
   host.send(JSON.stringify({ type: "game_event", event: "state_update", data: { ...stateUpdate(1, 0), ...setup } }));
   await initialState;
 
+  await sendAndWait(
+    guest,
+    { type: "game_event", event: "state_update", data: stateUpdate(9, 1) },
+    (message) => message.type === "error" && /Only the host/.test(message.message),
+    "guest authority rejection"
+  );
+  await sendAndWait(
+    host,
+    {
+      type: "game_event",
+      event: "state_update",
+      data: { ...stateUpdate(1, 0), stateHash: `sha256:${"f".repeat(64)}` },
+    },
+    (message) => message.type === "error" && /Conflicting/.test(message.message),
+    "conflicting snapshot rejection"
+  );
+  await sendAndWait(
+    host,
+    { type: "game_event", event: "state_update", data: stateUpdate(4, 3) },
+    (message) => message.type === "error" && /skipped/.test(message.message),
+    "skipped snapshot rejection"
+  );
+
+  const advancedState = waitFor(
+    guest,
+    (message) => message.type === "game_event" && message.event === "state_update" && message.data?.actionId === 1,
+    "advanced authoritative state"
+  );
   host.send(JSON.stringify({ type: "game_event", event: "state_update", data: stateUpdate(2, 1) }));
+  await advancedState;
+  const request = {
+    protocolVersion: 1,
+    requestId: "guest-test:1",
+    baseActionId: 1,
+    baseStateHash: stateUpdate(2, 1).stateHash,
+    action: { type: "pass", playerId: "p2" },
+  };
+  const forwardedRequest = waitFor(
+    host,
+    (message) => message.type === "game_event" && message.event === "action_request" && message.data?.requestId === request.requestId,
+    "valid action request forwarding"
+  );
+  guest.send(JSON.stringify({ type: "game_event", event: "action_request", data: request }));
+  await forwardedRequest;
+  await sendAndWait(
+    guest,
+    { type: "game_event", event: "action_request", data: request },
+    (message) => message.type === "error" && /Duplicate/.test(message.message),
+    "duplicate action rejection"
+  );
+  await sendAndWait(
+    guest,
+    {
+      type: "game_event",
+      event: "action_request",
+      data: { ...request, requestId: "guest-test:2", baseActionId: 0 },
+    },
+    (message) => message.type === "error" && /Stale/.test(message.message),
+    "stale action rejection"
+  );
+  await sendAndWait(
+    guest,
+    {
+      type: "game_event",
+      event: "action_request",
+      data: { ...request, requestId: "guest-test:3", action: { type: "pass", playerId: "p1" } },
+    },
+    (message) => message.type === "error" && /Not your team/.test(message.message),
+    "seat authority rejection"
+  );
   const restored = await sendAndWait(
     guest,
     { type: "game_event", event: "sync_request", data: {} },
@@ -132,7 +224,7 @@ const run = async () => {
 
   host.close();
   guest.close();
-  console.log("PASS: relay readiness, snapshot merge, sync, and lobby reset");
+  console.log("PASS: relay authority, sequencing, deduplication, resync, and lobby reset");
 };
 
 run()

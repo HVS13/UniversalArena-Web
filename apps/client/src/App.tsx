@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { characters as roster, dataManifest, keywords, statusEffects } from "@ua/data";
+import { characters as roster, keywords, statusEffects } from "@ua/data";
 import type { Card, Character, Keyword, StatusEffectDefinition } from "@ua/data";
 import {
   applyAction,
   createDebugBundle,
   createMatchState,
-  engineVersion,
   getCardPlayOptions,
   getLegalTargets,
   hashMatchState,
@@ -17,128 +16,33 @@ import {
   type StackEntry,
   type ZoneName,
 } from "@ua/core";
+import {
+  clearStoredLobbyCode,
+  clientVersion,
+  createStateSyncPayload,
+  defaultRelayUrl,
+  getStoredClientId,
+  getStoredLobbyCode,
+  getStoredRelayName,
+  multiplayerSeatCount,
+  relayProtocolVersion,
+  relayVersion,
+  storeLobbyCode,
+  storeRelayName,
+  validateStateSyncPayload,
+  type RelayConnectionStatus,
+  type RelayEventMessage,
+  type RelayLobbySnapshot,
+  type SelectionState,
+  type SetupSyncPayload,
+  type StateSyncPayload,
+} from "./relay-protocol";
 
 type Stage = "setup" | "match";
-
-type SelectionState = {
-  p1: string[];
-  p2: string[];
-};
-
-type RelayConnectionStatus = "idle" | "connecting" | "connected";
-
-type RelayLobbySnapshot = {
-  code: string;
-  hostId: string;
-  matchActive?: boolean;
-  players: { id: string; name: string; connected?: boolean; ready?: boolean }[];
-};
-
-type RelayEventMessage = {
-  type: "lobby_event" | "game_event";
-  event: string;
-  data?: Record<string, unknown>;
-  from?: string;
-};
-
-type SetupSyncPayload = {
-  selection: SelectionState;
-  names: { p1: string; p2: string };
-};
-
-type StateSyncPayload = SetupSyncPayload & {
-  protocolVersion: number;
-  state: MatchState;
-  actionId: number;
-  stateHash: string;
-  engineVersion: string;
-  dataSchemaVersion: number;
-  dataContentHash: string;
-};
-
-const clientVersion = "0.1.0";
-const relayVersion = "0.1.0";
-const relayProtocolVersion = 1;
-
-const validateStateSyncPayload = (data: Partial<StateSyncPayload>) => {
-  if (data.protocolVersion !== relayProtocolVersion) return "Relay protocol version mismatch.";
-  if (data.engineVersion !== engineVersion) return "Engine version mismatch; resync required.";
-  if (data.dataSchemaVersion !== dataManifest.schemaVersion) return "Data schema mismatch; resync required.";
-  if (data.dataContentHash !== dataManifest.contentHash) return "Data content mismatch; resync required.";
-  if (!data.state || !Number.isInteger(data.actionId) || data.state.actionId !== data.actionId) {
-    return "Invalid authoritative action ID; resync required.";
-  }
-  if (typeof data.stateHash !== "string" || hashMatchState(data.state) !== data.stateHash) {
-    return "Authoritative state hash mismatch; resync required.";
-  }
-  return null;
-};
-
-const createStateSyncPayload = (
-  state: MatchState,
-  setup?: Partial<SetupSyncPayload>
-) => ({
-  protocolVersion: relayProtocolVersion,
-  state,
-  actionId: state.actionId,
-  stateHash: hashMatchState(state),
-  engineVersion,
-  dataSchemaVersion: dataManifest.schemaVersion,
-  dataContentHash: dataManifest.contentHash,
-  ...setup,
-});
-
-const defaultRelayUrl = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
-const storedLobbyCodeKey = "ua-relay-lobby-code";
-const storedRelayNameKey = "ua-relay-display-name";
-const multiplayerSeatCount = 2;
-
-const createClientId = () => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `client-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
-};
-
-const getStoredClientId = () => {
-  if (typeof window === "undefined") {
-    return createClientId();
-  }
-  const stored = window.localStorage.getItem("ua-client-id");
-  if (stored) return stored;
-  const next = createClientId();
-  window.localStorage.setItem("ua-client-id", next);
-  return next;
-};
 
 const getStoredSkipCombat = () => {
   if (typeof window === "undefined") return false;
   return window.localStorage.getItem("ua-skip-combat") === "true";
-};
-
-const getStoredLobbyCode = () => {
-  if (typeof window === "undefined") return "";
-  return window.localStorage.getItem(storedLobbyCodeKey) ?? "";
-};
-
-const storeLobbyCode = (code: string) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(storedLobbyCodeKey, code);
-};
-
-const clearStoredLobbyCode = () => {
-  if (typeof window === "undefined") return;
-  window.localStorage.removeItem(storedLobbyCodeKey);
-};
-
-const getStoredRelayName = () => {
-  if (typeof window === "undefined") return "Player 1";
-  return window.localStorage.getItem(storedRelayNameKey) ?? "Player 1";
-};
-
-const storeRelayName = (name: string) => {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(storedRelayNameKey, name);
 };
 
 const defaultSelection = (): SelectionState => {

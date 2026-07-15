@@ -100,6 +100,12 @@ seat can restore the current setup or match after reconnecting.
 - `getCardPlayOptions` in `@ua/core` is the authoritative query for whether a hand card or Ultimate can be played and which zone, target, X, and choice combinations are legal.
 - The client uses this query to enable cards and seed the play dialog; final execution still passes through `applyAction`, so queries and mutations share the same reducer validation.
 
+## Module boundaries
+
+- `packages/core/src/cost.ts` owns cost parsing, variable-cost calculation, and base affordability checks; the main engine consumes and re-exports that public contract.
+- `apps/client/src/relay-protocol.ts` owns relay payload types, compatibility validation, version constants, and relay-session browser storage; `App.tsx` focuses on orchestration and rendering.
+- Deterministic hashing, debug bundles, text-coverage auditing, and RNG remain isolated in their own core modules.
+
 ## Current limitations
 
 - Structured effects cover every canonical gameplay effect in the Friend Alpha roster. A golden text-coverage audit guards the remaining explicit text contracts used for timing, keywords, X selection, cost adjustments, distance, transforms, restrictions, and lifecycle metadata.

@@ -2,6 +2,9 @@ import { dataManifest, statusEffects } from "@ua/data";
 import { createRngState, nextFloat, nextInt } from "./rng.ts";
 import type { RngState } from "./rng.ts";
 import { hashGameplayState, serializeGameplayState } from "./state-hash.ts";
+import { computeCost, parseCost, type CostBreakdown } from "./cost.ts";
+export { canAfford, computeCost, parseCost } from "./cost.ts";
+export type { CostBreakdown, CostVariable } from "./cost.ts";
 export { auditCardTextCoverage } from "./text-coverage.ts";
 export type { CardTextCoverageIssue } from "./text-coverage.ts";
 import type {
@@ -255,18 +258,6 @@ export type MatchTranscript = {
   players: { id: PlayerId; name: string; characterIds: string[] }[];
   actions: TranscriptEntry[];
   finalStateHash?: string;
-};
-
-export type CostVariable = {
-  type: "energy" | "ultimate";
-  multiplier: number;
-};
-
-export type CostBreakdown = {
-  raw: string;
-  energy: number;
-  ultimate: number;
-  variable?: CostVariable;
 };
 
 const cloneState = (state: MatchState) => JSON.parse(JSON.stringify(state)) as MatchState;
@@ -1155,46 +1146,6 @@ const rollBetween = (min: number, max: number, rng?: RngState) => {
   return Math.floor(roll * (max - min + 1)) + min;
 };
 
-export const parseCost = (text: string): CostBreakdown => {
-  const breakdown: CostBreakdown = { raw: text, energy: 0, ultimate: 0 };
-  const parts = text.split("+").map((part) => part.trim());
-
-  parts.forEach((part) => {
-    const lower = part.toLowerCase();
-    const isEnergy = lower.includes("energy");
-    const isUltimate = lower.includes("ultimate");
-    const numberMatch = part.match(/(\d+)/);
-    const xTimesMatch = part.match(/x\s*times\s*(\d+)/i);
-
-    if (xTimesMatch && isUltimate) {
-      breakdown.variable = { type: "ultimate", multiplier: Number(xTimesMatch[1]) };
-      return;
-    }
-
-    if (/x/i.test(part)) {
-      if (isEnergy) breakdown.variable = { type: "energy", multiplier: 1 };
-      if (isUltimate) breakdown.variable = { type: "ultimate", multiplier: 1 };
-      return;
-    }
-
-    if (numberMatch) {
-      const value = Number(numberMatch[1]);
-      if (isEnergy) breakdown.energy += value;
-      if (isUltimate) breakdown.ultimate += value;
-    }
-  });
-
-  return breakdown;
-};
-
-export const computeCost = (cost: CostBreakdown, xValue = 0) => {
-  const variableCost = cost.variable ? cost.variable.multiplier * xValue : 0;
-  return {
-    energy: cost.energy + (cost.variable?.type === "energy" ? variableCost : 0),
-    ultimate: cost.ultimate + (cost.variable?.type === "ultimate" ? variableCost : 0),
-  };
-};
-
 const getFollowUpCostAdjustment = (lines: string[]) => {
   for (const line of lines) {
     const normalized = normalizeText(line);
@@ -1221,13 +1172,6 @@ const getAdjustedCostTotals = (
   const energy = Math.max(0, totals.energy + energyAdjustment + instanceAdjustment + followUpAdjustment);
   const ultimate = Math.max(0, totals.ultimate);
   return { energy, ultimate };
-};
-
-export const canAfford = (team: MatchTeam, cost: CostBreakdown, xValue = 0) => {
-  const totals = computeCost(cost, xValue);
-  const energy = Math.max(0, totals.energy);
-  const ultimate = Math.max(0, totals.ultimate);
-  return team.energy >= energy && team.ultimate >= ultimate;
 };
 
 export const rollPower = (powerText: string, xValue = 0, rng?: RngState) => {

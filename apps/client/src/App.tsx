@@ -26,6 +26,7 @@ type RelayConnectionStatus = "idle" | "connecting" | "connected";
 type RelayLobbySnapshot = {
   code: string;
   hostId: string;
+  matchActive?: boolean;
   players: { id: string; name: string; connected?: boolean; ready?: boolean }[];
 };
 
@@ -43,6 +44,7 @@ type SetupSyncPayload = {
 
 const defaultRelayUrl = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
 const storedLobbyCodeKey = "ua-relay-lobby-code";
+const storedRelayNameKey = "ua-relay-display-name";
 const multiplayerSeatCount = 2;
 
 const createClientId = () => {
@@ -81,6 +83,16 @@ const storeLobbyCode = (code: string) => {
 const clearStoredLobbyCode = () => {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(storedLobbyCodeKey);
+};
+
+const getStoredRelayName = () => {
+  if (typeof window === "undefined") return "Player 1";
+  return window.localStorage.getItem(storedRelayNameKey) ?? "Player 1";
+};
+
+const storeRelayName = (name: string) => {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(storedRelayNameKey, name);
 };
 
 const defaultSelection = (): SelectionState => {
@@ -1592,7 +1604,7 @@ const App = () => {
   const [names, setNames] = useState({ p1: "Player 1", p2: "Player 2" });
   const [selection, setSelection] = useState<SelectionState>(defaultSelection);
   const [relayUrl, setRelayUrl] = useState(defaultRelayUrl);
-  const [relayName, setRelayName] = useState("Player 1");
+  const [relayName, setRelayName] = useState(getStoredRelayName);
   const [relayStatus, setRelayStatus] = useState<RelayConnectionStatus>("idle");
   const [lobbyCode, setLobbyCode] = useState(getStoredLobbyCode);
   const [lobby, setLobby] = useState<RelayLobbySnapshot | null>(null);
@@ -1672,6 +1684,9 @@ const App = () => {
     if (typeof window === "undefined") return;
     window.localStorage.setItem("ua-skip-combat", skipCombat ? "true" : "false");
   }, [skipCombat]);
+  useEffect(() => {
+    storeRelayName(relayName);
+  }, [relayName]);
   useEffect(() => {
     matchStateRef.current = matchState;
   }, [matchState]);

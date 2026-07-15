@@ -28,6 +28,7 @@ const broadcast = (lobby, payload) => {
 const lobbySnapshot = (lobby) => ({
   code: lobby.code,
   hostId: lobby.hostId,
+  matchActive: Boolean(lobby.matchSnapshot),
   players: Array.from(lobby.players.values()).map((player) => ({
     id: player.id,
     name: player.name,
@@ -38,6 +39,30 @@ const lobbySnapshot = (lobby) => ({
 
 const sendSnapshot = (lobby) => {
   broadcast(lobby, { type: "lobby_snapshot", lobby: lobbySnapshot(lobby) });
+};
+
+const sendAuthoritativeSnapshot = (lobby, ws) => {
+  if (lobby.matchSnapshot) {
+    send(ws, {
+      type: "game_event",
+      event: "state_update",
+      data: lobby.matchSnapshot,
+      from: "relay",
+    });
+    return true;
+  }
+
+  if (lobby.selectionSnapshot) {
+    send(ws, {
+      type: "game_event",
+      event: "selection_update",
+      data: lobby.selectionSnapshot,
+      from: "relay",
+    });
+    return true;
+  }
+
+  return false;
 };
 
 const createLobbyCode = () => {
@@ -149,6 +174,7 @@ const attachPlayer = (lobby, client) => {
     existing.disconnectedAt = null;
     client.lobbyCode = lobby.code;
     sendSnapshot(lobby);
+    sendAuthoritativeSnapshot(lobby, client.ws);
     return true;
   }
 
@@ -168,6 +194,7 @@ const attachPlayer = (lobby, client) => {
   });
   client.lobbyCode = lobby.code;
   sendSnapshot(lobby);
+  sendAuthoritativeSnapshot(lobby, client.ws);
   return true;
 };
 
@@ -221,6 +248,8 @@ wss.on("connection", (ws) => {
         code,
         hostId: client.id,
         players: new Map(),
+        selectionSnapshot: null,
+        matchSnapshot: null,
       };
       lobbies.set(code, lobby);
       attachPlayer(lobby, client);
@@ -293,10 +322,31 @@ wss.on("connection", (ws) => {
       }
 
       if (message.type === "lobby_event" && message.event === "return_to_lobby") {
+        lobby.matchSnapshot = null;
         lobby.players.forEach((player) => {
           player.ready = false;
         });
         sendSnapshot(lobby);
+      }
+
+      if (message.type === "game_event" && message.event === "selection_update") {
+        lobby.selectionSnapshot = message.data ?? {};
+      }
+
+      if (message.type === "game_event" && message.event === "state_update") {
+        lobby.matchSnapshot = message.data ?? {};
+        if (message.data?.selection && message.data?.names) {
+          lobby.selectionSnapshot = {
+            selection: message.data.selection,
+            names: message.data.names,
+          };
+        }
+      }
+
+      if (message.type === "game_event" && message.event === "sync_request") {
+        if (sendAuthoritativeSnapshot(lobby, ws)) {
+          return;
+        }
       }
 
       broadcast(lobby, {

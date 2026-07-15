@@ -89,3 +89,4 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-03-09: Reworked the client presentation into a darker HUD/codex style, added setup/match command bars, and surfaced character art directly in team preview, roster, and formation cards.
 - 2026-04-21: Fixed core restriction typing to use the exported card data contract and aligned the Counter golden fixture with immediate reaction resolution.
 - 2026-04-21: Hardened relay multiplayer with reconnectable lobby seats, Ready/Unready state, manual resync, saved lobby-code rejoin, and clearer connection/readiness UI.
+- 2026-07-15: Persisted relay display names and cached host-approved setup/match snapshots in the relay so host refresh recovery no longer loses authoritative match state.

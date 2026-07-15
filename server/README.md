@@ -47,3 +47,6 @@ Lobby notes:
 - Both connected players must mark Ready in the client before the host can start.
 - The host remains authoritative for match state; guests send action requests and
   can request a resync if their client falls behind.
+- The relay keeps the latest host-approved setup and match snapshots in memory so
+  either seat can restore the current stage after reconnecting. Snapshots disappear
+  when the lobby closes or the relay process restarts.

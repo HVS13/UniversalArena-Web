@@ -78,7 +78,8 @@ a `wss://` endpoint. The client now connects via the setup screen; you can set
 Multiplayer is host-authoritative: the host creates the lobby as P1, the guest
 joins as P2, both players lock Ready, and the host starts the match. If a socket
 drops, reconnect to the same relay and the client will try to reclaim the saved
-lobby code, then request a state resync from the host.
+lobby code. The in-memory relay keeps the latest host-approved snapshot so either
+seat can restore the current setup or match after reconnecting.
 
 ## Deterministic replay and transcripts
 

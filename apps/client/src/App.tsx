@@ -3644,6 +3644,41 @@ const App = () => {
 
       {message && <div className="ua-toast">{message}</div>}
 
+      {matchState.pendingInnateDecision && (
+        <section className="ua-panel ua-panel--wide" aria-label="Innate decision">
+          <div className="ua-panel__header">
+            <div>
+              <p className="ua-kicker">Innate Decision</p>
+              <h2>Spend {matchState.pendingInnateDecision.spendAmount} {matchState.pendingInnateDecision.spendStatus} to survive?</h2>
+            </div>
+            <div className="ua-actions">
+              <button
+                className="ua-button ua-button--primary"
+                disabled={isMultiplayer && localSeat !== matchState.pendingInnateDecision.playerId}
+                onClick={() => dispatchAction({
+                  type: "resolve_innate_decision",
+                  playerId: matchState.pendingInnateDecision!.playerId,
+                  accept: true,
+                })}
+              >
+                Spend and survive
+              </button>
+              <button
+                className="ua-button ua-button--ghost"
+                disabled={isMultiplayer && localSeat !== matchState.pendingInnateDecision.playerId}
+                onClick={() => dispatchAction({
+                  type: "resolve_innate_decision",
+                  playerId: matchState.pendingInnateDecision!.playerId,
+                  accept: false,
+                })}
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="ua-command-bar" aria-label="Match summary">
         <div className="ua-command-bar__item">
           <span>Phase</span>

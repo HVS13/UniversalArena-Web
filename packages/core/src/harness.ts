@@ -132,7 +132,15 @@ const testCharacters = (): Character[] => [
     difficulty: "Low",
     gameplan: "Test harness character.",
     art: "test-defender.png",
-    innates: [{ name: "Mitigation", text: "Resist 5 (Physical). Immune (Fire)." }],
+    innates: [{
+      id: "mitigation",
+      name: "Mitigation",
+      text: "Resist 5 (Physical). Immune (Fire).",
+      mitigations: [
+        { kind: "resist", amount: 5, amountMode: "flat", include: { mode: "any", types: ["Physical"] } },
+        { kind: "immune", include: { mode: "any", types: ["Fire"] } },
+      ],
+    }],
     cards: [
       {
         slot: "1",

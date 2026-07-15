@@ -65,6 +65,31 @@ const sendAuthoritativeSnapshot = (lobby, ws) => {
   return false;
 };
 
+const playersReadyToStart = (lobby) =>
+  lobby.players.size === MAX_PLAYERS &&
+  Array.from(lobby.players.values()).every((player) => player.connected && player.ready);
+
+const resetReadyForChangedSetup = (lobby, nextSnapshot) => {
+  const previous = lobby.selectionSnapshot;
+  if (!previous?.selection || !previous?.names || !nextSnapshot?.selection || !nextSnapshot?.names) {
+    return;
+  }
+  const guest = Array.from(lobby.players.values()).find((player) => player.id !== lobby.hostId);
+  const seats = [
+    { playerId: lobby.hostId, seat: "p1" },
+    { playerId: guest?.id, seat: "p2" },
+  ];
+  seats.forEach(({ playerId, seat }) => {
+    if (!playerId) return;
+    const selectionChanged = JSON.stringify(previous.selection[seat]) !== JSON.stringify(nextSnapshot.selection[seat]);
+    const nameChanged = previous.names[seat] !== nextSnapshot.names[seat];
+    if (selectionChanged || nameChanged) {
+      const player = lobby.players.get(playerId);
+      if (player) player.ready = false;
+    }
+  });
+};
+
 const createLobbyCode = () => {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -330,11 +355,22 @@ wss.on("connection", (ws) => {
       }
 
       if (message.type === "game_event" && message.event === "selection_update") {
+        resetReadyForChangedSetup(lobby, message.data);
         lobby.selectionSnapshot = message.data ?? {};
+        sendSnapshot(lobby);
       }
 
       if (message.type === "game_event" && message.event === "state_update") {
-        lobby.matchSnapshot = message.data ?? {};
+        if (!lobby.matchSnapshot && !playersReadyToStart(lobby)) {
+          send(ws, { type: "error", message: "Both connected players must be Ready before starting." });
+          return;
+        }
+        lobby.matchSnapshot = {
+          ...(lobby.matchSnapshot ?? {}),
+          ...(message.data ?? {}),
+          selection: message.data?.selection ?? lobby.matchSnapshot?.selection ?? lobby.selectionSnapshot?.selection,
+          names: message.data?.names ?? lobby.matchSnapshot?.names ?? lobby.selectionSnapshot?.names,
+        };
         if (message.data?.selection && message.data?.names) {
           lobby.selectionSnapshot = {
             selection: message.data.selection,

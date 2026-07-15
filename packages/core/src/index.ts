@@ -9,6 +9,8 @@ import type {
   EffectCondition,
   EffectScalar,
   EffectTarget,
+  InnateEffect,
+  InnateTrigger,
   StatusEffectDefinition,
   StatusValueStat,
 } from "@ua/data";
@@ -189,6 +191,15 @@ export type MatchState = {
     window: "after_use" | "counter";
     resolvedBy: PlayerId;
   };
+  innateUsage: Record<string, number>;
+  pendingInnateDecision?: {
+    playerId: PlayerId;
+    characterId: MatchCharacterId;
+    triggerKey: string;
+    spendStatus: string;
+    spendAmount: number;
+    setHp: number;
+  };
 };
 
 type StatusSnapshot = Record<MatchCharacterId, Record<string, StatusState>>;
@@ -219,6 +230,7 @@ export type Action =
     }
   | { type: "pass"; playerId: PlayerId }
   | { type: "end_turn"; playerId: PlayerId }
+  | { type: "resolve_innate_decision"; playerId: PlayerId; accept: boolean }
   | { type: "clear_log"; playerId: PlayerId };
 
 export type MatchOptions = {
@@ -897,6 +909,18 @@ const spendStatus = (
     state,
     `${member.name} spends ${spendAmount} ${options?.label ?? status}.`
   );
+  if (character) {
+    processInnateEvent(state, {
+      type: "status_changed",
+      targetId: member.id,
+      sourceId: member.id,
+      status,
+      previous: current,
+      current: statusState[stat],
+      appliedAmount: statusState[stat] - current,
+      direction: "downward",
+    }, [character]);
+  }
   return spendAmount;
 };
 
@@ -1795,38 +1819,15 @@ const buildStartingZones = (
 const applyStartingStatuses = (member: MatchCharacter, character: Character) => {
   if (!character.innates?.length) return;
   character.innates.forEach((innate) => {
-    const normalized = innate.text.trim();
-    const startMatch = normalized.match(/starts with\s+(.+)$/i);
-    if (!startMatch) return;
-    const payload = startMatch[1];
-    const parts = payload
-      .split(/,| and /i)
-      .map((part) => part.trim())
-      .filter(Boolean);
-    parts.forEach((part) => {
-      const atMatch = part.match(/^(.+?)\s+at\s+(\d+)$/i);
-      if (atMatch) {
-        const statusName = atMatch[1].trim();
-        const amount = Number(atMatch[2]);
-        if (amount > 0) {
-          applyStatusDelta(member, statusName, amount, undefined, character);
-        }
-        return;
+    innate.setup?.forEach((effect) => {
+      if (effect.type === "gain_status") {
+        applyStatusDelta(member, effect.status, effect.amount, effect.stat, character);
+        if (effect.recordMax) member.resourceMax[effect.status] = effect.amount;
+      } else if (effect.type === "set_status") {
+        setStatusValue(member, effect.status, effect.amount, effect.stat, character);
+      } else if (effect.type === "remove_status") {
+        expireStatus(member, effect.status);
       }
-      const valueMatch = part.match(/^(\d+)\s+(.+)$/);
-      if (valueMatch) {
-        const amount = Number(valueMatch[1]);
-        const statusName = valueMatch[2].trim().replace(/\.$/, "");
-        if (amount > 0) {
-          applyStatusDelta(member, statusName, amount, undefined, character);
-          member.resourceMax[statusName] = amount;
-        }
-        return;
-      }
-      const statusName = part.replace(/\.$/, "");
-      if (!statusName) return;
-      applyStatusDelta(member, statusName, 1, undefined, character);
-      member.resourceMax[statusName] = Math.max(member.resourceMax[statusName] ?? 0, 1);
     });
   });
 };
@@ -2711,7 +2712,30 @@ const getMitigationRules = (
 ) => {
   const rules: MitigationRule[] = [];
   if (character?.innates?.length) {
-    rules.push(...character.innates.flatMap((innate) => parseMitigationRules(innate.text)));
+    character.innates.forEach((innate) => {
+      innate.mitigations?.forEach((rule) => {
+        const include = rule.include;
+        const excludeTags = rule.exclude?.tags ?? [];
+        const included = [...(include?.types ?? []), ...(include?.tags ?? [])];
+        const tags: TagCondition[] | undefined = included.length
+          ? include?.mode === "all"
+            ? [{ include: included.map(normalizeTag), exclude: excludeTags.map(normalizeTag) }]
+            : included.map((tag) => ({ include: [normalizeTag(tag)], exclude: excludeTags.map(normalizeTag) }))
+          : excludeTags.length
+            ? [{ include: [], exclude: excludeTags.map(normalizeTag) }]
+            : undefined;
+        if (rule.kind === "immune") {
+          if (tags) rules.push({ kind: "immune", tags });
+          return;
+        }
+        rules.push({
+          kind: rule.kind,
+          flat: rule.amountMode !== "percent" ? rule.amount : undefined,
+          percent: rule.amountMode === "percent" ? rule.amount : undefined,
+          tags,
+        });
+      });
+    });
   }
 
   if (Array.isArray(extraText)) {
@@ -2827,9 +2851,19 @@ const applyStatusDamage = (
     }
   }
   if (remaining <= 0) return;
+  const hpBefore = target.hp;
   target.hp = Math.max(target.hp - remaining, 0);
   addLog(state, `${target.name} takes ${remaining} damage from ${label}.`);
-  if (target.hp <= 0) {
+  const runtimeCharacters = character ? [character] : [];
+  processInnateEvent(state, {
+    type: "hp_threshold_crossed",
+    targetId: target.id,
+    previous: hpBefore,
+    current: target.hp,
+    direction: "downward",
+    hpDamage: Math.min(remaining, hpBefore),
+  }, runtimeCharacters);
+  if (target.hp <= 0 && !maybeQueueDefeatDecision(state, target, runtimeCharacters)) {
     handleDefeat(state, target.id, `${target.name} is defeated.`);
   }
 };
@@ -2859,13 +2893,254 @@ const applyHealing = (
   return adjusted;
 };
 
+type InnateRuntimeEvent = {
+  type: "status_changed" | "status_inflicted" | "hp_damage_taken" | "hp_threshold_crossed";
+  targetId: MatchCharacterId;
+  sourceId?: MatchCharacterId;
+  status?: string;
+  previous?: number;
+  current?: number;
+  appliedAmount?: number;
+  direction?: "upward" | "downward";
+  cardTypes?: string[];
+  hpDamage?: number;
+  additional?: boolean;
+};
+
+const getInnateTriggerKey = (member: MatchCharacter, innateId: string, triggerId: string) =>
+  `${member.id}:${innateId}:${triggerId}`;
+
+const isInnateTriggerAvailable = (state: MatchState, key: string, trigger: InnateTrigger) => {
+  state.innateUsage ??= {};
+  const usedAt = state.innateUsage[key];
+  if (trigger.scope === "always") return true;
+  if (trigger.scope === "once_per_game") return usedAt === undefined;
+  return usedAt !== state.turn;
+};
+
+const markInnateTriggerUsed = (state: MatchState, key: string, trigger: InnateTrigger) => {
+  state.innateUsage ??= {};
+  if (trigger.scope === "once_per_game") state.innateUsage[key] = -1;
+  if (trigger.scope === "once_per_turn") state.innateUsage[key] = state.turn;
+};
+
+const resolveInnateTarget = (
+  state: MatchState,
+  owner: MatchCharacter,
+  event: InnateRuntimeEvent,
+  target: InnateEffect["target"]
+) => {
+  if (target === "event_target") return getMatchCharacter(state, event.targetId);
+  if (target === "event_source" && event.sourceId) return getMatchCharacter(state, event.sourceId);
+  return owner;
+};
+
+const triggerMatchesInnateEvent = (
+  state: MatchState,
+  owner: MatchCharacter,
+  trigger: InnateTrigger,
+  event: InnateRuntimeEvent
+) => {
+  const filters = trigger.filters ?? {};
+  const eventMatches =
+    trigger.event === event.type ||
+    (trigger.event === "status_threshold_crossed" && event.type === "status_changed") ||
+    (trigger.event === "hp_threshold_crossed" && event.type === "hp_threshold_crossed");
+  if (!eventMatches) return false;
+  if (filters.subject === "self" && event.targetId !== owner.id) return false;
+  if (filters.source === "self" && event.sourceId !== owner.id) return false;
+  if (filters.source === "enemy") {
+    if (!event.sourceId) return false;
+    const ownerTeam = getTeamForCharacter(state, owner.id);
+    const sourceTeam = getTeamForCharacter(state, event.sourceId);
+    if (!ownerTeam || !sourceTeam || ownerTeam.id === sourceTeam.id) return false;
+  }
+  if (filters.status && filters.status !== event.status) return false;
+  if (filters.direction && filters.direction !== event.direction) return false;
+  if (filters.cardType && !event.cardTypes?.some((type) => normalizeTag(type) === normalizeTag(filters.cardType!))) return false;
+  if (filters.hpDamageOnly && (event.hpDamage ?? 0) <= 0) return false;
+  if (filters.originalOnly && event.additional) return false;
+  if (trigger.event === "status_threshold_crossed" || trigger.event === "hp_threshold_crossed") {
+    const threshold = trigger.event === "hp_threshold_crossed" ? filters.threshold ?? 0 : filters.threshold ?? 0;
+    const previous = event.previous ?? 0;
+    const current = event.current ?? 0;
+    if (filters.direction === "downward") {
+      const thresholdValue = trigger.event === "hp_threshold_crossed" ? threshold : threshold;
+      if (!(previous > thresholdValue && current <= thresholdValue)) return false;
+    } else if (!(previous < threshold && current >= threshold)) return false;
+  }
+  return true;
+};
+
+const processInnateEvent = (
+  state: MatchState,
+  event: InnateRuntimeEvent,
+  characters: Character[]
+) => {
+  const members = [...state.players.p1.characters, ...state.players.p2.characters];
+  members.forEach((owner) => {
+    if (owner.defeated) return;
+    const character = getCharacterById(characters, owner.characterId);
+    character?.innates?.forEach((innate) => {
+      innate.triggers?.forEach((trigger) => {
+        if (trigger.event === "would_be_defeated") return;
+        const key = getInnateTriggerKey(owner, innate.id, trigger.id);
+        if (!isInnateTriggerAvailable(state, key, trigger)) return;
+        if (!triggerMatchesInnateEvent(state, owner, trigger, event)) return;
+        markInnateTriggerUsed(state, key, trigger);
+        trigger.effects?.forEach((effect) => {
+          const recipient = resolveInnateTarget(state, owner, event, effect.target);
+          if (!recipient || recipient.defeated) return;
+          const recipientCharacter = getCharacterById(characters, recipient.characterId);
+          const eventAmount = Math.abs(event.appliedAmount ?? 0);
+          switch (effect.type) {
+            case "gain_status": {
+              const amount = trigger.useEventAmount ? eventAmount : effect.amount;
+              applyInnateStatusDelta(state, recipient.id, effect.status, amount, effect.stat, characters, {
+                sourceId: owner.id,
+                additional: Boolean(trigger.additional),
+              });
+              break;
+            }
+            case "reduce_status": {
+              const amount = effect.amount === "event_amount" ? eventAmount : effect.amount;
+              const definition = getStatusDefinition(effect.status, recipientCharacter);
+              const stat = effect.stat ?? getStatusPrimaryStat(definition);
+              const before = getStatusState(recipient, effect.status)[stat];
+              reduceStatusValue(recipient, effect.status, amount, effect.stat, {}, recipientCharacter);
+              const after = getStatusState(recipient, effect.status)[stat];
+              if (after !== before) processInnateEvent(state, {
+                type: "status_changed", targetId: recipient.id, sourceId: owner.id,
+                status: effect.status, previous: before, current: after,
+                appliedAmount: after - before, direction: "downward",
+              }, characters);
+              break;
+            }
+            case "set_status":
+              setStatusValue(recipient, effect.status, effect.amount, effect.stat, recipientCharacter);
+              break;
+            case "remove_status":
+              expireStatus(recipient, effect.status);
+              break;
+            case "heal":
+              applyHealing(state, recipient.id, effect.amount, recipientCharacter, innate.name);
+              break;
+            case "draw_cards": {
+              const team = getTeamForCharacter(state, recipient.id);
+              if (team) drawCards(state, team.id, effect.amount);
+              break;
+            }
+          }
+        });
+      });
+    });
+  });
+};
+
+const applyInnateStatusDelta = (
+  state: MatchState,
+  targetId: MatchCharacterId,
+  status: string,
+  amount: number,
+  stat: StatusValueStat | undefined,
+  characters: Character[],
+  context: { sourceId?: MatchCharacterId; inflicted?: boolean; additional?: boolean } = {}
+) => {
+  const target = getMatchCharacter(state, targetId);
+  if (!target || target.defeated || !status || amount === 0) return 0;
+  const character = getCharacterById(characters, target.characterId);
+  const definition = getStatusDefinition(status, character);
+  const statKey = stat ?? getStatusPrimaryStat(definition);
+  const before = getStatusState(target, status)[statKey];
+  applyStatusDelta(target, status, amount, stat, character);
+  const after = getStatusState(target, status)[statKey];
+  const applied = after - before;
+  if (applied === 0) return 0;
+  const event: InnateRuntimeEvent = {
+    type: "status_changed",
+    targetId,
+    sourceId: context.sourceId,
+    status,
+    previous: before,
+    current: after,
+    appliedAmount: applied,
+    direction: applied > 0 ? "upward" : "downward",
+    additional: context.additional,
+  };
+  processInnateEvent(state, event, characters);
+  if (context.inflicted) processInnateEvent(state, { ...event, type: "status_inflicted" }, characters);
+  return applied;
+};
+
+const setInnateStatusValue = (
+  state: MatchState,
+  targetId: MatchCharacterId,
+  status: string,
+  amount: number,
+  stat: StatusValueStat | undefined,
+  characters: Character[],
+  sourceId?: MatchCharacterId
+) => {
+  const target = getMatchCharacter(state, targetId);
+  if (!target || target.defeated) return null;
+  const character = getCharacterById(characters, target.characterId);
+  const definition = getStatusDefinition(status, character);
+  const statKey = stat ?? getStatusPrimaryStat(definition);
+  const before = getStatusState(target, status)[statKey];
+  const result = setStatusValue(target, status, amount, stat, character);
+  if (result === null) return null;
+  const after = getStatusState(target, status)[statKey];
+  if (after !== before) {
+    processInnateEvent(state, {
+      type: "status_changed", targetId, sourceId, status,
+      previous: before, current: after, appliedAmount: after - before,
+      direction: after > before ? "upward" : "downward",
+    }, characters);
+  }
+  return result;
+};
+
+const maybeQueueDefeatDecision = (
+  state: MatchState,
+  target: MatchCharacter,
+  characters: Character[]
+) => {
+  if (state.pendingInnateDecision) return true;
+  const character = getCharacterById(characters, target.characterId);
+  for (const innate of character?.innates ?? []) {
+    for (const trigger of innate.triggers ?? []) {
+      if (trigger.event !== "would_be_defeated" || !trigger.decision) continue;
+      const key = getInnateTriggerKey(target, innate.id, trigger.id);
+      if (!isInnateTriggerAvailable(state, key, trigger)) continue;
+      const definition = getStatusDefinition(trigger.decision.spendStatus, character);
+      const stat = getStatusPrimaryStat(definition);
+      if ((target.statuses[trigger.decision.spendStatus]?.[stat] ?? 0) < trigger.decision.spendAmount) continue;
+      const team = getTeamForCharacter(state, target.id);
+      if (!team) continue;
+      state.pendingInnateDecision = {
+        playerId: team.id,
+        characterId: target.id,
+        triggerKey: key,
+        spendStatus: trigger.decision.spendStatus,
+        spendAmount: trigger.decision.spendAmount,
+        setHp: trigger.decision.setHp,
+      };
+      target.hp = Math.max(trigger.decision.setHp, 1);
+      addLog(state, `${target.name} may spend ${trigger.decision.spendAmount} ${trigger.decision.spendStatus} to survive.`);
+      return true;
+    }
+  }
+  return false;
+};
+
 const applyDamage = (
   state: MatchState,
   target: MatchCharacter,
   damage: number,
   sourceTypes: string[],
   targetCharacter: Character | null,
-  mitigationText?: string[]
+  mitigationText?: string[],
+  context?: { sourceId?: MatchCharacterId; characters?: Character[]; cardTypes?: string[] }
 ) => {
   if (damage <= 0) return 0;
   if (target.defeated) return 0;
@@ -2926,13 +3201,27 @@ const applyDamage = (
     remaining += increase;
   });
 
+  const hpBefore = target.hp;
   if (remaining > 0) {
     target.hp = Math.max(target.hp - remaining, 0);
   }
   if (absorbResult.reduced > 0) {
     target.hp = Math.min(target.hp + absorbResult.reduced, 100);
   }
-  if (target.hp <= 0) {
+  const runtimeCharacters = context?.characters ?? (targetCharacter ? [targetCharacter] : []);
+  if (remaining > 0) {
+    processInnateEvent(state, {
+      type: "hp_damage_taken", targetId: target.id, sourceId: context?.sourceId,
+      previous: hpBefore, current: target.hp, hpDamage: Math.min(remaining, hpBefore),
+      cardTypes: context?.cardTypes ?? sourceTypes,
+    }, runtimeCharacters);
+    processInnateEvent(state, {
+      type: "hp_threshold_crossed", targetId: target.id, sourceId: context?.sourceId,
+      previous: hpBefore, current: target.hp, direction: "downward",
+      hpDamage: Math.min(remaining, hpBefore), cardTypes: context?.cardTypes ?? sourceTypes,
+    }, runtimeCharacters);
+  }
+  if (target.hp <= 0 && !maybeQueueDefeatDecision(state, target, runtimeCharacters)) {
     handleDefeat(state, target.id, `${target.name} is defeated.`);
   }
 
@@ -3711,7 +4000,8 @@ const resolveStructuredEffectList = (
             total,
             entry.types,
             targetDefinition,
-            entry.mitigationText
+            entry.mitigationText,
+            { sourceId: source.id, characters, cardTypes: entry.types }
           );
           addLog(state, `${source.name} deals ${applied} damage to ${targetMember.name}.`);
         });
@@ -3743,7 +4033,9 @@ const resolveStructuredEffectList = (
         if (effect.status === "Stagnate") {
           applyStagnate(state, amount, characters, source.id);
         } else {
-          applyStatusDelta(source, effect.status, amount, effect.stat, sourceCharacter);
+          applyInnateStatusDelta(state, source.id, effect.status, amount, effect.stat, characters, {
+            sourceId: source.id,
+          });
           addLog(state, `${source.name} gains ${amount} ${effect.status}.`);
         }
         break;
@@ -3751,11 +4043,14 @@ const resolveStructuredEffectList = (
       case "inflict_status": {
         const amount = resolveEffectAmount(effect.amount, power, entry.xValue);
         if (amount <= 0) break;
-        forEachTarget((targetMember, targetDefinition) => {
+        forEachTarget((targetMember, _targetDefinition) => {
           if (effect.status === "Stagnate") {
             applyStagnate(state, amount, characters, targetMember.id);
           } else {
-            applyStatusDelta(targetMember, effect.status, amount, effect.stat, targetDefinition);
+            applyInnateStatusDelta(state, targetMember.id, effect.status, amount, effect.stat, characters, {
+              sourceId: source.id,
+              inflicted: true,
+            });
             addLog(state, `${targetMember.name} gains ${amount} ${effect.status}.`);
           }
         });
@@ -3773,7 +4068,9 @@ const resolveStructuredEffectList = (
               : 0;
         const total = perSpend * spent;
         if (total <= 0) break;
-        applyStatusDelta(source, effect.status, total, effect.stat, sourceCharacter);
+        applyInnateStatusDelta(state, source.id, effect.status, total, effect.stat, characters, {
+          sourceId: source.id,
+        });
         addLog(state, `${source.name} gains ${total} ${effect.status}.`);
         break;
       }
@@ -3789,8 +4086,11 @@ const resolveStructuredEffectList = (
               : 0;
         const total = perSpend * spent;
         if (total <= 0) break;
-        forEachTarget((targetMember, targetDefinition) => {
-          applyStatusDelta(targetMember, effect.status, total, effect.stat, targetDefinition);
+        forEachTarget((targetMember, _targetDefinition) => {
+          applyInnateStatusDelta(state, targetMember.id, effect.status, total, effect.stat, characters, {
+            sourceId: source.id,
+            inflicted: true,
+          });
           addLog(state, `${targetMember.name} gains ${total} ${effect.status}.`);
         });
         break;
@@ -3800,8 +4100,15 @@ const resolveStructuredEffectList = (
         const recipientId = resolveEffectTargetCharacterId(effect.target, entry);
         const recipient = getMatchCharacter(state, recipientId);
         if (!recipient || recipient.defeated) break;
-        const recipientCharacter = getCharacterById(characters, recipient.characterId);
-        const applied = setStatusValue(recipient, effect.status, amount, effect.stat, recipientCharacter);
+        const applied = setInnateStatusValue(
+          state,
+          recipient.id,
+          effect.status,
+          amount,
+          effect.stat,
+          characters,
+          source.id
+        );
         if (applied === null) break;
         addLog(state, `${recipient.name} sets ${effect.status} to ${applied}.`);
         break;
@@ -3842,7 +4149,8 @@ const resolveStructuredEffectList = (
             total,
             entry.types,
             targetDefinition,
-            entry.mitigationText
+            entry.mitigationText,
+            { sourceId: source.id, characters, cardTypes: entry.types }
           );
           addLog(state, `${source.name} deals ${applied} damage to ${targetMember.name}.`);
         });
@@ -4376,7 +4684,8 @@ const resolveTextEffectsForTiming = (
             totalDamage,
             entry.types,
             targetDefinition,
-            entry.mitigationText
+            entry.mitigationText,
+            { sourceId: source.id, characters, cardTypes: entry.types }
           );
           addLog(
             state,
@@ -5398,6 +5707,7 @@ export const createMatchState = (
     log: [],
     lastResolution: null,
     pendingTurnStartGains: {},
+    innateUsage: {},
     nextCardInstanceId: 1,
     rng,
     transcript,
@@ -5441,6 +5751,31 @@ export const applyAction = (
     recordTranscriptEntry(next, action, error);
     return error ? { state: next, error } : { state: next };
   };
+
+  if (next.pendingInnateDecision) {
+    if (action.type !== "resolve_innate_decision") {
+      return finalize("Resolve the pending innate decision first.");
+    }
+    const pending = next.pendingInnateDecision;
+    if (action.playerId !== pending.playerId) return finalize("Not your decision.");
+    const member = getMatchCharacter(next, pending.characterId);
+    if (!member || member.defeated) {
+      next.pendingInnateDecision = undefined;
+      return finalize("Innate decision is no longer valid.");
+    }
+    const character = getCharacterById(characters, member.characterId);
+    if (action.accept) {
+      const spent = spendStatus(next, member.id, pending.spendStatus, pending.spendAmount, character);
+      if (spent < pending.spendAmount) return finalize("Required status is no longer available.");
+      member.hp = pending.setHp;
+      next.innateUsage[pending.triggerKey] = -1;
+      addLog(next, `${member.name} survives at ${pending.setHp} HP.`);
+    } else {
+      handleDefeat(next, member.id, `${member.name} declines the innate replacement and is defeated.`);
+    }
+    next.pendingInnateDecision = undefined;
+    return finalize();
+  }
 
   if (action.type === "clear_log") {
     next.log = [];

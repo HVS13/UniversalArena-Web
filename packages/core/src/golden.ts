@@ -1,4 +1,5 @@
-import type { Character } from "@ua/data";
+import { characters as roster } from "@ua/data";
+import type { Character, Effect } from "@ua/data";
 import {
   applyAction,
   createMatchState,
@@ -965,8 +966,8 @@ const runCostSpeedModifierTest = (): GoldenResult => {
       gameplan: "Cost and speed modifiers.",
       art: "modifier-alpha.png",
       innates: [
-        { name: "Haste Start", text: "Starts with 1 Haste." },
-        { name: "Strain Start", text: "Starts with 1 Strain." },
+        { id: "haste-start", name: "Haste Start", text: "Starts with 1 Haste.", setup: [{ type: "gain_status", status: "Haste", amount: 1 }] },
+        { id: "strain-start", name: "Strain Start", text: "Starts with 1 Strain.", setup: [{ type: "gain_status", status: "Strain", amount: 1 }] },
       ],
       cards: [
         {
@@ -1102,8 +1103,14 @@ const runMitigationStackingTest = (): GoldenResult => {
       art: "mitigation-bravo.png",
       innates: [
         {
+          id: "mitigation-mix",
           name: "Mitigation Mix",
           text: "Resist 3 (Physical). Absorb 2 (Physical). Weakness 1 (Physical).",
+          mitigations: [
+            { kind: "resist", amount: 3, amountMode: "flat", include: { mode: "any", types: ["Physical"] } },
+            { kind: "absorb", amount: 2, amountMode: "flat", include: { mode: "any", types: ["Physical"] } },
+            { kind: "weakness", amount: 1, amountMode: "flat", include: { mode: "any", types: ["Physical"] } },
+          ],
         },
       ],
       cards: [
@@ -1185,7 +1192,7 @@ const runSpendFlowTest = (): GoldenResult => {
       difficulty: "Low",
       gameplan: "Spend and hand flow coverage.",
       art: "spend-alpha.png",
-      innates: [{ name: "Ammo", text: "Starts with 2 Test Ammo." }],
+      innates: [{ id: "ammo", name: "Ammo", text: "Starts with 2 Test Ammo.", setup: [{ type: "gain_status", status: "Test Ammo", amount: 2, recordMax: true }] }],
       cards: [
         {
           slot: "1",
@@ -4104,6 +4111,211 @@ const runTransformTargetExclusionTest = (): GoldenResult => {
   }
 };
 
+const addInnateTestCard = (
+  character: Character,
+  effects: Effect[],
+  options: { types?: string[]; target?: string; power?: string } = {}
+): Character => ({
+  ...character,
+  cards: [
+    ...character.cards,
+    {
+      slot: "golden-innate",
+      name: "Innate Test Action",
+      cost: "0 Energy",
+      power: options.power ?? "-",
+      types: options.types ?? ["Technique", "Special"],
+      target: options.target ?? "Self",
+      speed: "Fast",
+      effect: ["Innate."],
+      effects,
+    },
+  ],
+});
+
+const runRosterInnateInitializationTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Setup", characterIds: ["saitama", "leon-s-kennedy-re4", "dio-brando-part-3"] },
+    { id: "p2" as const, name: "Triggers", characterIds: ["goku-saiyan-saga", "kurosaki-ichigo-soul-society", "naruto-uzumaki-pre-timeskip"] },
+  ];
+  const state = createMatchState(roster, players, { seed: goldenSeed });
+  const saitama = state.players.p1.characters[0];
+  const leon = state.players.p1.characters[1];
+  const innateEntries = roster.flatMap((character) => character.innates.map((innate) => ({ character, innate })));
+  const invalid = innateEntries.filter(({ innate }) =>
+    !innate.id || (!innate.setup?.length && !innate.mitigations?.length && !innate.triggers?.length)
+  );
+  try {
+    if (innateEntries.length !== 12) throw new Error(`Expected 12 innates, got ${innateEntries.length}.`);
+    if (invalid.length) throw new Error(`Unstructured innates: ${invalid.map(({ innate }) => innate.name).join(", ")}`);
+    if (saitama.statuses.State?.value !== 0 || saitama.statuses["State: Bored"]?.value !== 1) {
+      throw new Error("Saitama structured setup is incorrect.");
+    }
+    const bogus = Object.keys(saitama.statuses).filter((status) => /when state|remove state|gain state/i.test(status));
+    if (bogus.length) throw new Error(`Bogus Saitama statuses: ${bogus.join(", ")}`);
+    if (
+      leon.statuses["Equip: Handgun"]?.value !== 1 ||
+      leon.statuses["Handgun Ammo"]?.value !== 10 ||
+      leon.statuses["Shotgun Ammo"]?.value !== 5 ||
+      leon.statuses["Rocket Launcher"]?.value !== 1
+    ) throw new Error("Leon structured setup is incorrect.");
+    return { label: "All twelve roster innates are structured and initialize cleanly", ok: true };
+  } catch (error) {
+    return { label: "All twelve roster innates are structured and initialize cleanly", ok: false, details: String(error) };
+  }
+};
+
+const runStructuredInnateTriggerTest = (): GoldenResult => {
+  const find = (id: string) => {
+    const character = roster.find((entry) => entry.id === id);
+    if (!character) throw new Error(`Missing roster character ${id}.`);
+    return character;
+  };
+  try {
+    const saitama = addInnateTestCard(find("saitama"), [{
+      timing: "on_play", type: "gain_status", status: "State", amount: { kind: "flat", value: 10 },
+    }]);
+    let state = createSeededCombatState([saitama], [
+      { id: "p1", name: "Saitama", characterIds: withFillersIds("saitama") },
+      { id: "p2", name: "Dummy", characterIds: ["filler-1", "filler-2", "saitama"] },
+    ]);
+    state = applyOrThrow(state, playFromHand(state, "p1", "golden-innate", "fast"), [saitama, ...fillerCharacters]);
+    const saitamaState = state.players.p1.characters[0];
+    if (saitamaState.statuses["State: Bored"]?.value) throw new Error("Saitama remained Bored at State 10.");
+    if (saitamaState.statuses["State: Normal"]?.value !== 1) throw new Error("Saitama did not become Normal.");
+
+    const seriousSaitama = addInnateTestCard(find("saitama"), [{
+      timing: "on_play", type: "set_status", status: "State", stat: "value", amount: { kind: "flat", value: 30 },
+    }]);
+    state = createSeededCombatState([seriousSaitama], [
+      { id: "p1", name: "Saitama", characterIds: withFillersIds("saitama") },
+      { id: "p2", name: "Dummy", characterIds: ["filler-1", "filler-2", "saitama"] },
+    ]);
+    state = applyOrThrow(state, playFromHand(state, "p1", "golden-innate", "fast"), [seriousSaitama, ...fillerCharacters]);
+    if (state.players.p1.characters[0].statuses["State: Serious"]?.value !== 1) {
+      throw new Error("Set State to 30 did not reach Serious.");
+    }
+
+    const dio = addInnateTestCard(find("dio-brando-part-3"), [{
+      timing: "on_play", type: "gain_status", status: "Stolen Blood", amount: { kind: "flat", value: 2 },
+    }]);
+    state = createSeededCombatState([dio], [
+      { id: "p1", name: "DIO", characterIds: withFillersIds("dio-brando-part-3") },
+      { id: "p2", name: "Dummy", characterIds: ["filler-1", "filler-2", "dio-brando-part-3"] },
+    ]);
+    state.players.p1.characters[0].hp = 50;
+    state = applyOrThrow(state, playFromHand(state, "p1", "golden-innate", "fast"), [dio, ...fillerCharacters]);
+    const dioState = state.players.p1.characters[0];
+    if (dioState.hp !== 60 || dioState.statuses["Blood Focus"]?.value !== 2) {
+      throw new Error("DIO gain triggers did not use the applied Stolen Blood delta.");
+    }
+
+    const attacker = addInnateTestCard(find("light-yagami-kira"), [
+      { timing: "on_play", type: "inflict_status", status: "Stolen Information", amount: { kind: "flat", value: 1 } },
+      { timing: "on_play", type: "inflict_status", status: "Spectro Frazzle", amount: { kind: "flat", value: 1 } },
+    ], { target: "1 Enemy" });
+    const rover = find("rover-spectro");
+    state = createSeededCombatState([attacker, rover], [
+      { id: "p1", name: "Planner", characterIds: ["light-yagami-kira", "rover-spectro", "filler-1"] },
+      { id: "p2", name: "Dummy", characterIds: ["filler-1", "filler-2", "rover-spectro"] },
+    ]);
+    const handBefore = state.players.p1.hand.length;
+    state = applyOrThrow(state, playFromHandAtTarget(state, "p1", "golden-innate", "fast", state.players.p2.characters[0].id), [attacker, rover, ...fillerCharacters]);
+    const target = state.players.p2.characters[0];
+    if (target.statuses["Spectro Frazzle"]?.stack !== 3) {
+      throw new Error("Each eligible Rover did not add exactly one non-recursive Spectro Frazzle.");
+    }
+    if (state.players.p1.hand.length < handBefore) throw new Error("Light did not draw from Meticulous Planner.");
+    return { label: "Structured status, threshold, draw, amplification, and once-per-turn innate triggers execute", ok: true };
+  } catch (error) {
+    return { label: "Structured status, threshold, draw, amplification, and once-per-turn innate triggers execute", ok: false, details: String(error) };
+  }
+};
+
+const runHpThresholdAndReplacementInnateTest = (): GoldenResult => {
+  const find = (id: string) => {
+    const character = roster.find((entry) => entry.id === id);
+    if (!character) throw new Error(`Missing roster character ${id}.`);
+    return character;
+  };
+  const strike = addInnateTestCard(find("light-yagami-kira"), [{
+    timing: "on_play", type: "deal_damage", amount: { kind: "flat", value: 80 },
+  }], { types: ["Technique", "Attack", "Physical"], target: "1 Enemy", power: "80-80" });
+  const hit = (target: Character) => {
+    const characters = [strike, target, ...fillerCharacters];
+    let state = createSeededCombatState(characters, [
+      { id: "p1", name: "Attacker", characterIds: ["light-yagami-kira", "filler-1", "filler-2"] },
+      { id: "p2", name: "Target", characterIds: [target.id, "filler-1", "filler-2"] },
+    ]);
+    state = applyOrThrow(state, playFromHandAtTarget(state, "p1", "golden-innate", "fast", state.players.p2.characters[0].id), characters);
+    return state;
+  };
+  try {
+    const goku = hit(find("goku-saiyan-saga")).players.p2.characters[0];
+    if (goku.statuses.Zenkai?.value !== 1) throw new Error("Goku did not gain Zenkai at 25% HP crossing.");
+
+    const ichigo = hit(find("kurosaki-ichigo-soul-society")).players.p2.characters[0];
+    if (ichigo.statuses.Reiatsu?.value !== 3 || ichigo.statuses["Hollow Interference"]?.stack !== 1) {
+      throw new Error("Ichigo HP-damage and first-threshold innates did not both resolve.");
+    }
+
+    const naruto = hit(find("naruto-uzumaki-pre-timeskip")).players.p2.characters[0];
+    if (
+      naruto.statuses["Kyuubi Chakra"]?.potency !== 4 ||
+      naruto.statuses["Kyuubi Chakra"]?.count !== 3 ||
+      naruto.statuses["One-Tail Cloak"]?.stack !== 4 ||
+      naruto.statuses["Shadow Clones"]?.stack !== 2
+    ) throw new Error("Naruto threshold gains are incomplete.");
+
+    const lethal = addInnateTestCard(find("light-yagami-kira"), [{
+      timing: "on_play", type: "deal_damage", amount: { kind: "flat", value: 120 },
+    }], { types: ["Technique", "Attack", "Physical"], target: "1 Enemy", power: "120-120" });
+    const dio = find("dio-brando-part-3");
+    const characters = [lethal, dio, ...fillerCharacters];
+    let state = createSeededCombatState(characters, [
+      { id: "p1", name: "Attacker", characterIds: ["light-yagami-kira", "filler-1", "filler-2"] },
+      { id: "p2", name: "DIO", characterIds: ["dio-brando-part-3", "filler-1", "filler-2"] },
+    ]);
+    state.players.p2.characters[0].statuses["Stolen Blood"] = { potency: 0, count: 0, stack: 0, value: 3 };
+    state = applyOrThrow(state, playFromHandAtTarget(state, "p1", "golden-innate", "fast", state.players.p2.characters[0].id), characters);
+    if (!state.pendingInnateDecision) throw new Error("DIO defeat replacement was not offered.");
+    state = applyOrThrow(state, { type: "resolve_innate_decision", playerId: "p2", accept: true }, characters);
+    const survived = state.players.p2.characters[0];
+    if (survived.hp !== 1 || survived.defeated || survived.statuses["Stolen Blood"]?.value !== 0) {
+      throw new Error("DIO accepted replacement did not spend exactly 3 and set HP to 1.");
+    }
+    return { label: "HP thresholds and DIO's optional defeat replacement execute deterministically", ok: true };
+  } catch (error) {
+    return { label: "HP thresholds and DIO's optional defeat replacement execute deterministically", ok: false, details: String(error) };
+  }
+};
+
+const runStructuredInnateMitigationTest = (): GoldenResult => {
+  const light = roster.find((entry) => entry.id === "light-yagami-kira");
+  const luffy = roster.find((entry) => entry.id === "monkey-d-luffy-pre-timeskip");
+  if (!light || !luffy) return { label: "Structured innate mitigation honors compound filters", ok: false, details: "Missing roster data." };
+  const takeHit = (types: string[]) => {
+    const attacker = addInnateTestCard(light, [{
+      timing: "on_play", type: "deal_damage", amount: { kind: "flat", value: 10 },
+    }], { types, target: "1 Enemy", power: "10-10" });
+    const characters = [attacker, luffy, ...fillerCharacters];
+    let state = createSeededCombatState(characters, [
+      { id: "p1", name: "Attacker", characterIds: [attacker.id, "filler-1", "filler-2"] },
+      { id: "p2", name: "Luffy", characterIds: [luffy.id, "filler-1", "filler-2"] },
+    ]);
+    state = applyOrThrow(state, playFromHandAtTarget(state, "p1", "golden-innate", "fast", state.players.p2.characters[0].id), characters);
+    return state.players.p2.characters[0].hp;
+  };
+  try {
+    if (takeHit(["Technique", "Attack", "Physical", "Pierce"]) !== 95) throw new Error("Non-Haki Pierce did not receive Resist 5.");
+    if (takeHit(["Technique", "Attack", "Physical", "Pierce", "Haki"]) !== 90) throw new Error("Haki Pierce was incorrectly resisted.");
+    if (takeHit(["Technique", "Attack", "Electric"]) !== 100) throw new Error("Electric damage bypassed immunity.");
+    return { label: "Structured innate mitigation honors compound filters", ok: true };
+  } catch (error) {
+    return { label: "Structured innate mitigation honors compound filters", ok: false, details: String(error) };
+  }
+};
+
 export const runGoldenTests = () => [
   runInterruptChainTest(),
   runCancelledAlwaysTest(),
@@ -4132,6 +4344,10 @@ export const runGoldenTests = () => [
   runSplashAdjacencyTest(),
   runDeckReshuffleTest(),
   runTransformTargetExclusionTest(),
+  runRosterInnateInitializationTest(),
+  runStructuredInnateTriggerTest(),
+  runHpThresholdAndReplacementInnateTest(),
+  runStructuredInnateMitigationTest(),
 ];
 
 if (process.argv[1]?.includes("golden")) {

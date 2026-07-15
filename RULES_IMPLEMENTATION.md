@@ -1,7 +1,7 @@
 # Rules Implementation Matrix
 
 Status key: Implemented, Partial, Missing, Not used in data.
-Last verified: 2026-01-14.
+Last verified: 2026-07-15.
 
 ## Keywords
 | Keyword | Status | Notes |
@@ -18,10 +18,10 @@ Last verified: 2026-01-14.
 | Assist Attack | Implemented | After Use window; other-character plays. |
 | Close | Implemented | Distance-based Power modifier for single-target cards. |
 | Far | Implemented | Distance-based Power modifier for single-target cards. |
-| Resist X | Implemented | Parsed from text/innates/status rules; higher of flat/percent. |
-| Immune (Damage Type) | Implemented | Parsed from text/innates/status rules. |
-| Weakness X | Implemented | Parsed from text/innates/status rules. |
-| Absorb X | Implemented | Parsed from text/innates/status rules with healing. |
+| Resist X | Implemented | Character innates use structured mitigation; card/status rules retain legacy parsing. |
+| Immune (Damage Type) | Implemented | Character innates use structured mitigation; card/status rules retain legacy parsing. |
+| Weakness X | Implemented | Character innates use structured mitigation; card/status rules retain legacy parsing. |
+| Absorb X | Implemented | Character innates use structured mitigation with healing; card/status rules retain legacy parsing. |
 | Cleanse | Implemented | Text parsing reduces/removes negative statuses; unique/neutral skipped. |
 | Dispel | Implemented | Text parsing reduces/removes positive statuses; unique/neutral skipped. |
 | Purge | Implemented | Text parsing reduces/removes positive/negative statuses; unique/neutral skipped. |
@@ -39,6 +39,14 @@ All 30 global status effects in `docs/data/status-effects.yml` are implemented i
 (on gain, turn start/end, caps, and decay). This includes Bleed/Burn/Poison triggers,
 Stagnate on-gain, Stun skip, Thorns, Barrier/Invulnerable, Wound/Wither healing reduction,
 and the Strength/Dexterity/Frail/Weak/Fortified/Vulnerable modifiers.
+
+## Character Innates
+
+All twelve innates across the nine-character roster use canonical structured data. Core supports
+explicit starting state, compound mitigation filters, applied status gain/spend deltas,
+status/HP thresholds, enemy Attack HP-damage triggers, once-per-turn/game usage,
+non-recursive status amplification, and a serializable optional defeat replacement decision.
+Innate display text is not parsed for gameplay.
 
 ## Rules / Terms / Flow
 | Rule / Term | Status | Notes |

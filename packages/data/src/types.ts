@@ -1,6 +1,73 @@
 export type Innate = {
+  id: string;
   name: string;
   text: string;
+  setup?: InnateEffect[];
+  mitigations?: InnateMitigation[];
+  triggers?: InnateTrigger[];
+};
+
+export type InnateScope = "always" | "once_per_turn" | "once_per_game";
+
+export type InnateTarget = "self" | "event_target" | "event_source";
+
+export type InnateEffect =
+  | { type: "gain_status"; status: string; amount: number; stat?: StatusValueStat; target?: InnateTarget; recordMax?: boolean }
+  | { type: "reduce_status"; status: string; amount: number | "event_amount"; stat?: StatusValueStat; target?: InnateTarget }
+  | { type: "set_status"; status: string; amount: number; stat?: StatusValueStat; target?: InnateTarget }
+  | { type: "remove_status"; status: string; target?: InnateTarget }
+  | { type: "heal"; amount: number; target?: InnateTarget }
+  | { type: "draw_cards"; amount: number; target?: InnateTarget };
+
+export type InnateEventType =
+  | "status_changed"
+  | "status_inflicted"
+  | "status_threshold_crossed"
+  | "hp_damage_taken"
+  | "hp_threshold_crossed"
+  | "would_be_defeated";
+
+export type InnateTriggerFilters = {
+  subject?: "self" | "any";
+  source?: "self" | "enemy" | "any";
+  status?: string;
+  direction?: "upward" | "downward";
+  threshold?: number;
+  cardType?: string;
+  hpDamageOnly?: boolean;
+  originalOnly?: boolean;
+};
+
+export type InnateDecision = {
+  type: "optional_defeat_replacement";
+  spendStatus: string;
+  spendAmount: number;
+  setHp: number;
+};
+
+export type InnateTrigger = {
+  id: string;
+  event: InnateEventType;
+  scope: InnateScope;
+  filters?: InnateTriggerFilters;
+  effects?: InnateEffect[];
+  decision?: InnateDecision;
+  useEventAmount?: boolean;
+  additional?: boolean;
+};
+
+export type InnateDamagePredicate = {
+  mode: "any" | "all";
+  types?: string[];
+  tags?: string[];
+};
+
+export type InnateMitigation = {
+  kind: "resist" | "immune" | "weakness" | "absorb";
+  amount?: number;
+  amountMode?: "flat" | "percent";
+  include?: InnateDamagePredicate;
+  exclude?: InnateDamagePredicate;
 };
 
 export type StatusEffect = {

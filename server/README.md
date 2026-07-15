@@ -45,8 +45,10 @@ Lobby notes:
 - If a player refreshes or briefly loses connection, they can reconnect to reclaim
   their previous seat before `RECONNECT_GRACE_MS` expires.
 - Both connected players must mark Ready in the client before the host can start.
+- The relay enforces that readiness before accepting the first authoritative match snapshot.
 - The host remains authoritative for match state; guests send action requests and
   can request a resync if their client falls behind.
 - The relay keeps the latest host-approved setup and match snapshots in memory so
   either seat can restore the current stage after reconnecting. Snapshots disappear
   when the lobby closes or the relay process restarts.
+- Run `npm test` to verify readiness enforcement, snapshot merging/resync, and lobby reset behavior.

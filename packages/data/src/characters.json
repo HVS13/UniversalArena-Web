@@ -14,16 +14,102 @@
       "art": "dio-brando-part-3.png",
       "innates": [
         {
+          "id": "vampire-physiology",
           "name": "Vampire Physiology",
-          "text": "Resist 3 (Physical)."
+          "text": "Resist 3 (Physical).",
+          "mitigations": [
+            {
+              "kind": "resist",
+              "amount": 3,
+              "amountMode": "flat",
+              "include": {
+                "mode": "any",
+                "types": [
+                  "Physical"
+                ]
+              }
+            }
+          ]
         },
         {
+          "id": "predators-regeneration",
           "name": "Predator's Regeneration",
-          "text": "The first time each turn this character gains Stolen Blood, heal 10 HP."
+          "text": "The first time each turn this character gains Stolen Blood, heal 10 HP.",
+          "triggers": [
+            {
+              "id": "heal-from-blood",
+              "event": "status_changed",
+              "scope": "once_per_turn",
+              "filters": {
+                "subject": "self",
+                "status": "Stolen Blood",
+                "direction": "upward"
+              },
+              "effects": [
+                {
+                  "type": "heal",
+                  "amount": 10
+                }
+              ]
+            }
+          ]
         },
         {
+          "id": "blood-is-power",
           "name": "Blood Is Power",
-          "text": "Whenever this character gains X Stolen Blood, gain X Blood Focus. Whenever this character spends X Stolen Blood, reduce Blood Focus Value by X. Once per game, when this character would be reduced to 0 HP: Spend 3 Stolen Blood? Set HP to 1 instead."
+          "text": "Whenever this character gains X Stolen Blood, gain X Blood Focus. Whenever this character spends X Stolen Blood, reduce Blood Focus Value by X. Once per game, when this character would be reduced to 0 HP: Spend 3 Stolen Blood? Set HP to 1 instead.",
+          "triggers": [
+            {
+              "id": "mirror-blood-gain",
+              "event": "status_changed",
+              "scope": "always",
+              "filters": {
+                "subject": "self",
+                "status": "Stolen Blood",
+                "direction": "upward"
+              },
+              "useEventAmount": true,
+              "effects": [
+                {
+                  "type": "gain_status",
+                  "status": "Blood Focus",
+                  "amount": 0
+                }
+              ]
+            },
+            {
+              "id": "mirror-blood-spend",
+              "event": "status_changed",
+              "scope": "always",
+              "filters": {
+                "subject": "self",
+                "status": "Stolen Blood",
+                "direction": "downward"
+              },
+              "useEventAmount": true,
+              "effects": [
+                {
+                  "type": "reduce_status",
+                  "status": "Blood Focus",
+                  "amount": "event_amount"
+                }
+              ]
+            },
+            {
+              "id": "survive-defeat",
+              "event": "would_be_defeated",
+              "scope": "once_per_game",
+              "filters": {
+                "subject": "self"
+              },
+              "decision": {
+                "type": "optional_defeat_replacement",
+                "spendStatus": "Stolen Blood",
+                "spendAmount": 3,
+                "setHp": 1
+              }
+            }
+          ]
         }
       ],
       "statusEffects": [
@@ -634,8 +720,28 @@
       "art": "goku-saiyan-saga.png",
       "innates": [
         {
+          "id": "zenkai-boost",
           "name": "Zenkai Boost",
-          "text": "Each time this character reaches 25% HP, gain 1 Zenkai."
+          "text": "Each time this character reaches 25% HP, gain 1 Zenkai.",
+          "triggers": [
+            {
+              "id": "low-hp-zenkai",
+              "event": "hp_threshold_crossed",
+              "scope": "always",
+              "filters": {
+                "subject": "self",
+                "direction": "downward",
+                "threshold": 25
+              },
+              "effects": [
+                {
+                  "type": "gain_status",
+                  "status": "Zenkai",
+                  "amount": 1
+                }
+              ]
+            }
+          ]
         }
       ],
       "statusEffects": [
@@ -913,12 +1019,58 @@
       "art": "kurosaki-ichigo-soul-society.png",
       "innates": [
         {
+          "id": "fighting-spirit",
           "name": "Fighting Spirit",
-          "text": "The first time each turn this character takes damage to HP from an enemy Attack, gain 1 Reiatsu."
+          "text": "The first time each turn this character takes damage to HP from an enemy Attack, gain 1 Reiatsu.",
+          "triggers": [
+            {
+              "id": "reiatsu-from-attack",
+              "event": "hp_damage_taken",
+              "scope": "once_per_turn",
+              "filters": {
+                "subject": "self",
+                "source": "enemy",
+                "cardType": "Attack",
+                "hpDamageOnly": true
+              },
+              "effects": [
+                {
+                  "type": "gain_status",
+                  "status": "Reiatsu",
+                  "amount": 1
+                }
+              ]
+            }
+          ]
         },
         {
+          "id": "inner-hollow-uncontrolled",
           "name": "Inner Hollow (Uncontrolled)",
-          "text": "The first time this character reaches 25% HP, gain 1 Hollow Interference. Gain 2 Reiatsu."
+          "text": "The first time this character reaches 25% HP, gain 1 Hollow Interference. Gain 2 Reiatsu.",
+          "triggers": [
+            {
+              "id": "awaken-hollow",
+              "event": "hp_threshold_crossed",
+              "scope": "once_per_game",
+              "filters": {
+                "subject": "self",
+                "direction": "downward",
+                "threshold": 25
+              },
+              "effects": [
+                {
+                  "type": "gain_status",
+                  "status": "Hollow Interference",
+                  "amount": 1
+                },
+                {
+                  "type": "gain_status",
+                  "status": "Reiatsu",
+                  "amount": 2
+                }
+              ]
+            }
+          ]
         }
       ],
       "statusEffects": [
@@ -1507,8 +1659,35 @@
       "art": "leon-s-kennedy-re4.png",
       "innates": [
         {
+          "id": "special-agent-loadout",
           "name": "Special Agent Loadout",
-          "text": "This character starts with Equip: Handgun, 10 Handgun Ammo, 5 Shotgun Ammo, and 1 Rocket Launcher."
+          "text": "This character starts with Equip: Handgun, 10 Handgun Ammo, 5 Shotgun Ammo, and 1 Rocket Launcher.",
+          "setup": [
+            {
+              "type": "gain_status",
+              "status": "Equip: Handgun",
+              "amount": 1,
+              "recordMax": true
+            },
+            {
+              "type": "gain_status",
+              "status": "Handgun Ammo",
+              "amount": 10,
+              "recordMax": true
+            },
+            {
+              "type": "gain_status",
+              "status": "Shotgun Ammo",
+              "amount": 5,
+              "recordMax": true
+            },
+            {
+              "type": "gain_status",
+              "status": "Rocket Launcher",
+              "amount": 1,
+              "recordMax": true
+            }
+          ]
         }
       ],
       "statusEffects": [
@@ -1977,8 +2156,27 @@
       "art": "light-yagami-kira.png",
       "innates": [
         {
+          "id": "meticulous-planner",
           "name": "Meticulous Planner",
-          "text": "The first time each turn this character inflicts Stolen Information, draw 1."
+          "text": "The first time each turn this character inflicts Stolen Information, draw 1.",
+          "triggers": [
+            {
+              "id": "draw-from-information",
+              "event": "status_inflicted",
+              "scope": "once_per_turn",
+              "filters": {
+                "source": "self",
+                "status": "Stolen Information",
+                "direction": "upward"
+              },
+              "effects": [
+                {
+                  "type": "draw_cards",
+                  "amount": 1
+                }
+              ]
+            }
+          ]
         }
       ],
       "statusEffects": [
@@ -2339,8 +2537,38 @@
       "art": "monkey-d-luffy-pre-timeskip.png",
       "innates": [
         {
+          "id": "gomu-gomu-no-mi",
           "name": "Gomu Gomu no Mi",
-          "text": "Resist 5 (non-Haki Pierce, non-Haki Blunt). Immune (Electric)."
+          "text": "Resist 5 (non-Haki Pierce, non-Haki Blunt). Immune (Electric).",
+          "mitigations": [
+            {
+              "kind": "resist",
+              "amount": 5,
+              "amountMode": "flat",
+              "include": {
+                "mode": "any",
+                "types": [
+                  "Pierce",
+                  "Blunt"
+                ]
+              },
+              "exclude": {
+                "mode": "any",
+                "tags": [
+                  "Haki"
+                ]
+              }
+            },
+            {
+              "kind": "immune",
+              "include": {
+                "mode": "any",
+                "types": [
+                  "Electric"
+                ]
+              }
+            }
+          ]
         }
       ],
       "statusEffects": [
@@ -2904,8 +3132,45 @@
       "art": "naruto-uzumaki-pre-timeskip.png",
       "innates": [
         {
+          "id": "nine-tails-resentment",
           "name": "Nine-Tails' Resentment",
-          "text": "The first time this character reaches 25% HP, gain 4 Kyuubi Chakra and +3 Kyuubi Chakra Count. Gain 4 One-Tail Cloak. Gain 2 Shadow Clones."
+          "text": "The first time this character reaches 25% HP, gain 4 Kyuubi Chakra and +3 Kyuubi Chakra Count. Gain 4 One-Tail Cloak. Gain 2 Shadow Clones.",
+          "triggers": [
+            {
+              "id": "unleash-nine-tails",
+              "event": "hp_threshold_crossed",
+              "scope": "once_per_game",
+              "filters": {
+                "subject": "self",
+                "direction": "downward",
+                "threshold": 25
+              },
+              "effects": [
+                {
+                  "type": "gain_status",
+                  "status": "Kyuubi Chakra",
+                  "amount": 4,
+                  "stat": "potency"
+                },
+                {
+                  "type": "gain_status",
+                  "status": "Kyuubi Chakra",
+                  "amount": 3,
+                  "stat": "count"
+                },
+                {
+                  "type": "gain_status",
+                  "status": "One-Tail Cloak",
+                  "amount": 4
+                },
+                {
+                  "type": "gain_status",
+                  "status": "Shadow Clones",
+                  "amount": 2
+                }
+              ]
+            }
+          ]
         }
       ],
       "statusEffects": [
@@ -3515,8 +3780,31 @@
       "art": "rover-spectro.webp",
       "innates": [
         {
+          "id": "world-in-a-grain-of-sand",
           "name": "World in a Grain of Sand",
-          "text": "Each time any character inflicts Spectro Frazzle, inflict 1 additional Spectro Frazzle."
+          "text": "Each time any character inflicts Spectro Frazzle, inflict 1 additional Spectro Frazzle.",
+          "triggers": [
+            {
+              "id": "amplify-spectro-frazzle",
+              "event": "status_inflicted",
+              "scope": "always",
+              "filters": {
+                "source": "any",
+                "status": "Spectro Frazzle",
+                "direction": "upward",
+                "originalOnly": true
+              },
+              "additional": true,
+              "effects": [
+                {
+                  "type": "gain_status",
+                  "target": "event_target",
+                  "status": "Spectro Frazzle",
+                  "amount": 1
+                }
+              ]
+            }
+          ]
         }
       ],
       "statusEffects": [
@@ -3803,8 +4091,67 @@
       "art": "saitama-hero-for-fun.png",
       "innates": [
         {
+          "id": "limitless-potential",
           "name": "Limitless Potential",
-          "text": "This character starts with State at 0 and State: Bored. When State reaches 10, remove State: Bored and gain State: Normal. When State reaches 30, remove State: Normal and gain State: Serious."
+          "text": "This character starts with State at 0 and State: Bored. When State reaches 10, remove State: Bored and gain State: Normal. When State reaches 30, remove State: Normal and gain State: Serious.",
+          "setup": [
+            {
+              "type": "set_status",
+              "status": "State",
+              "amount": 0
+            },
+            {
+              "type": "gain_status",
+              "status": "State: Bored",
+              "amount": 1
+            }
+          ],
+          "triggers": [
+            {
+              "id": "become-normal",
+              "event": "status_threshold_crossed",
+              "scope": "once_per_game",
+              "filters": {
+                "subject": "self",
+                "status": "State",
+                "direction": "upward",
+                "threshold": 10
+              },
+              "effects": [
+                {
+                  "type": "remove_status",
+                  "status": "State: Bored"
+                },
+                {
+                  "type": "gain_status",
+                  "status": "State: Normal",
+                  "amount": 1
+                }
+              ]
+            },
+            {
+              "id": "become-serious",
+              "event": "status_threshold_crossed",
+              "scope": "once_per_game",
+              "filters": {
+                "subject": "self",
+                "status": "State",
+                "direction": "upward",
+                "threshold": 30
+              },
+              "effects": [
+                {
+                  "type": "remove_status",
+                  "status": "State: Normal"
+                },
+                {
+                  "type": "gain_status",
+                  "status": "State: Serious",
+                  "amount": 1
+                }
+              ]
+            }
+          ]
         }
       ],
       "statusEffects": [

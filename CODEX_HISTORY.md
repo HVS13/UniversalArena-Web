@@ -90,3 +90,5 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-04-21: Fixed core restriction typing to use the exported card data contract and aligned the Counter golden fixture with immediate reaction resolution.
 - 2026-04-21: Hardened relay multiplayer with reconnectable lobby seats, Ready/Unready state, manual resync, saved lobby-code rejoin, and clearer connection/readiness UI.
 - 2026-07-15: Persisted relay display names and cached host-approved setup/match snapshots in the relay so host refresh recovery no longer loses authoritative match state.
+- 2026-07-15: Added structured execution for all roster innates, including Saitama state thresholds, DIO's optional survival decision, applied-delta triggers, compound mitigation, and non-recursive Rover amplification; added roster golden coverage and removed innate prose parsing.
+- 2026-07-15: Enforced initial multiplayer readiness in the relay, preserved setup metadata across match snapshots, reset readiness on authoritative setup changes, and added relay protocol regression coverage.

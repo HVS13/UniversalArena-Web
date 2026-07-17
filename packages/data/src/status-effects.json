@@ -13,7 +13,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Reduce Count by Halve."
+          "text": "Halve Count."
         }
       ]
     },
@@ -30,7 +30,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Take Potency damage. Then reduce Count by Halve."
+          "text": "Take Potency damage. Then Halve Count."
         }
       ]
     },
@@ -80,7 +80,7 @@
         },
         {
           "timing": "Turn End",
-          "text": "Take Potency damage. Then reduce Count by Halve."
+          "text": "Take Potency damage. Then Halve Count."
         }
       ]
     },

@@ -5,14 +5,14 @@
       "name": "Ethereal",
       "category": "Card Lifecycle",
       "tier": "Advanced",
-      "description": "If this card is in hand at the end of the turn, it is Exhausted."
+      "description": "At Turn End, if this card is still in hand, Exhaust it before the normal hand discard."
     },
     {
       "id": "keyword-exhaust",
       "name": "Exhaust",
       "category": "Card Lifecycle",
       "tier": "Advanced",
-      "description": "When this card is played, remove this card from play for the rest of the game."
+      "description": "After this card is used, Cancelled, or Negated, remove it from play instead of putting it in the Discard Pile. If an effect Exhausts a card from hand or another non-combat zone, remove it immediately."
     },
     {
       "id": "keyword-innate",

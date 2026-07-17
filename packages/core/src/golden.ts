@@ -336,7 +336,7 @@ const snapshotStatuses = (state: MatchState, playerId: PlayerId, names: string[]
 
 const runDataManifestTest = (): GoldenResult => {
   try {
-    if (dataManifest.schemaVersion !== 1) throw new Error(`Unsupported schema version ${dataManifest.schemaVersion}.`);
+    if (![1, 2].includes(dataManifest.schemaVersion)) throw new Error(`Unsupported schema version ${dataManifest.schemaVersion}.`);
     if (dataManifest.sourceRepository !== "HVS13/UniversalArena") throw new Error("Unexpected canonical repository.");
     if (!/^[0-9a-f]{40}$/.test(dataManifest.sourceCommit)) throw new Error("Source commit is not a clean full SHA.");
     if (!/^sha256:[0-9a-f]{64}$/.test(dataManifest.contentHash)) throw new Error("Content hash is malformed.");

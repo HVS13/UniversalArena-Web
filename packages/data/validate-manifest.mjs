@@ -21,8 +21,11 @@ for (const filename of filenames) {
 const contentHash = `sha256:${hash.digest("hex")}`;
 const characters = JSON.parse(await fs.readFile(path.join(sourceDir, "characters.json"), "utf8"));
 const errors = [];
+const supportedSchemaVersions = new Set([1, 2]);
 
-if (manifest.schemaVersion !== 1) errors.push(`Unsupported schemaVersion ${manifest.schemaVersion}.`);
+if (!supportedSchemaVersions.has(manifest.schemaVersion)) {
+  errors.push(`Unsupported schemaVersion ${manifest.schemaVersion}.`);
+}
 if (!/^[0-9a-f]{40}(?:-dirty)?$/.test(manifest.sourceCommit ?? "")) {
   errors.push("sourceCommit must be a full Git SHA, optionally suffixed with -dirty.");
 }

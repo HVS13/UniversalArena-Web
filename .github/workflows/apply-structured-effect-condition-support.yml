@@ -35,7 +35,8 @@ jobs:
         run: |
           sed -i 's/if core.count("getEffectConditionContext(entry)") != 6:/if core.count("getEffectConditionContext(entry)") != 5:/' scripts/apply-structured-effect-condition-support.py
           sed -i 's/# One definition plus five call sites./# Five effect call sites./' scripts/apply-structured-effect-condition-support.py
-          python scripts/apply-structured-effect-condition-support.py
+          set -o pipefail
+          python scripts/apply-structured-effect-condition-support.py 2>&1 | tail -40
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

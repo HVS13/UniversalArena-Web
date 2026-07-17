@@ -1,0 +1,63 @@
+name: Apply relay WebSocket security upgrade
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  apply:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/relay-ws-security-upgrade'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.3 --activate
+
+      - name: Upgrade relay WebSocket dependency
+        run: npm --prefix server install ws@8.21.1 --package-lock-only
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          npm --prefix server ci
+
+      - name: Verify relay dependency security
+        run: |
+          test "$(node -p "require('./server/node_modules/ws/package.json').version")" = "8.21.1"
+          npm --prefix server audit --audit-level=high
+
+      - name: Run full release gate
+        run: pnpm release:check
+
+      - name: Commit verified security upgrade
+        run: |
+          rm .github/workflows/apply-relay-ws-security-upgrade.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          unexpected="$(git diff --cached --name-only | grep -Ev '^(server/package.json|server/package-lock.json)$' || true)"
+          test -z "$unexpected"
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          git diff --cached --check
+          git commit -m "Upgrade relay WebSocket dependency"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

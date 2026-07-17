@@ -153,6 +153,27 @@ const unknownEffect = {
   condition: { kind: "future_condition" },
 } as unknown as Effect;
 
+const malformedCompareEffect = {
+  timing: "on_use",
+  type: "gain_status",
+  status: "Malformed Compare Applied",
+  amount: { kind: "flat", value: 1 },
+  condition: {
+    kind: "compare",
+    left: { kind: "future_scalar" },
+    operator: "eq",
+    right: 0,
+  },
+} as unknown as Effect;
+
+const malformedStatusEffect = {
+  timing: "on_use",
+  type: "gain_status",
+  status: "Malformed Status Applied",
+  amount: { kind: "flat", value: 1 },
+  condition: { kind: "self_has_status" },
+} as unknown as Effect;
+
 const compareCharacter: Character = {
   id: "condition-compare",
   name: "Condition Compare",
@@ -208,7 +229,7 @@ const compareCharacter: Character = {
       target: "Self",
       speed: "Normal",
       effect: ["Innate."],
-      effects: [unknownEffect],
+      effects: [unknownEffect, malformedCompareEffect, malformedStatusEffect],
     },
   ],
 };
@@ -474,6 +495,12 @@ const runCompareAndFailClosedTests = () => {
     state = resolveSingleCard(state, characters);
     if (statusValue(state, sourceId, "Unknown Condition Applied") !== 0) {
       throw new Error("An unknown condition kind was treated as satisfied.");
+    }
+    if (statusValue(state, sourceId, "Malformed Compare Applied") !== 0) {
+      throw new Error("A malformed comparison condition was treated as satisfied.");
+    }
+    if (statusValue(state, sourceId, "Malformed Status Applied") !== 0) {
+      throw new Error("A malformed status condition was treated as satisfied.");
     }
   }
 };

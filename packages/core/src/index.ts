@@ -3713,6 +3713,25 @@ const resolveEffectScalar = (value: EffectScalar, xValue: number) => {
   }
 };
 
+const resolveConditionScalar = (value: unknown, xValue: number) => {
+  if (!Number.isFinite(xValue)) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const scalar = value as { kind?: unknown; value?: unknown };
+  if (scalar.kind === "x") return xValue;
+  if (
+    scalar.kind !== "x_plus" &&
+    scalar.kind !== "x_minus" &&
+    scalar.kind !== "x_times"
+  ) {
+    return null;
+  }
+  if (typeof scalar.value !== "number" || !Number.isFinite(scalar.value)) return null;
+  if (scalar.kind === "x_plus") return xValue + scalar.value;
+  if (scalar.kind === "x_minus") return Math.max(xValue - scalar.value, 0);
+  return xValue * scalar.value;
+};
+
 const resolveEffectAmount = (amount: EffectAmount, power: number, xValue: number) => {
   if (amount.kind === "flat") return amount.value;
   if (amount.kind === "power") return power;
@@ -3823,6 +3842,18 @@ const isStatusWithinBounds = (
   return value >= min && value <= max;
 };
 
+const hasValidStatusConditionFields = (condition: {
+  status?: unknown;
+  min?: unknown;
+  max?: unknown;
+}) =>
+  typeof condition.status === "string" &&
+  Boolean(condition.status.trim()) &&
+  (condition.min === undefined ||
+    (typeof condition.min === "number" && Number.isFinite(condition.min))) &&
+  (condition.max === undefined ||
+    (typeof condition.max === "number" && Number.isFinite(condition.max)));
+
 const isConditionMet = (
   condition: EffectCondition | undefined,
   snapshot: StatusSnapshot,
@@ -3832,35 +3863,47 @@ const isConditionMet = (
   targetCharacter: Character | null,
   context?: EffectConditionContext
 ) => {
-  if (!condition) return true;
+  if (condition === undefined) return true;
+  if (!condition || typeof condition !== "object" || Array.isArray(condition)) return false;
   switch (condition.kind) {
     case "self_has_status": {
+      if (!hasValidStatusConditionFields(condition)) return false;
       const status = getSnapshotStatusState(snapshot, sourceId, condition.status);
       const definition = getStatusDefinition(condition.status, sourceCharacter);
       return isStatusWithinBounds(status, definition, condition.min, condition.max);
     }
     case "self_missing_status": {
+      if (!hasValidStatusConditionFields(condition)) return false;
       const status = getSnapshotStatusState(snapshot, sourceId, condition.status);
       const definition = getStatusDefinition(condition.status, sourceCharacter);
       return !isStatusActive(status, definition);
     }
     case "target_has_status": {
+      if (!hasValidStatusConditionFields(condition)) return false;
       const status = getSnapshotStatusState(snapshot, targetId, condition.status);
       const definition = getStatusDefinition(condition.status, targetCharacter);
       return isStatusWithinBounds(status, definition, condition.min, condition.max);
     }
     case "target_missing_status": {
+      if (!hasValidStatusConditionFields(condition)) return false;
       const status = getSnapshotStatusState(snapshot, targetId, condition.status);
       const definition = getStatusDefinition(condition.status, targetCharacter);
       return !isStatusActive(status, definition);
     }
     case "play_window":
+      if (
+        condition.window !== "after_use" &&
+        condition.window !== "follow_up" &&
+        condition.window !== "assist_attack"
+      ) {
+        return false;
+      }
       return context?.playWindows.includes(condition.window) ?? false;
     case "compare": {
       if (!context) return false;
-      const left = resolveEffectScalar(condition.left, context.xValue);
-      const right = resolveEffectScalar(condition.right, context.xValue);
-      if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+      const left = resolveConditionScalar(condition.left, context.xValue);
+      const right = resolveConditionScalar(condition.right, context.xValue);
+      if (left === null || right === null) return false;
       switch (condition.operator) {
         case "eq":
           return left === right;

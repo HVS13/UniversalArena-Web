@@ -142,11 +142,9 @@ export type StatusValueStat = "potency" | "count" | "stack" | "value";
 
 export type EffectTarget = "self" | "target" | "opponent";
 
-export type EffectCondition =
-  | { kind: "self_has_status"; status: string; min?: number }
-  | { kind: "self_missing_status"; status: string }
-  | { kind: "target_has_status"; status: string; min?: number }
-  | { kind: "target_missing_status"; status: string };
+export type EffectPlayWindow = "assist_attack" | "follow_up" | "after_use";
+
+export type EffectComparisonOperator = "eq" | "ne" | "lt" | "lte" | "gt" | "gte";
 
 export type EffectScalar =
   | number
@@ -154,6 +152,22 @@ export type EffectScalar =
   | { kind: "x_plus"; value: number }
   | { kind: "x_minus"; value: number }
   | { kind: "x_times"; value: number };
+
+export type StatusEffectCondition =
+  | { kind: "self_has_status"; status: string; min?: number; max?: number }
+  | { kind: "self_missing_status"; status: string; min?: number; max?: number }
+  | { kind: "target_has_status"; status: string; min?: number; max?: number }
+  | { kind: "target_missing_status"; status: string; min?: number; max?: number };
+
+export type EffectCondition =
+  | StatusEffectCondition
+  | { kind: "play_window"; window: EffectPlayWindow }
+  | {
+      kind: "compare";
+      left: EffectScalar;
+      operator: EffectComparisonOperator;
+      right: EffectScalar;
+    };
 
 export type EffectAmount =
   | { kind: "flat"; value: number }
@@ -165,7 +179,7 @@ export type EffectAmount =
   | { kind: "x_times"; value: number };
 
 export type CardTransform = {
-  condition: EffectCondition;
+  condition: StatusEffectCondition;
   cardSlot: string;
 };
 
@@ -184,7 +198,7 @@ export type UseRestrictionStatus = {
   min?: number;
 };
 
-export type UseRestrictionWindow = "assist_attack" | "follow_up" | "after_use";
+export type UseRestrictionWindow = EffectPlayWindow;
 
 export type UseRestriction =
   | {

@@ -13,6 +13,7 @@ import type {
   Effect,
   EffectAmount,
   EffectCondition,
+  EffectPlayWindow,
   EffectScalar,
   EffectTarget,
   InnateEffect,
@@ -96,6 +97,7 @@ export type StackEntry = {
   targetId: MatchCharacterId;
   targetText?: string;
   xValue: number;
+  playWindows?: EffectPlayWindow[];
   choiceIndex?: number;
   redirectTargetId?: MatchCharacterId;
   scryDiscardIds?: string[];
@@ -2549,6 +2551,21 @@ const hasStructuredEffectType = (
   return found;
 };
 
+const hasStructuredConditionKind = (
+  effects: Effect[] | undefined,
+  timing: Effect["timing"],
+  choiceIndex: number | undefined,
+  kind: EffectCondition["kind"]
+) => {
+  let found = false;
+  forEachStructuredEffect(effects, timing, choiceIndex, (effect) => {
+    if (effect.condition?.kind === kind) {
+      found = true;
+    }
+  });
+  return found;
+};
+
 const getXRangeFromText = (lines: string[]) => {
   for (const line of lines) {
     const match = line.match(/Choose X\s*\((\d+)\s*-\s*(\d+)\)/i);
@@ -3733,7 +3750,8 @@ const getHitCountFromStructuredEffects = (
         entry.sourceId,
         entry.targetId,
         sourceCharacter,
-        targetCharacter
+        targetCharacter,
+        getEffectConditionContext(entry)
       )
     ) {
       return;
@@ -3784,40 +3802,84 @@ const getHitCountForEntry = (
     ? getHitCountFromStructuredEffects(state, entry, characters)
     : getHitCountFromText(entry);
 
+type EffectConditionContext = {
+  xValue: number;
+  playWindows: readonly EffectPlayWindow[];
+};
+
+const getEffectConditionContext = (entry: StackEntry): EffectConditionContext => ({
+  xValue: entry.xValue,
+  playWindows: entry.playWindows ?? [],
+});
+
+const isStatusWithinBounds = (
+  status: StatusState,
+  definition: StatusDefinition,
+  min = 1,
+  max = Number.POSITIVE_INFINITY
+) => {
+  if (!isStatusActive(status, definition)) return false;
+  const value = getStatusPrimaryValue(status, definition);
+  return value >= min && value <= max;
+};
+
 const isConditionMet = (
   condition: EffectCondition | undefined,
   snapshot: StatusSnapshot,
   sourceId: MatchCharacterId,
   targetId: MatchCharacterId,
   sourceCharacter: Character | null,
-  targetCharacter: Character | null
+  targetCharacter: Character | null,
+  context?: EffectConditionContext
 ) => {
   if (!condition) return true;
   switch (condition.kind) {
     case "self_has_status": {
-      const threshold = condition.min ?? 1;
-      const state = getSnapshotStatusState(snapshot, sourceId, condition.status);
+      const status = getSnapshotStatusState(snapshot, sourceId, condition.status);
       const definition = getStatusDefinition(condition.status, sourceCharacter);
-      return isStatusActive(state, definition) && getStatusPrimaryValue(state, definition) >= threshold;
+      return isStatusWithinBounds(status, definition, condition.min, condition.max);
     }
     case "self_missing_status": {
-      const state = getSnapshotStatusState(snapshot, sourceId, condition.status);
+      const status = getSnapshotStatusState(snapshot, sourceId, condition.status);
       const definition = getStatusDefinition(condition.status, sourceCharacter);
-      return !isStatusActive(state, definition);
+      return !isStatusActive(status, definition);
     }
     case "target_has_status": {
-      const threshold = condition.min ?? 1;
-      const state = getSnapshotStatusState(snapshot, targetId, condition.status);
+      const status = getSnapshotStatusState(snapshot, targetId, condition.status);
       const definition = getStatusDefinition(condition.status, targetCharacter);
-      return isStatusActive(state, definition) && getStatusPrimaryValue(state, definition) >= threshold;
+      return isStatusWithinBounds(status, definition, condition.min, condition.max);
     }
     case "target_missing_status": {
-      const state = getSnapshotStatusState(snapshot, targetId, condition.status);
+      const status = getSnapshotStatusState(snapshot, targetId, condition.status);
       const definition = getStatusDefinition(condition.status, targetCharacter);
-      return !isStatusActive(state, definition);
+      return !isStatusActive(status, definition);
+    }
+    case "play_window":
+      return context?.playWindows.includes(condition.window) ?? false;
+    case "compare": {
+      if (!context) return false;
+      const left = resolveEffectScalar(condition.left, context.xValue);
+      const right = resolveEffectScalar(condition.right, context.xValue);
+      if (!Number.isFinite(left) || !Number.isFinite(right)) return false;
+      switch (condition.operator) {
+        case "eq":
+          return left === right;
+        case "ne":
+          return left !== right;
+        case "lt":
+          return left < right;
+        case "lte":
+          return left <= right;
+        case "gt":
+          return left > right;
+        case "gte":
+          return left >= right;
+        default:
+          return false;
+      }
     }
     default:
-      return true;
+      return false;
   }
 };
 
@@ -3950,7 +4012,8 @@ const resolveStructuredEffectList = (
         entry.sourceId,
         entry.targetId,
         sourceCharacter,
-        targetCharacter
+        targetCharacter,
+        getEffectConditionContext(entry)
       )
     ) {
       return;
@@ -3970,7 +4033,8 @@ const resolveStructuredEffectList = (
             entry.sourceId,
             targetId,
             sourceCharacter,
-            targetDefinition
+            targetDefinition,
+            getEffectConditionContext(entry)
           )
         ) {
           return;
@@ -4329,7 +4393,8 @@ const resolveSpendContext = (
           entry.sourceId,
           entry.targetId,
           sourceCharacter,
-          targetCharacter
+          targetCharacter,
+          getEffectConditionContext(entry)
         )
       ) {
         return;
@@ -4477,6 +4542,12 @@ const resolveTextMetaEffects = (
     entry.choiceIndex,
     "create_card"
   );
+  const hasStructuredCompareCondition = hasStructuredConditionKind(
+    entry.effects,
+    timing,
+    entry.choiceIndex,
+    "compare"
+  );
   const targets = areaTargets.length ? areaTargets : [entry.targetId];
 
   segments.forEach((segment) => {
@@ -4591,9 +4662,9 @@ const resolveTextMetaEffects = (
       addLog(state, `${source.name} swaps positions with ${target.name}.`);
     }
 
-    const xConditionalMatch = normalized.match(
-      /If X is (\d+),\s*inflict\s+(\d+)\s+([^.,]+)/i
-    );
+    const xConditionalMatch = hasStructuredCompareCondition
+      ? null
+      : normalized.match(/If X is (\d+),\s*inflict\s+(\d+)\s+([^.,]+)/i);
     if (xConditionalMatch) {
       const xTarget = Number(xConditionalMatch[1]);
       const amount = Number(xConditionalMatch[2]);
@@ -4838,7 +4909,8 @@ const estimateDamageForTiming = (
           entry.sourceId,
           entry.targetId,
           sourceCharacter,
-          targetCharacter
+          targetCharacter,
+          getEffectConditionContext(entry)
         )
       ) {
         return;
@@ -6004,6 +6076,13 @@ export const applyAction = (
       pendingWindow?.type !== "counter";
     const isFollowUpPlay =
       Boolean(isAfterUse) && next.afterUseWindow?.lastUsedCharacterId === sourceMember.id;
+    const playWindows: EffectPlayWindow[] = [];
+    if (isAfterUse) playWindows.push("after_use");
+    if (isFollowUpPlay) {
+      playWindows.push("follow_up");
+    } else if (isAfterUse) {
+      playWindows.push("assist_attack");
+    }
     const followUpAdjustment = isFollowUpPlay
       ? getFollowUpCostAdjustment(resolvedCard.effect)
       : 0;
@@ -6063,6 +6142,7 @@ export const applyAction = (
         targetId,
         targetText: resolvedCard.target,
         xValue,
+        playWindows: playWindows.length ? playWindows : undefined,
         choiceIndex: action.choiceIndex,
         redirectTargetId: action.redirectTargetId,
         scryDiscardIds: action.scryDiscardIds,
@@ -6139,6 +6219,7 @@ export const applyAction = (
       targetId,
       targetText: resolvedCard.target,
       xValue,
+      playWindows: playWindows.length ? playWindows : undefined,
       choiceIndex: action.choiceIndex,
       redirectTargetId: action.redirectTargetId,
       scryDiscardIds: action.scryDiscardIds,

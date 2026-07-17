@@ -199,7 +199,7 @@
           "slot": "1-2",
           "name": "Strike: Muda Barrage",
           "cost": "4 Energy",
-          "power": "20-28",
+          "power": "17-25",
           "types": [
             "Basic",
             "Attack",
@@ -254,7 +254,7 @@
           "slot": "2-1",
           "name": "Defend",
           "cost": "4 Energy",
-          "power": "20-28",
+          "power": "16-24",
           "types": [
             "Basic",
             "Defense",
@@ -291,7 +291,7 @@
           "slot": "2-2",
           "name": "Defend: The World",
           "cost": "4 Energy",
-          "power": "20-28",
+          "power": "15-21",
           "types": [
             "Basic",
             "Defense",
@@ -427,7 +427,7 @@
           "slot": "4-1",
           "name": "Throwing Knives",
           "cost": "7 Energy",
-          "power": "34-50",
+          "power": "32-52",
           "types": [
             "Technique",
             "Attack",
@@ -479,7 +479,7 @@
           "slot": "4-2",
           "name": "Throwing Knives: Time Stop",
           "cost": "7 Energy",
-          "power": "34-50",
+          "power": "28-46",
           "types": [
             "Technique",
             "Attack",
@@ -618,7 +618,7 @@
           "slot": "ultimate",
           "name": "ROAD ROLLER DA!",
           "cost": "40 Ultimate Meter",
-          "power": "72-108",
+          "power": "65-97",
           "types": [
             "Ultimate",
             "Attack",
@@ -990,7 +990,7 @@
           "slot": "ultimate",
           "name": "Spirit Bomb",
           "cost": "30 Ultimate Meter",
-          "power": "41-67",
+          "power": "45-73",
           "types": [
             "Ultimate",
             "Attack",
@@ -1152,24 +1152,6 @@
                 "kind": "flat",
                 "value": 1
               }
-            },
-            {
-              "timing": "on_use",
-              "type": "spend_status",
-              "status": "Reiatsu",
-              "amount": {
-                "kind": "x"
-              },
-              "allowPartial": true
-            },
-            {
-              "timing": "on_use",
-              "type": "deal_damage_per_spent",
-              "status": "Reiatsu",
-              "amount": {
-                "kind": "flat",
-                "value": 4
-              }
             }
           ],
           "transforms": [
@@ -1193,7 +1175,7 @@
           "slot": "1-2",
           "name": "Strike: Tensa Zangetsu",
           "cost": "1 Energy",
-          "power": "10-14",
+          "power": "8-12",
           "types": [
             "Basic",
             "Attack",
@@ -1223,24 +1205,6 @@
                 "kind": "flat",
                 "value": 1
               }
-            },
-            {
-              "timing": "on_use",
-              "type": "spend_status",
-              "status": "Reiatsu",
-              "amount": {
-                "kind": "x"
-              },
-              "allowPartial": true
-            },
-            {
-              "timing": "on_use",
-              "type": "deal_damage_per_spent",
-              "status": "Reiatsu",
-              "amount": {
-                "kind": "flat",
-                "value": 5
-              }
             }
           ]
         },
@@ -1248,7 +1212,7 @@
           "slot": "1-3",
           "name": "Strike: White",
           "cost": "1 Energy",
-          "power": "10-14",
+          "power": "8-12",
           "types": [
             "Basic",
             "Attack",
@@ -1360,7 +1324,7 @@
           "slot": "3",
           "name": "Shunpo",
           "cost": "2 Energy",
-          "power": "16-24",
+          "power": "15-21",
           "types": [
             "Technique",
             "Defense",
@@ -1461,7 +1425,7 @@
           "slot": "4-2",
           "name": "Getsuga Tensho: Tensa Zangetsu",
           "cost": "3 Energy",
-          "power": "23-37",
+          "power": "21-33",
           "types": [
             "Technique",
             "Attack",
@@ -1594,7 +1558,7 @@
           "slot": "ultimate",
           "name": "Getsuga Tensho (Bankai Finisher)",
           "cost": "30 Ultimate Meter",
-          "power": "36-54",
+          "power": "30-50",
           "types": [
             "Ultimate",
             "Attack",
@@ -1995,18 +1959,15 @@
             },
             {
               "timing": "on_use",
-              "type": "deal_damage",
-              "amount": {
-                "kind": "power"
-              }
-            },
-            {
-              "timing": "on_use",
               "type": "inflict_status",
               "status": "Stun",
               "amount": {
                 "kind": "flat",
                 "value": 1
+              },
+              "condition": {
+                "kind": "play_window",
+                "window": "follow_up"
               }
             }
           ]
@@ -2714,7 +2675,7 @@
           "slot": "3-2",
           "name": "Gomu Gomu no Jet Pistol",
           "cost": "2 Energy",
-          "power": "20-28",
+          "power": "17-25",
           "types": [
             "Technique",
             "Attack",
@@ -2741,7 +2702,7 @@
           "slot": "3-3",
           "name": "Gomu Gomu no Gigant Pistol",
           "cost": "2 Energy",
-          "power": "20-28",
+          "power": "21-31",
           "types": [
             "Technique",
             "Attack",
@@ -2768,7 +2729,7 @@
           "slot": "4-1",
           "name": "Gomu Gomu no Bazooka",
           "cost": "3 Energy",
-          "power": "27-45",
+          "power": "29-43",
           "types": [
             "Technique",
             "Attack",
@@ -2813,7 +2774,7 @@
           "slot": "4-2",
           "name": "Gomu Gomu no Jet Bazooka",
           "cost": "3 Energy",
-          "power": "27-45",
+          "power": "26-38",
           "types": [
             "Technique",
             "Attack",
@@ -2840,7 +2801,7 @@
           "slot": "4-3",
           "name": "Gomu Gomu no Gigant Bazooka",
           "cost": "3 Energy",
-          "power": "27-45",
+          "power": "32-46",
           "types": [
             "Technique",
             "Attack",
@@ -2944,7 +2905,7 @@
           "slot": "ultimate-1",
           "name": "Gomu Gomu no Jet Gatling",
           "cost": "30 Ultimate Meter + X Energy",
-          "power": "24-36 + 8-12 times X",
+          "power": "22-32 + 8-10 times X",
           "types": [
             "Ultimate",
             "Attack",
@@ -3074,7 +3035,7 @@
           "slot": "ultimate-2",
           "name": "Gomu Gomu no Gigant Rifle",
           "cost": "30 Ultimate Meter",
-          "power": "36-54",
+          "power": "40-58",
           "types": [
             "Ultimate",
             "Attack",
@@ -3402,6 +3363,14 @@
               "amount": {
                 "kind": "flat",
                 "value": 1
+              },
+              "condition": {
+                "kind": "compare",
+                "left": {
+                  "kind": "x"
+                },
+                "operator": "eq",
+                "right": 3
               }
             }
           ]
@@ -3410,7 +3379,7 @@
           "slot": "5-1",
           "name": "Rasengan",
           "cost": "3 Energy",
-          "power": "24-36",
+          "power": "27-39",
           "types": [
             "Technique",
             "Attack",
@@ -3720,7 +3689,7 @@
           "slot": "created-1",
           "name": "Shadow Clone: Strike",
           "cost": "1 Energy",
-          "power": "7-9",
+          "power": "8-10",
           "types": [
             "Technique",
             "Attack",
@@ -4463,7 +4432,7 @@
           "slot": "3-3",
           "name": "Serious Punch",
           "cost": "3 Energy",
-          "power": "24-36",
+          "power": "22-32",
           "types": [
             "Technique",
             "Attack",
@@ -4591,7 +4560,7 @@
           "slot": "4-3",
           "name": "Serious Headbutt",
           "cost": "3 Energy",
-          "power": "24-36",
+          "power": "22-32",
           "types": [
             "Technique",
             "Attack",
@@ -4737,7 +4706,7 @@
           "slot": "5-3",
           "name": "Serious Consecutive Side Hops",
           "cost": "3 Energy",
-          "power": "24-36",
+          "power": "22-32",
           "types": [
             "Technique",
             "Attack",
@@ -4843,7 +4812,7 @@
           "slot": "ultimate-3",
           "name": "Serious Table Flip",
           "cost": "100 Ultimate Meter",
-          "power": "120-180",
+          "power": "108-162",
           "types": [
             "Ultimate",
             "Attack",

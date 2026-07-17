@@ -2,7 +2,14 @@ from pathlib import Path
 import subprocess
 
 path = "scripts/apply-structured-effect-condition-support.py"
-source = subprocess.check_output(["git", "show", f"HEAD^:{path}"], text=True)
+source = subprocess.check_output(
+    [
+        "git",
+        "show",
+        "0a5046d8e089baf5a3e5fa873e17680e612866e0:" + path,
+    ],
+    text=True,
+)
 context_old = 'if core.count("getEffectConditionContext(entry)") != ' + '6:'
 context_new = 'if core.count("getEffectConditionContext(entry)") != ' + '5:'
 condition_old = 'if core.count("isConditionMet(") != ' + '7:'

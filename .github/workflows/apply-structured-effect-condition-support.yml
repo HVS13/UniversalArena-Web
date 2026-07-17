@@ -61,15 +61,32 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Run full release gate
+        id: release
         if: steps.migrate.outcome == 'success'
-        run: pnpm release:check
+        continue-on-error: true
+        run: pnpm release:check > release-error.txt 2>&1
+
+      - name: Report release gate failure
+        if: steps.migrate.outcome == 'success' && steps.release.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo 'The migrated consumer failed the full release gate:'
+            echo
+            echo '```text'
+            tail -80 release-error.txt
+            echo '```'
+          } > release-comment.md
+          gh pr comment ${{ github.event.pull_request.number }} --body-file release-comment.md
+          exit 1
 
       - name: Commit verified consumer support
-        if: steps.migrate.outcome == 'success'
+        if: steps.migrate.outcome == 'success' && steps.release.outcome == 'success'
         run: |
           rm scripts/apply-structured-effect-condition-support.py
           rm .github/workflows/apply-structured-effect-condition-support.yml
-          rm -f migration-error.txt migration-comment.md
+          rm -f migration-error.txt migration-comment.md release-error.txt release-comment.md
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A

@@ -1,0 +1,58 @@
+name: Validate relay WebSocket security upgrade
+
+on:
+  pull_request:
+    types: [synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  validate:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/relay-ws-security-upgrade'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@9.12.3 --activate
+
+      - name: Install dependencies
+        run: |
+          pnpm install --frozen-lockfile
+          npm --prefix server ci
+
+      - name: Verify relay dependency security
+        run: |
+          test "$(node -p "require('./server/node_modules/ws/package.json').version")" = "8.21.1"
+          npm --prefix server audit --audit-level=high
+
+      - name: Run full release gate
+        run: pnpm release:check
+
+      - name: Verify and commit final diff
+        run: |
+          rm .github/workflows/validate-relay-ws-security-upgrade.yml
+          changed="$(git diff --name-only origin/main)"
+          test "$changed" = "$(printf 'server/package-lock.json\nserver/package.json')"
+          git diff --check origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Remove relay security validation workflow"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}

@@ -370,12 +370,25 @@ const runStateHashAndTranscriptCompatibilityTest = (): GoldenResult => {
     const advanced = applyAction(initial, { type: "pass", playerId: "p1" }, roster).state;
     if (hashMatchState(advanced) === initialHash) throw new Error("Accepted gameplay action did not change the state hash.");
     const transcript = exportTranscript(advanced);
-    if (!transcript || transcript.version !== 3 || !transcript.finalStateHash) {
-      throw new Error("Transcript v3 compatibility fields are missing.");
+    if (!transcript || transcript.version !== 4 || !transcript.finalStateHash) {
+      throw new Error("Transcript v4 compatibility fields are missing.");
     }
     const replay = replayTranscript(roster, transcript);
     if (replay.error || !replay.state) throw new Error(replay.error ?? "Replay state missing.");
     if (hashMatchState(replay.state) !== transcript.finalStateHash) throw new Error("Replay hash differs from the original.");
+
+    const legacyTranscript = {
+      ...transcript,
+      version: 3 as const,
+      engineVersion: "0.2.0-friend-alpha",
+    };
+    const legacyReplay = replayTranscript(roster, legacyTranscript);
+    if (legacyReplay.error || !legacyReplay.state) {
+      throw new Error(legacyReplay.error ?? "Compatible transcript v3 replay state missing.");
+    }
+    if (hashMatchState(legacyReplay.state) !== transcript.finalStateHash) {
+      throw new Error("Compatible transcript v3 replay hash differs from the original.");
+    }
 
     const wrongVersion = replayTranscript(roster, { ...transcript, version: 2 });
     if (!wrongVersion.error?.includes("Unsupported transcript version")) throw new Error("Unsupported version was accepted.");
@@ -393,9 +406,9 @@ const runStateHashAndTranscriptCompatibilityTest = (): GoldenResult => {
       actions: [{ action: { type: "unknown", playerId: "p1" } }],
     });
     if (!invalidAction.error?.includes("action 1 is invalid")) throw new Error("Invalid action structure was accepted.");
-    return { label: "State hashing and transcript v3 reject incompatible replay data", ok: true };
+    return { label: "State hashing and transcript v4 preserve safe v3 replay compatibility", ok: true };
   } catch (error) {
-    return { label: "State hashing and transcript v3 reject incompatible replay data", ok: false, details: String(error) };
+    return { label: "State hashing and transcript v4 preserve safe v3 replay compatibility", ok: false, details: String(error) };
   }
 };
 
@@ -521,7 +534,7 @@ const runInterruptChainTest = (): GoldenResult => {
     activeZone: "fast",
     pausedZones: ["slow", "normal"],
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players: goldenPlayers,
       actions: [
@@ -581,7 +594,7 @@ const runCancelledAlwaysTest = (): GoldenResult => {
       "OnUse Buff": { potency: 0, count: 0, stack: 0, value: 0 },
     },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players: goldenPlayers,
       actions: [
@@ -877,7 +890,7 @@ const runTimingWindowsTest = (): GoldenResult => {
       "After Buff": valueStatus(1),
     },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -1020,7 +1033,7 @@ const runStatusExpiryTest = (): GoldenResult => {
       },
     },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -1135,7 +1148,7 @@ const runCostSpeedModifierTest = (): GoldenResult => {
       Strain: potencyStatus(1, 1),
     },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -1250,7 +1263,7 @@ const runMitigationStackingTest = (): GoldenResult => {
     activeZone: null,
     p2Hp: 96,
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -1387,7 +1400,7 @@ const runSpendFlowTest = (): GoldenResult => {
       "Test Ammo": valueStatus(1),
     },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -1587,7 +1600,7 @@ const runHealingReductionTest = (): GoldenResult => {
       },
     },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -1715,7 +1728,7 @@ const runThornsOnHitTest = (): GoldenResult => {
       Thorns: potencyStatus(3, 1),
     },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -1951,7 +1964,7 @@ const runTurnEndDecayTest = (): GoldenResult => {
       Stun: stackStatus(0),
     },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -2081,7 +2094,7 @@ const runCreatedCardDestinationTest = (): GoldenResult => {
     createdInDiscard: 1,
     createdInHand: false,
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -2192,7 +2205,7 @@ const runNegatedTest = (): GoldenResult => {
     p2Hp: 100,
     p2Shield: 8,
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -2308,7 +2321,7 @@ const runRedirectTest = (): GoldenResult => {
       state.players.p1.characters.slice(1).map((member) => [member.id, 0])
     ),
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -2462,12 +2475,25 @@ const runRedirectChoiceTest = (): GoldenResult => {
       cardInstanceId,
       zone: "normal",
       targetId: target.id,
-      redirectTargetId: coverRight.id,
     },
     characters
   );
   state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
   state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+  if (!state.pendingRedirectDecision) {
+    throw new Error("Redirect choice did not pause for the defender.");
+  }
+  state = applyOrThrow(
+    state,
+    {
+      type: "resolve_redirect_decision",
+      playerId: "p2",
+      targetId: coverRight.id,
+      source: "cover",
+      status: "Cover",
+    },
+    characters
+  );
 
   const finalTarget = state.players.p2.characters[0];
   const finalCoverLeft = state.players.p2.characters[1];
@@ -3543,7 +3569,7 @@ const runCounterTest = (): GoldenResult => {
     counterLog: true,
     p1Hp: 93,
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -3725,7 +3751,7 @@ const runPurgeKeywordTest = (): GoldenResult => {
       Strength: { potency: 0, count: 0, stack: 0, value: 0 },
     },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -3950,7 +3976,7 @@ const runAoeMultiTargetTest = (): GoldenResult => {
   const expected = {
     p2Hp: [93, 93, 93],
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -4040,7 +4066,7 @@ const runSplashAdjacencyTest = (): GoldenResult => {
   const expected = {
     p2Hp: [92, 92, 100],
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [
@@ -4189,7 +4215,7 @@ const runTransformTargetExclusionTest = (): GoldenResult => {
     p1Slots: { "1": 1, "3": 1 },
     p2Slots: { "1": 1, "3": 1 },
     transcript: {
-      version: 3,
+      version: 4,
       seed: goldenSeed,
       players,
       actions: [],
@@ -4549,7 +4575,185 @@ const runFinisherCleanupEffectsTest = (): GoldenResult => {
   }
 };
 
+
+const runDefenderRedirectAuthorityTest = (): GoldenResult => {
+  const players = [
+    { id: "p1" as const, name: "Attacker", characterIds: withFillersIds("redirect-authority-a") },
+    { id: "p2" as const, name: "Defender", characterIds: ["redirect-authority-b", "redirect-authority-cover-one", "redirect-authority-cover-two"] },
+  ];
+  const characters: Character[] = [
+    {
+      id: "redirect-authority-a",
+      name: "Redirect Authority Alpha",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Defender redirect authority coverage.",
+      art: "redirect-authority-alpha.png",
+      innates: [],
+      cards: [
+        {
+          slot: "1",
+          name: "Far Strike",
+          cost: "0 Energy",
+          power: "10-11",
+          types: ["Basic", "Attack", "Physical", "Far"],
+          target: "1 Enemy",
+          speed: "Normal",
+          effect: ["Far.", "Deal Power damage."],
+          effects: [{ timing: "on_use", type: "deal_damage", amount: { kind: "power" } }],
+        },
+      ],
+    },
+    {
+      id: "redirect-authority-b",
+      name: "Redirect Authority Bravo",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Defender redirect authority coverage.",
+      art: "redirect-authority-bravo.png",
+      innates: [],
+      cards: [],
+    },
+    {
+      id: "redirect-authority-cover-one",
+      name: "Redirect Authority Cover One",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Defender redirect authority coverage.",
+      art: "redirect-authority-cover-one.png",
+      innates: [
+        {
+          id: "starting-cover",
+          name: "Starting Cover",
+          text: "Starts with 2 Cover.",
+          setup: [{ type: "gain_status", status: "Cover", amount: 2 }],
+        },
+      ],
+      cards: [],
+    },
+    {
+      id: "redirect-authority-cover-two",
+      name: "Redirect Authority Cover Two",
+      version: "Golden",
+      origin: "Test",
+      roles: [],
+      difficulty: "Low",
+      gameplan: "Defender redirect authority coverage.",
+      art: "redirect-authority-cover-two.png",
+      innates: [
+        {
+          id: "starting-cover",
+          name: "Starting Cover",
+          text: "Starts with 2 Cover and 2 Cover (All).",
+          setup: [
+            { type: "gain_status", status: "Cover", amount: 2 },
+            { type: "gain_status", status: "Cover (All)", amount: 2 },
+          ],
+        },
+      ],
+      cards: [],
+    },
+    ...fillerCharacters,
+  ];
+
+  try {
+    let state = createSeededCombatState(characters, players);
+    const originalTarget = state.players.p2.characters[0];
+    const coverOne = state.players.p2.characters[1];
+    const coverTwo = state.players.p2.characters[2];
+
+    const rngBeforePlay = JSON.stringify(state.rng);
+    state = applyOrThrow(
+      state,
+      playFromHandAtTarget(state, "p1", "1", "normal", originalTarget.id),
+      characters
+    );
+    if (JSON.stringify(state.rng) !== rngBeforePlay) {
+      throw new Error("Power rolled before the redirect decision was reachable.");
+    }
+    state = applyOrThrow(state, { type: "pass", playerId: "p2" }, characters);
+    state = applyOrThrow(state, { type: "pass", playerId: "p1" }, characters);
+
+    if (!state.pendingRedirectDecision) throw new Error("Redirect decision was not opened.");
+    if (state.pendingRedirectDecision.playerId !== "p2") throw new Error("Wrong decision owner.");
+    if (JSON.stringify(state.rng) !== rngBeforePlay) throw new Error("RNG advanced before defender choice.");
+    if (state.pendingRedirectDecision.candidates.length !== 3) throw new Error("Expected three distinct Cover choices.");
+
+    const attackerAttempt = applyAction(
+      state,
+      {
+        type: "resolve_redirect_decision",
+        playerId: "p1",
+        targetId: coverTwo.id,
+        source: "cover",
+        status: "Cover (All)",
+      },
+      characters
+    );
+    if (attackerAttempt.error !== "Not your decision.") throw new Error("Attacker redirect choice was not rejected.");
+    state = attackerAttempt.state;
+
+    state = applyOrThrow(
+      state,
+      {
+        type: "resolve_redirect_decision",
+        playerId: "p2",
+        targetId: coverTwo.id,
+        source: "cover",
+        status: "Cover (All)",
+      },
+      characters
+    );
+
+    if (state.pendingRedirectDecision) throw new Error("Redirect decision did not clear.");
+    if (originalTarget.hp !== 100 && state.players.p2.characters[0].hp !== 100) {
+      throw new Error("Original target took redirected damage.");
+    }
+    if (state.players.p2.characters[1].hp !== 100) throw new Error("Unselected Cover target took damage.");
+    const chosenTargetHp = state.players.p2.characters[2].hp;
+    if (chosenTargetHp < 91 || chosenTargetHp > 92) {
+      throw new Error(`Chosen target did not use redirected Distance power: ${chosenTargetHp}.`);
+    }
+    if (JSON.stringify(state.rng) === rngBeforePlay) {
+      throw new Error("Power did not roll after the defender choice.");
+    }
+    if (state.players.p2.characters[1].statuses.Cover?.value !== 2) throw new Error("Unselected Cover was consumed.");
+    const regularCoverValue = state.players.p2.characters[2].statuses.Cover?.value ?? 0;
+    const adjacentCoverValue = state.players.p2.characters[2].statuses["Cover (All)"]?.value ?? 0;
+    if (regularCoverValue !== 2) {
+      throw new Error(`Unselected Cover effect was consumed: ${regularCoverValue}.`);
+    }
+    if (adjacentCoverValue !== 1) {
+      throw new Error(`Selected Cover effect was not consumed exactly once: ${adjacentCoverValue}.`);
+    }
+
+    const transcript = exportTranscript(state);
+    if (!transcript || transcript.version !== 4) throw new Error("Transcript version was not updated.");
+    if (!transcript.actions.some((entry) => entry.action.type === "resolve_redirect_decision")) {
+      throw new Error("Defender decision was not recorded.");
+    }
+    const replay = replayTranscript(withFillers(characters), transcript);
+    if (replay.error || !replay.state) throw new Error(replay.error ?? "Redirect replay failed.");
+    if (hashMatchState(replay.state) !== hashMatchState(state)) throw new Error("Redirect replay hash mismatch.");
+
+    return { label: "Redirect and Cover choices belong to the defending player", ok: true };
+  } catch (error) {
+    return {
+      label: "Redirect and Cover choices belong to the defending player",
+      ok: false,
+      details: String(error),
+    };
+  }
+};
+
 export const runGoldenTests = () => [
+  runDefenderRedirectAuthorityTest(),
   runDataManifestTest(),
   runStateHashAndTranscriptCompatibilityTest(),
   runDebugBundleTest(),

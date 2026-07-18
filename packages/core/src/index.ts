@@ -100,6 +100,8 @@ export type StackEntry = {
   playWindows?: EffectPlayWindow[];
   choiceIndex?: number;
   redirectTargetId?: MatchCharacterId;
+  redirectSource?: "cover" | "redirect";
+  redirectStatus?: string;
   scryDiscardIds?: string[];
   scryOrderIds?: string[];
   seekTakeIds?: string[];
@@ -162,6 +164,12 @@ export type ZoneState = {
   passCount: number;
 };
 
+export type RedirectDecisionCandidate = {
+  targetId: MatchCharacterId;
+  source: "cover" | "redirect";
+  status?: string;
+};
+
 export type MatchState = {
   turn: number;
   phase: "movement" | "combat" | "finished";
@@ -198,6 +206,15 @@ export type MatchState = {
     zone: ZoneName;
     window: "after_use" | "counter";
     resolvedBy: PlayerId;
+  };
+  pendingRedirectDecision?: {
+    playerId: PlayerId;
+    zone: ZoneName;
+    entryId: string;
+    baseTargetId: MatchCharacterId;
+    candidates: RedirectDecisionCandidate[];
+    resolvedBy: PlayerId;
+    reactionEntry?: StackEntry;
   };
   innateUsage: Record<string, number>;
   pendingInnateDecision?: {
@@ -239,6 +256,13 @@ export type Action =
   | { type: "pass"; playerId: PlayerId }
   | { type: "end_turn"; playerId: PlayerId }
   | { type: "resolve_innate_decision"; playerId: PlayerId; accept: boolean }
+  | {
+      type: "resolve_redirect_decision";
+      playerId: PlayerId;
+      targetId: MatchCharacterId;
+      source: "cover" | "redirect";
+      status?: string;
+    }
   | { type: "clear_log"; playerId: PlayerId };
 
 export type MatchOptions = {
@@ -252,7 +276,7 @@ export type TranscriptEntry = {
 };
 
 export type MatchTranscript = {
-  version: 3;
+  version: 3 | 4;
   engineVersion: string;
   dataSchemaVersion: number;
   dataContentHash: string;
@@ -264,8 +288,8 @@ export type MatchTranscript = {
 
 const cloneState = (state: MatchState) => JSON.parse(JSON.stringify(state)) as MatchState;
 
-export const engineVersion = "0.2.0-friend-alpha";
-export const transcriptVersion = 3;
+export const engineVersion = "0.2.1-friend-alpha";
+export const transcriptVersion = 4;
 export const serializeMatchState = (state: MatchState) => serializeGameplayState(state);
 export const hashMatchState = (state: MatchState) => hashGameplayState(state);
 
@@ -1294,24 +1318,18 @@ const parseCoverScope = (statusName: string) => {
   return "all";
 };
 
-type RedirectCandidate = {
-  targetId: MatchCharacterId;
-  source: "cover" | "redirect";
-  status?: string;
-};
-
 const getCoverRedirectCandidates = (
   state: MatchState,
   entry: StackEntry,
   characters: Character[]
 ) => {
-  if (!isSingleTargetEntry(entry)) return [] as RedirectCandidate[];
-  if (getActionType(entry.types) !== "attack") return [] as RedirectCandidate[];
+  if (!isSingleTargetEntry(entry)) return [] as RedirectDecisionCandidate[];
+  if (getActionType(entry.types) !== "attack") return [] as RedirectDecisionCandidate[];
   const target = getMatchCharacter(state, entry.targetId);
-  if (!target) return [] as RedirectCandidate[];
+  if (!target) return [] as RedirectDecisionCandidate[];
   const targetTeam = getTeamForCharacter(state, entry.targetId);
-  if (!targetTeam) return [] as RedirectCandidate[];
-  const candidates: RedirectCandidate[] = [];
+  if (!targetTeam) return [] as RedirectDecisionCandidate[];
+  const candidates: RedirectDecisionCandidate[] = [];
 
   targetTeam.characters.forEach((member) => {
     if (member.defeated || member.id === entry.targetId) return;
@@ -1329,18 +1347,6 @@ const getCoverRedirectCandidates = (
     });
   });
 
-  candidates.sort((left, right) => {
-    const leftMember = getMatchCharacter(state, left.targetId);
-    const rightMember = getMatchCharacter(state, right.targetId);
-    const leftPos = leftMember ? leftMember.position : 0;
-    const rightPos = rightMember ? rightMember.position : 0;
-    if (leftPos !== rightPos) return leftPos - rightPos;
-    if (left.targetId !== right.targetId) {
-      return left.targetId.localeCompare(right.targetId);
-    }
-    return (left.status ?? "").localeCompare(right.status ?? "");
-  });
-
   return candidates;
 };
 
@@ -1351,60 +1357,83 @@ const parseRedirectLine = (line: string) => {
   return match[1].trim();
 };
 
-const resolveRedirectTarget = (
+const getRedirectSpecifications = (effectText: string[]) =>
+  getTimedTextSegments(effectText).flatMap((segment) => {
+    const spec = parseRedirectLine(segment.text);
+    if (!spec || segment.timing !== "before_use") return [];
+    return [{ spec, timing: segment.timing }];
+  });
+
+const resolveRedirectTargets = (
   state: MatchState,
   entry: StackEntry,
   spec: string
 ) => {
   const normalized = normalizeText(spec).toLowerCase();
   const sourceTeam = getTeamForCharacter(state, entry.sourceId);
-  if (!sourceTeam) return null;
+  if (!sourceTeam) return [] as MatchCharacterId[];
   const enemyTeam = state.players[getOpponentId(sourceTeam.id)];
 
-  if (normalized.includes("self")) return entry.sourceId;
-  if (normalized.includes("target")) return entry.targetId;
+  if (normalized.includes("self")) return [entry.sourceId];
+  if (normalized.includes("target")) return [entry.targetId];
   if (normalized.includes("ally")) {
-    const allies = sourceTeam.characters
+    return sourceTeam.characters
       .filter((member) => !member.defeated)
-      .sort((left, right) => left.position - right.position);
-    return allies[0]?.id ?? null;
+      .sort((left, right) => left.position - right.position)
+      .map((member) => member.id);
   }
   if (normalized.includes("enemy") || normalized.includes("opponent")) {
-    const enemies = enemyTeam.characters
+    return enemyTeam.characters
       .filter((member) => !member.defeated)
-      .sort((left, right) => left.position - right.position);
-    return enemies[0]?.id ?? null;
+      .sort((left, right) => left.position - right.position)
+      .map((member) => member.id);
   }
 
-  return null;
+  return [] as MatchCharacterId[];
 };
 
-const getRedirectSpec = (effectText: string[]) => {
-  const segments = getTimedTextSegments(effectText);
-  for (const segment of segments) {
-    const spec = parseRedirectLine(segment.text);
-    if (spec) return spec;
-  }
-  return null;
+const getRedirectCandidatesForTarget = (
+  state: MatchState,
+  entry: StackEntry,
+  characters: Character[],
+  baseTargetId: MatchCharacterId
+) => {
+  if (!isSingleTargetEntry(entry)) return [] as RedirectDecisionCandidate[];
+  const effectiveEntry = baseTargetId === entry.targetId
+    ? entry
+    : { ...entry, targetId: baseTargetId };
+  const candidates: RedirectDecisionCandidate[] = [];
+  candidates.push(...getCoverRedirectCandidates(state, effectiveEntry, characters));
+  getRedirectSpecifications(entry.effectText).forEach(({ spec }) => {
+    resolveRedirectTargets(state, effectiveEntry, spec).forEach((targetId) => {
+      if (isLegalTargetForEntry(state, effectiveEntry, targetId)) {
+        candidates.push({ targetId, source: "redirect" });
+      }
+    });
+  });
+
+  const deduped = new Map<string, RedirectDecisionCandidate>();
+  candidates.forEach((candidate) => {
+    const key = `${candidate.targetId}|${candidate.source}|${candidate.status ?? ""}`;
+    if (!deduped.has(key)) deduped.set(key, candidate);
+  });
+  return Array.from(deduped.values()).sort((left, right) => {
+    const leftMember = getMatchCharacter(state, left.targetId);
+    const rightMember = getMatchCharacter(state, right.targetId);
+    const leftPos = leftMember?.position ?? 0;
+    const rightPos = rightMember?.position ?? 0;
+    if (leftPos !== rightPos) return leftPos - rightPos;
+    if (left.targetId !== right.targetId) return left.targetId.localeCompare(right.targetId);
+    if (left.source !== right.source) return left.source.localeCompare(right.source);
+    return (left.status ?? "").localeCompare(right.status ?? "");
+  });
 };
 
 const getRedirectCandidates = (
   state: MatchState,
   entry: StackEntry,
   characters: Character[]
-) => {
-  if (!isSingleTargetEntry(entry)) return [] as RedirectCandidate[];
-  const candidates: RedirectCandidate[] = [];
-  candidates.push(...getCoverRedirectCandidates(state, entry, characters));
-  const redirectSpec = getRedirectSpec(entry.effectText);
-  if (redirectSpec) {
-    const redirectTargetId = resolveRedirectTarget(state, entry, redirectSpec);
-    if (redirectTargetId && isLegalTargetForEntry(state, entry, redirectTargetId)) {
-      candidates.push({ targetId: redirectTargetId, source: "redirect" });
-    }
-  }
-  return candidates;
-};
+) => getRedirectCandidatesForTarget(state, entry, characters, entry.targetId);
 
 const getDistanceTargetIdForEntry = (
   state: MatchState,
@@ -1412,12 +1441,11 @@ const getDistanceTargetIdForEntry = (
   characters: Character[]
 ) => {
   if (!isSingleTargetEntry(entry)) return entry.targetId;
-  const candidates = getRedirectCandidates(state, entry, characters);
-  if (!candidates.length) return entry.targetId;
-  const preferred = entry.redirectTargetId
-    ? candidates.find((candidate) => candidate.targetId === entry.redirectTargetId) ?? null
-    : null;
-  return (preferred ?? candidates[0])?.targetId ?? entry.targetId;
+  if (!entry.redirectTargetId) return entry.targetId;
+  const candidate = getRedirectCandidates(state, entry, characters).find(
+    (item) => item.targetId === entry.redirectTargetId
+  );
+  return candidate?.targetId ?? entry.targetId;
 };
 
 const hasNegateText = (entry: StackEntry) =>
@@ -2355,8 +2383,6 @@ const isWindowUseRestriction = (
   restriction: UseRestriction
 ): restriction is WindowUseRestriction =>
   restriction.kind === "require_window" || restriction.kind === "forbid_window";
-
-const isFinished = (state: MatchState) => state.phase === "finished";
 
 const timingLabelMap: Record<string, Effect["timing"]> = {
   "on play": "on_play",
@@ -5035,24 +5061,18 @@ const resolveUse = (
   }
 
   if (!cancelled) {
-    if (!entry.redirected) {
-      const redirectCandidates = getRedirectCandidates(state, entry, characters);
-      const preferred = entry.redirectTargetId
-        ? redirectCandidates.find((candidate) => candidate.targetId === entry.redirectTargetId) ??
-          null
-        : null;
-      const chosen = preferred ?? redirectCandidates[0] ?? null;
-      if (chosen && chosen.targetId !== entry.targetId) {
-        const redirectTarget = getMatchCharacter(state, chosen.targetId);
-        const previousTarget = getMatchCharacter(state, entry.targetId);
-        entry.targetId = chosen.targetId;
-        entry.redirected = true;
-        if (chosen.source === "cover" && redirectTarget && chosen.status) {
+    if (!entry.redirected && entry.redirectTargetId) {
+      const redirectTarget = getMatchCharacter(state, entry.redirectTargetId);
+      const previousTarget = getMatchCharacter(state, entry.targetId);
+      if (redirectTarget && !redirectTarget.defeated) {
+        entry.targetId = redirectTarget.id;
+        entry.redirected = redirectTarget.id !== previousTarget?.id;
+        if (entry.redirectSource === "cover" && entry.redirectStatus) {
           const redirectCharacter = getCharacterById(characters, redirectTarget.characterId);
           if (redirectCharacter) {
             applyStatusStatDelta(
               redirectTarget,
-              chosen.status,
+              entry.redirectStatus,
               -1,
               "value",
               redirectCharacter
@@ -5062,7 +5082,7 @@ const resolveUse = (
               `${redirectTarget.name} uses Cover to redirect the attack from ${previousTarget?.name ?? "an ally"}.`
             );
           }
-        } else if (redirectTarget) {
+        } else if (entry.redirected) {
           addLog(
             state,
             `${source.name} redirects ${entry.cardName} from ${previousTarget?.name ?? "the target"} to ${redirectTarget.name}.`
@@ -5225,6 +5245,47 @@ const hasPlayableAfterUseResponse = (
   return handReact || ultimateReact;
 };
 
+const setPreparedRedirect = (
+  entry: StackEntry,
+  candidate: RedirectDecisionCandidate
+) => {
+  entry.redirectTargetId = candidate.targetId;
+  entry.redirectSource = candidate.source;
+  entry.redirectStatus = candidate.status;
+};
+
+const prepareRedirectDecision = (
+  state: MatchState,
+  entry: StackEntry,
+  zoneName: ZoneName,
+  characters: Character[],
+  resolvedBy: PlayerId,
+  baseTargetId: MatchCharacterId = entry.targetId,
+  reactionEntry?: StackEntry
+) => {
+  if (entry.redirectTargetId) return false;
+  const candidates = getRedirectCandidatesForTarget(state, entry, characters, baseTargetId);
+  if (!candidates.length) return false;
+  if (candidates.length === 1) {
+    setPreparedRedirect(entry, candidates[0]);
+    return false;
+  }
+  const targetTeam = getTeamForCharacter(state, baseTargetId);
+  if (!targetTeam) return false;
+  state.pendingRedirectDecision = {
+    playerId: targetTeam.id,
+    zone: zoneName,
+    entryId: entry.id,
+    baseTargetId,
+    candidates,
+    resolvedBy,
+    reactionEntry,
+  };
+  state.activePlayerId = targetTeam.id;
+  addLog(state, `${targetTeam.name} must choose the redirect target for ${entry.cardName}.`);
+  return true;
+};
+
 const pauseForReactionWindow = (
   state: MatchState,
   zoneName: ZoneName,
@@ -5297,6 +5358,9 @@ const resolveZone = (
     const leftIndex = index - 1;
 
     if (leftIndex < 0) {
+      if (prepareRedirectDecision(state, right, zoneName, characters, resolvedBy ?? state.activePlayerId)) {
+        return;
+      }
       const rightType = getActionType(right.types);
       const rightPower = getModifiedEntryPower(state, right, rightType, characters, {
         distanceTargetId: getDistanceTargetIdForEntry(state, right, characters),
@@ -5318,6 +5382,9 @@ const resolveZone = (
 
     const left = zone.cards[leftIndex];
     if (left.playedBy === right.playedBy) {
+      if (prepareRedirectDecision(state, right, zoneName, characters, resolvedBy ?? state.activePlayerId)) {
+        return;
+      }
       const rightType = getActionType(right.types);
       const rightPower = getModifiedEntryPower(state, right, rightType, characters, {
         distanceTargetId: getDistanceTargetIdForEntry(state, right, characters),
@@ -5339,20 +5406,25 @@ const resolveZone = (
 
     const rightType = getActionType(right.types);
     const leftType = getActionType(left.types);
+    const rightBaseTargetId =
+      rightType === "attack" && leftType === "defense" ? left.sourceId : right.targetId;
+    const leftBaseTargetId =
+      leftType === "attack" && rightType === "defense" ? right.sourceId : left.targetId;
+    const decisionOwner = resolvedBy ?? state.activePlayerId;
+    if (prepareRedirectDecision(state, right, zoneName, characters, decisionOwner, rightBaseTargetId)) {
+      return;
+    }
+    if (prepareRedirectDecision(state, left, zoneName, characters, decisionOwner, leftBaseTargetId)) {
+      return;
+    }
 
-    const rightDistanceTargetId = getDistanceTargetIdForEntry(state, right, characters);
-    const leftDistanceTargetId = getDistanceTargetIdForEntry(state, left, characters);
+    const rightDistanceTargetId = right.redirectTargetId ?? rightBaseTargetId;
+    const leftDistanceTargetId = left.redirectTargetId ?? leftBaseTargetId;
     const rightPower = getModifiedEntryPower(state, right, rightType, characters, {
-      distanceTargetId:
-        rightType === "attack" && leftType === "defense"
-          ? left.sourceId
-          : rightDistanceTargetId,
+      distanceTargetId: rightDistanceTargetId,
     });
     const leftPower = getModifiedEntryPower(state, left, leftType, characters, {
-      distanceTargetId:
-        leftType === "attack" && rightType === "defense"
-          ? right.sourceId
-          : leftDistanceTargetId,
+      distanceTargetId: leftDistanceTargetId,
     });
 
     const rightNegates = !right.negated && hasNegateText(right);
@@ -5436,7 +5508,8 @@ const resolveZone = (
       const attack = rightType === "attack" ? right : left;
       const defensePower = defense === right ? rightPower : leftPower;
       const attackPower = attack === right ? rightPower : leftPower;
-      const clashTargetId = defense.sourceId;
+      const clashBaseTargetId = defense.sourceId;
+      const clashTargetId = attack.redirectTargetId ?? clashBaseTargetId;
 
       resolveEffectsForTiming(state, right, rightPower, "after_clash", false, characters);
       resolveEffectsForTiming(state, left, leftPower, "after_clash", false, characters);
@@ -5496,7 +5569,7 @@ const resolveZone = (
       attack.mitigationText = defenseCancelled ? undefined : defense.effectText;
       resolveUse(state, attack, attackIsHit, characters, zoneName, {
         powerOverride: attackPower,
-        targetOverrideId: clashTargetId,
+        targetOverrideId: clashBaseTargetId,
       });
       attack.mitigationText = undefined;
 
@@ -5699,6 +5772,73 @@ const advanceAfterZoneResolution = (state: MatchState, resolvedBy: PlayerId) => 
   }
 };
 
+const valueUsesPower = (value: unknown): boolean => {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((entry) => valueUsesPower(entry));
+  const record = value as Record<string, unknown>;
+  if (typeof record.kind === "string" && record.kind.startsWith("power")) return true;
+  return Object.values(record).some((entry) => valueUsesPower(entry));
+};
+
+const entryUsesPowerAtTiming = (
+  entry: StackEntry,
+  timing: Effect["timing"]
+) => {
+  let structuredUsesPower = false;
+  forEachStructuredEffect(entry.effects, timing, entry.choiceIndex, (effect) => {
+    if (valueUsesPower(effect)) structuredUsesPower = true;
+  });
+  if (structuredUsesPower) return true;
+  return getTimedTextSegments(entry.effectText).some(
+    (segment) => segment.timing === timing && /\bPower\b/i.test(segment.text)
+  );
+};
+
+const getOnPlayPower = (
+  state: MatchState,
+  entry: StackEntry,
+  characters: Character[]
+) => {
+  const hasCurrentRedirect = getRedirectCandidates(state, entry, characters).length > 0;
+  if (hasCurrentRedirect && !entryUsesPowerAtTiming(entry, "on_play")) {
+    return entry.rolledPower ?? 0;
+  }
+  return getModifiedEntryPower(
+    state,
+    entry,
+    getActionType(entry.types),
+    characters,
+    { distanceTargetId: getDistanceTargetIdForEntry(state, entry, characters) }
+  );
+};
+
+const resolveReactionEntry = (
+  state: MatchState,
+  entry: StackEntry,
+  zoneName: ZoneName,
+  characters: Character[],
+  resolvedBy: PlayerId
+) => {
+  const playPower = getModifiedEntryPower(
+    state,
+    entry,
+    getActionType(entry.types),
+    characters,
+    { distanceTargetId: getDistanceTargetIdForEntry(state, entry, characters) }
+  );
+  resolveEffectsForTiming(state, entry, playPower, "on_play", false, characters);
+  resolveUse(state, entry, getActionType(entry.types) === "attack", characters, zoneName, {
+    powerOverride: playPower,
+  });
+  finalizeEntryCard(state, entry, characters);
+  if (state.phase === "finished") return;
+  if (pauseForReactionWindow(state, zoneName, characters, resolvedBy)) return;
+  resolveZone(state, zoneName, characters, { resolvedBy });
+  if (!state.pendingResolution && !state.pendingRedirectDecision) {
+    advanceAfterZoneResolution(state, resolvedBy);
+  }
+};
+
 export const createMatchState = (
   characters: Character[],
   players: { id: PlayerId; name: string; characterIds: string[] }[],
@@ -5886,6 +6026,46 @@ export const applyAction = (
     return finalize();
   }
 
+  if (next.pendingRedirectDecision) {
+    if (action.type !== "resolve_redirect_decision") {
+      return finalize("Resolve the pending redirect decision first.");
+    }
+    const pending = next.pendingRedirectDecision;
+    if (action.playerId !== pending.playerId) return finalize("Not your decision.");
+    const zone = next.zones[pending.zone];
+    const entry = pending.reactionEntry
+      ?? zone.cards.find((candidate) => candidate.id === pending.entryId);
+    if (!entry) {
+      next.pendingRedirectDecision = undefined;
+      return finalize("Redirect decision is no longer valid.");
+    }
+    const currentCandidates = getRedirectCandidatesForTarget(
+      next,
+      entry,
+      characters,
+      pending.baseTargetId
+    );
+    const selected = currentCandidates.find(
+      (candidate) =>
+        candidate.targetId === action.targetId &&
+        candidate.source === action.source &&
+        candidate.status === action.status
+    );
+    if (!selected) return finalize("Invalid redirect choice.");
+    setPreparedRedirect(entry, selected);
+    next.pendingRedirectDecision = undefined;
+    next.activePlayerId = pending.resolvedBy;
+    if (pending.reactionEntry) {
+      resolveReactionEntry(next, entry, pending.zone, characters, pending.resolvedBy);
+      return finalize();
+    }
+    resolveZone(next, pending.zone, characters, { resolvedBy: pending.resolvedBy });
+    if (!next.pendingResolution && !next.pendingRedirectDecision) {
+      advanceAfterZoneResolution(next, pending.resolvedBy);
+    }
+    return finalize();
+  }
+
   if (action.type === "clear_log") {
     next.log = [];
     return finalize();
@@ -5906,7 +6086,7 @@ export const applyAction = (
       const { zone, resolvedBy } = pendingWindow;
       consumePendingWindow(next, pendingWindow);
       resolveZone(next, zone, characters, { resolvedBy });
-      if (!next.pendingResolution) {
+      if (!next.pendingResolution && !next.pendingRedirectDecision) {
         advanceAfterZoneResolution(next, resolvedBy);
       }
       return finalize();
@@ -5926,6 +6106,9 @@ export const applyAction = (
   if (action.type === "play_card") {
     if (next.phase === "movement") {
       return finalize("Movement Round in progress.");
+    }
+    if (action.redirectTargetId !== undefined) {
+      return finalize("Redirect target must be chosen by the defending player.");
     }
     const team = next.players[action.playerId];
     let card: Card | null = null;
@@ -6187,7 +6370,6 @@ export const applyAction = (
         xValue,
         playWindows: playWindows.length ? playWindows : undefined,
         choiceIndex: action.choiceIndex,
-        redirectTargetId: action.redirectTargetId,
         scryDiscardIds: action.scryDiscardIds,
         scryOrderIds: action.scryOrderIds,
         seekTakeIds: action.seekTakeIds,
@@ -6210,28 +6392,20 @@ export const applyAction = (
         return finalize();
       }
 
-      const playPower = getModifiedEntryPower(
-        next,
-        entry,
-        getActionType(entry.types),
-        characters,
-        { distanceTargetId: getDistanceTargetIdForEntry(next, entry, characters) }
-      );
-      resolveEffectsForTiming(next, entry, playPower, "on_play", false, characters);
-      resolveUse(next, entry, actionType === "attack", characters, pendingWindow.zone, {
-        powerOverride: playPower,
-      });
-      finalizeEntryCard(next, entry, characters);
-      if (isFinished(next)) {
+      if (
+        prepareRedirectDecision(
+          next,
+          entry,
+          pendingWindow.zone,
+          characters,
+          pendingWindow.resolvedBy,
+          entry.targetId,
+          entry
+        )
+      ) {
         return finalize();
       }
-      if (pauseForReactionWindow(next, pendingWindow.zone, characters, pendingWindow.resolvedBy)) {
-        return finalize();
-      }
-      resolveZone(next, pendingWindow.zone, characters, { resolvedBy: pendingWindow.resolvedBy });
-      if (!next.pendingResolution) {
-        advanceAfterZoneResolution(next, pendingWindow.resolvedBy);
-      }
+      resolveReactionEntry(next, entry, pendingWindow.zone, characters, pendingWindow.resolvedBy);
       return finalize();
     }
 
@@ -6264,7 +6438,6 @@ export const applyAction = (
       xValue,
       playWindows: playWindows.length ? playWindows : undefined,
       choiceIndex: action.choiceIndex,
-      redirectTargetId: action.redirectTargetId,
       scryDiscardIds: action.scryDiscardIds,
       scryOrderIds: action.scryOrderIds,
       seekTakeIds: action.seekTakeIds,
@@ -6283,19 +6456,13 @@ export const applyAction = (
     if (next.phase === "finished") {
       return finalize();
     }
-    const playPower = getModifiedEntryPower(
-      next,
-      entry,
-      getActionType(entry.types),
-      characters,
-      { distanceTargetId: getDistanceTargetIdForEntry(next, entry, characters) }
-    );
+    const playPower = getOnPlayPower(next, entry, characters);
     resolveEffectsForTiming(next, entry, playPower, "on_play", false, characters);
     if (pendingWindow) {
       const { zone, resolvedBy } = pendingWindow;
       consumePendingWindow(next, pendingWindow);
       resolveZone(next, zone, characters, { resolvedBy });
-      if (!next.pendingResolution) {
+      if (!next.pendingResolution && !next.pendingRedirectDecision) {
         advanceAfterZoneResolution(next, resolvedBy);
       }
       return finalize();
@@ -6367,7 +6534,7 @@ export const applyAction = (
     if (zone.passCount >= 2 && zone.lastPlayedBy === action.playerId) {
       const resolvedBy = action.playerId;
       resolveZone(next, next.activeZone, characters, { resolvedBy });
-      if (!next.pendingResolution) {
+      if (!next.pendingResolution && !next.pendingRedirectDecision) {
         advanceAfterZoneResolution(next, resolvedBy);
       }
     } else {
@@ -6437,16 +6604,24 @@ const isReplayAction = (value: unknown): value is Action => {
     return typeof value.firstId === "string" && typeof value.secondId === "string";
   }
   if (value.type === "resolve_innate_decision") return typeof value.accept === "boolean";
+  if (value.type === "resolve_redirect_decision") {
+    return (
+      typeof value.targetId === "string" &&
+      (value.source === "cover" || value.source === "redirect") &&
+      isOptionalString(value.status)
+    );
+  }
   return value.type === "pass" || value.type === "end_turn" || value.type === "clear_log";
 };
 
 const validateReplayTranscript = (value: unknown): string | null => {
   if (!isRecord(value)) return "Transcript must be an object.";
-  if (value.version !== transcriptVersion) {
-    return `Unsupported transcript version ${String(value.version)}; expected ${transcriptVersion}.`;
+  if (value.version !== 3 && value.version !== transcriptVersion) {
+    return `Unsupported transcript version ${String(value.version)}; expected 3 or ${transcriptVersion}.`;
   }
-  if (value.engineVersion !== engineVersion) {
-    return `Engine version mismatch: transcript uses ${String(value.engineVersion)}, build uses ${engineVersion}.`;
+  const expectedEngineVersion = value.version === 3 ? "0.2.0-friend-alpha" : engineVersion;
+  if (value.engineVersion !== expectedEngineVersion) {
+    return `Engine version mismatch: transcript uses ${String(value.engineVersion)}, expected ${expectedEngineVersion}.`;
   }
   if (value.dataSchemaVersion !== dataManifest.schemaVersion) {
     return `Data schema mismatch: transcript uses ${String(value.dataSchemaVersion)}, build uses ${dataManifest.schemaVersion}.`;
@@ -6466,6 +6641,18 @@ const validateReplayTranscript = (value: unknown): string | null => {
   );
   if (!playersValid) return "Transcript players are invalid.";
   if (!Array.isArray(value.actions)) return "Transcript actions must be an array.";
+  if (
+    value.version === 3 &&
+    value.actions.some(
+      (entry) =>
+        isRecord(entry) &&
+        isRecord(entry.action) &&
+        entry.action.type === "play_card" &&
+        entry.action.redirectTargetId !== undefined
+    )
+  ) {
+    return "Legacy transcript contains an attacker-selected redirect target and cannot be replayed safely.";
+  }
   const invalidAction = value.actions.findIndex((entry) =>
     !isRecord(entry) || !isReplayAction(entry.action) || (entry.error !== undefined && typeof entry.error !== "string")
   );

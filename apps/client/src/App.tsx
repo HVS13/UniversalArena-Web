@@ -39,6 +39,7 @@ import {
 } from "./relay-protocol";
 
 type Stage = "setup" | "match";
+type PlayMode = "local" | "network";
 
 const getStoredSkipCombat = () => {
   if (typeof window === "undefined") return false;
@@ -1456,6 +1457,7 @@ const App = () => {
     [matchState, statusDetails]
   );
   const [stage, setStage] = useState<Stage>("setup");
+  const [playMode, setPlayMode] = useState<PlayMode>("local");
   const [names, setNames] = useState({ p1: "Player 1", p2: "Player 2" });
   const [selection, setSelection] = useState<SelectionState>(defaultSelection);
   const [relayUrl, setRelayUrl] = useState(defaultRelayUrl);
@@ -1506,6 +1508,8 @@ const App = () => {
   };
   const clientId = clientIdRef.current;
   const isConnected = relayStatus === "connected";
+  const isNetworkMode = playMode === "network";
+  const canChangePlayMode = relayStatus === "idle" && !lobby;
   const isMultiplayer = Boolean(lobby);
   const isHost = lobby?.hostId === clientId;
   const localSeat = isMultiplayer ? (isHost ? "p1" : "p2") : null;
@@ -2003,6 +2007,7 @@ const App = () => {
         if (!snapshot) return;
         storeLobbyCode(snapshot.code);
         setLobbyCode(snapshot.code);
+        setPlayMode("network");
         setLobby(snapshot);
         const hostPlayer = snapshot.players.find((player) => player.id === snapshot.hostId);
         if (snapshot.hostId !== clientId && hostPlayer?.connected !== false) {
@@ -2213,6 +2218,14 @@ const App = () => {
 
   const startMatch = () => {
     try {
+      if (isNetworkMode && !isMultiplayer) {
+        reportMessage("Create or join a lobby before starting a network match.");
+        return;
+      }
+      if (!isNetworkMode && isMultiplayer) {
+        reportMessage("Leave the lobby before starting a local match.");
+        return;
+      }
       if (isMultiplayer && !isHost) {
         reportMessage("Only the host can start the match.");
         return;
@@ -2841,9 +2854,11 @@ const App = () => {
         <header className="ua-header">
           <div>
             <p className="ua-kicker">Universal Arena</p>
-            <h1>{isMultiplayer ? "Multiplayer Setup" : "Local Match Setup"}</h1>
+            <h1>{isNetworkMode ? "Network Match Setup" : "Local Match Setup"}</h1>
             <p className="ua-subtitle">
-              Draft the squad, wire the relay, and lock the lobby before the first clash.
+              {isNetworkMode
+                ? "Connect to a relay, create or join a lobby, then ready both players."
+                : "Build both teams and play on this device."}
             </p>
           </div>
           <div className="ua-header__actions">
@@ -2858,15 +2873,52 @@ const App = () => {
 
         {message && <div className="ua-toast">{message}</div>}
 
+        <section className="ua-play-mode ua-panel ua-panel--wide" aria-label="Play mode">
+          <div className="ua-play-mode__copy">
+            <p className="ua-kicker">How do you want to play?</p>
+            <p className="ua-zone-status">
+              Local uses one device. Network uses the same lobby flow for localhost, LAN, or online relays.
+            </p>
+          </div>
+          <div className="ua-play-mode__actions">
+            <button
+              type="button"
+              className={`ua-button ua-play-mode__button${playMode === "local" ? " is-active" : ""}`}
+              aria-pressed={playMode === "local"}
+              disabled={!canChangePlayMode}
+              onClick={() => setPlayMode("local")}
+            >
+              Local Match
+            </button>
+            <button
+              type="button"
+              className={`ua-button ua-play-mode__button${playMode === "network" ? " is-active" : ""}`}
+              aria-pressed={playMode === "network"}
+              disabled={!canChangePlayMode}
+              onClick={() => setPlayMode("network")}
+            >
+              Network Match
+            </button>
+          </div>
+        </section>
+
         <section className="ua-command-bar" aria-label="Setup summary">
           <div className="ua-command-bar__item">
             <span>Mode</span>
-            <strong>{isMultiplayer ? "Relay Multiplayer" : "Local Hot-Seat"}</strong>
+            <strong>{isNetworkMode ? "Network Lobby" : "Local Hot-Seat"}</strong>
           </div>
-          <div className="ua-command-bar__item">
-            <span>Relay</span>
-            <strong>{relayStatusLabel}</strong>
-          </div>
+          {isNetworkMode && (
+            <div className="ua-command-bar__item">
+              <span>Relay</span>
+              <strong>{relayStatusLabel}</strong>
+            </div>
+          )}
+          {isNetworkMode && (
+            <div className="ua-command-bar__item">
+              <span>Lobby</span>
+              <strong>{lobby?.code ?? "Not joined"}</strong>
+            </div>
+          )}
           <div className="ua-command-bar__item">
             <span>Roster</span>
             <strong>{rosterSorted.length} fighters online</strong>
@@ -2877,115 +2929,116 @@ const App = () => {
           </div>
         </section>
 
-        <section className="ua-panel ua-panel--wide">
-        <div className="ua-panel__header">
-          <h2>Multiplayer (Relay)</h2>
-          <span className="ua-panel__tag">{relayStatusLabel}</span>
-        </div>
-        <div className="ua-help-row">
-          <label className="ua-label">
-            Relay URL
-            <input
-              value={relayUrl}
-              disabled={relayStatus !== "idle"}
-              onChange={(event) => setRelayUrl(event.target.value)}
-            />
-          </label>
-          <label className="ua-label">
-            Display name
-            <input
-              value={relayName}
-              disabled={relayStatus !== "idle"}
-              onChange={(event) => setRelayName(event.target.value)}
-            />
-          </label>
-          <label className="ua-label">
-            Lobby code
-            <input
-              value={lobbyCode}
-              disabled={!isConnected || isMultiplayer}
-              onChange={(event) => setLobbyCode(event.target.value.toUpperCase())}
-            />
-          </label>
-        </div>
-        <div className="ua-help-row">
-          <button
-            className="ua-button"
-            disabled={relayStatus !== "idle"}
-            onClick={connectRelay}
-          >
-            Connect
-          </button>
-          <button
-            className="ua-button ua-button--ghost"
-            disabled={!isConnected}
-            onClick={disconnectRelay}
-          >
-            Disconnect
-          </button>
-          <button
-            className="ua-button"
-            disabled={!isConnected || isMultiplayer}
-            onClick={createLobby}
-          >
-            Create Lobby
-          </button>
-          <button
-            className="ua-button"
-            disabled={!isConnected || isMultiplayer || !lobbyCode.trim()}
-            onClick={joinLobby}
-          >
-            Join Lobby
-          </button>
-          <button
-            className="ua-button ua-button--ghost"
-            disabled={!isMultiplayer}
-            onClick={leaveLobby}
-          >
-            Leave Lobby
-          </button>
-          <button
-            className={localReady ? "ua-button ua-button--ghost" : "ua-button"}
-            disabled={!isConnected || !isMultiplayer}
-            onClick={() => setLocalReady(!localReady)}
-          >
-            {localReady ? "Unready" : "Ready"}
-          </button>
-          <button
-            className="ua-button ua-button--ghost"
-            disabled={!isConnected || !isMultiplayer}
-            onClick={requestRelaySync}
-          >
-            Resync
-          </button>
-        </div>
-        {isMultiplayer ? (
-          <div className="ua-lobby-status">
-            <p className="ua-zone-status">
-              Lobby {lobby?.code} | {isHost ? "Host (P1)" : "Guest (P2)"} |{" "}
-              {multiplayerStartBlocker ?? "Ready to start."}
-            </p>
-            <div className="ua-lobby-status__players">
-              {lobby?.players.map((player) => {
-                const connected = player.connected !== false;
-                return (
-                  <div key={player.id} className="ua-lobby-status__player">
-                    <span className={connected ? "ua-status-dot is-online" : "ua-status-dot"}></span>
-                    <strong>{player.name}</strong>
-                    <span>{player.id === lobby?.hostId ? "Host" : "Guest"}</span>
-                    <span>{connected ? "Online" : "Disconnected"}</span>
-                    <span>{player.ready ? "Ready" : "Not ready"}</span>
-                  </div>
-                );
-              })}
+        {isNetworkMode && (
+          <section className="ua-panel ua-panel--wide">
+            <div className="ua-panel__header">
+              <h2>Network Lobby</h2>
+              <span className="ua-panel__tag">{relayStatusLabel}</span>
             </div>
-          </div>
-        ) : (
-          <p className="ua-zone-status">
-            Use the relay to play remotely. The match setup below controls the in-game names.
-          </p>
+
+            {!isConnected && (
+              <>
+                <div className="ua-network-connection">
+                  <label className="ua-label">
+                    Relay address
+                    <input
+                      value={relayUrl}
+                      disabled={relayStatus !== "idle"}
+                      onChange={(event) => setRelayUrl(event.target.value)}
+                    />
+                  </label>
+                  <label className="ua-label">
+                    Display name
+                    <input
+                      value={relayName}
+                      disabled={relayStatus !== "idle"}
+                      onChange={(event) => setRelayName(event.target.value)}
+                    />
+                  </label>
+                </div>
+                <div className="ua-network-lobby-actions">
+                  <button
+                    className="ua-button"
+                    disabled={relayStatus !== "idle"}
+                    onClick={connectRelay}
+                  >
+                    {relayStatus === "connecting" ? "Connecting..." : "Connect"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {isConnected && !isMultiplayer && (
+              <>
+                <p className="ua-zone-status">
+                  Connected. Create a new lobby or enter a code to join one.
+                </p>
+                <div className="ua-network-lobby-actions">
+                  <button className="ua-button" onClick={createLobby}>
+                    Create Lobby
+                  </button>
+                  <label className="ua-label">
+                    Lobby code
+                    <input
+                      value={lobbyCode}
+                      onChange={(event) => setLobbyCode(event.target.value.toUpperCase())}
+                    />
+                  </label>
+                  <button
+                    className="ua-button"
+                    disabled={!lobbyCode.trim()}
+                    onClick={joinLobby}
+                  >
+                    Join Lobby
+                  </button>
+                  <button className="ua-button ua-button--ghost" onClick={disconnectRelay}>
+                    Disconnect
+                  </button>
+                </div>
+              </>
+            )}
+
+            {isConnected && isMultiplayer && (
+              <>
+                <div className="ua-lobby-status">
+                  <p className="ua-zone-status">
+                    Lobby {lobby?.code} | {isHost ? "Host (P1)" : "Guest (P2)"} |{" "}
+                    {multiplayerStartBlocker ?? "Ready to start."}
+                  </p>
+                  <div className="ua-lobby-status__players">
+                    {lobby?.players.map((player) => {
+                      const connected = player.connected !== false;
+                      return (
+                        <div key={player.id} className="ua-lobby-status__player">
+                          <span className={connected ? "ua-status-dot is-online" : "ua-status-dot"}></span>
+                          <strong>{player.name}</strong>
+                          <span>{player.id === lobby?.hostId ? "Host" : "Guest"}</span>
+                          <span>{connected ? "Online" : "Disconnected"}</span>
+                          <span>{player.ready ? "Ready" : "Not ready"}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="ua-network-lobby-actions">
+                  <button
+                    className={localReady ? "ua-button ua-button--ghost" : "ua-button"}
+                    onClick={() => setLocalReady(!localReady)}
+                  >
+                    {localReady ? "Unready" : "Ready"}
+                  </button>
+                  <button className="ua-button ua-button--ghost" onClick={requestRelaySync}>
+                    Resync
+                  </button>
+                  <button className="ua-button ua-button--ghost" onClick={leaveLobby}>
+                    Leave Lobby
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
         )}
-      </section>
+
 
       <section className="ua-setup-grid">
           {(["p1", "p2"] as PlayerId[]).map((playerId) => {
@@ -2997,7 +3050,15 @@ const App = () => {
             return (
               <div key={playerId} className="ua-panel">
                 <div className="ua-panel__header">
-                  <h2>{playerId === "p1" ? "Player One" : "Player Two"}</h2>
+                  <h2>
+                    {isNetworkMode
+                      ? playerId === "p1"
+                        ? "Host Team"
+                        : "Guest Team"
+                      : playerId === "p1"
+                        ? "Player One"
+                        : "Player Two"}
+                  </h2>
                   <span className="ua-panel__tag">{playerId.toUpperCase()}</span>
                 </div>
                   <label className="ua-label">
@@ -3100,10 +3161,14 @@ const App = () => {
         <div className="ua-actions">
           <button
             className="ua-button ua-button--primary"
-            disabled={isMultiplayer && (!isHost || !isConnected || !canStartMultiplayer)}
+            disabled={
+              isNetworkMode
+                ? !isMultiplayer || !isHost || !isConnected || !canStartMultiplayer
+                : false
+            }
             onClick={startMatch}
           >
-            Start Match
+            {isNetworkMode ? "Start Network Match" : "Start Local Match"}
           </button>
         </div>
         </div>

@@ -1458,6 +1458,7 @@ const App = () => {
   );
   const [stage, setStage] = useState<Stage>("setup");
   const [playMode, setPlayMode] = useState<PlayMode>("local");
+  const [revealedLocalPlayerId, setRevealedLocalPlayerId] = useState<PlayerId | null>(null);
   const [names, setNames] = useState({ p1: "Player 1", p2: "Player 2" });
   const [selection, setSelection] = useState<SelectionState>(defaultSelection);
   const [relayUrl, setRelayUrl] = useState(defaultRelayUrl);
@@ -1483,6 +1484,7 @@ const App = () => {
   const sound = useSoundEffects(soundEnabled, soundVolume);
   const clientIdRef = useRef(getStoredClientId());
   const socketRef = useRef<WebSocket | null>(null);
+  const matchShellRef = useRef<HTMLDivElement | null>(null);
   const lobbyRef = useRef<RelayLobbySnapshot | null>(null);
   const intentionalDisconnectRef = useRef(false);
   const selectionRef = useRef(selection);
@@ -1513,6 +1515,18 @@ const App = () => {
   const isMultiplayer = Boolean(lobby);
   const isHost = lobby?.hostId === clientId;
   const localSeat = isMultiplayer ? (isHost ? "p1" : "p2") : null;
+  const decisionWindow = matchState ? getPendingWindow(matchState) : null;
+  const decisionPlayerId =
+    matchState && matchState.phase !== "finished"
+      ? matchState.pendingInnateDecision?.playerId ??
+        decisionWindow?.playerId ??
+        matchState.activePlayerId
+      : null;
+  const localHandoffRequired =
+    stage === "match" &&
+    !isMultiplayer &&
+    Boolean(decisionPlayerId) &&
+    revealedLocalPlayerId !== decisionPlayerId;
   const hasRemotePlayer = (lobby?.players.length ?? 0) > 1;
   const localLobbyPlayer = lobby?.players.find((player) => player.id === clientId) ?? null;
   const connectedLobbyPlayers = lobby?.players.filter((player) => player.connected !== false) ?? [];
@@ -1553,6 +1567,21 @@ const App = () => {
   useEffect(() => {
     lobbyRef.current = lobby;
   }, [lobby]);
+  useEffect(() => {
+    if (isMultiplayer || stage !== "match" || !matchState) {
+      setRevealedLocalPlayerId(null);
+    }
+  }, [isMultiplayer, matchState, stage]);
+  useEffect(() => {
+    const shell = matchShellRef.current;
+    if (!shell) return;
+    if (localHandoffRequired) {
+      shell.setAttribute("inert", "");
+    } else {
+      shell.removeAttribute("inert");
+    }
+    return () => shell.removeAttribute("inert");
+  }, [localHandoffRequired]);
   const clearVisualTimers = useCallback(() => {
     dealtTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
     dealtTimeoutsRef.current.clear();
@@ -1775,8 +1804,16 @@ const App = () => {
     if (!hasRemotePlayer) return true;
     return localSeat === playerId;
   };
-  const canControlPlayer = (playerId: PlayerId) =>
-    !isMultiplayer || (isConnected && localSeat === playerId);
+  const canControlPlayer = (playerId: PlayerId) => {
+    if (isMultiplayer) {
+      return isConnected && localSeat === playerId;
+    }
+    return (
+      decisionPlayerId === playerId &&
+      revealedLocalPlayerId === playerId &&
+      !localHandoffRequired
+    );
+  };
   const relayStatusLabel =
     relayStatus === "connecting"
       ? "Connecting"
@@ -2239,6 +2276,7 @@ const App = () => {
         return;
       }
       resetVisualState();
+      setRevealedLocalPlayerId(null);
       const state = createMatchState(
         roster,
         [
@@ -2273,6 +2311,7 @@ const App = () => {
     setStage("setup");
     setMessage(null);
     setPendingPlay(null);
+    setRevealedLocalPlayerId(null);
     winnerRef.current = null;
     resetVisualState();
     sound.play("click");
@@ -2635,8 +2674,8 @@ const App = () => {
     cardInstanceId?: string
   ) => {
     if (!matchState) return;
-    if (isMultiplayer && !canControlPlayer(playerId)) {
-      reportMessage("Not your team.");
+    if (!canControlPlayer(playerId)) {
+      reportMessage(isMultiplayer ? "Not your team." : "Pass the device to the current player.");
       return;
     }
     const ownerEntry = getMemberById(matchState, sourceId);
@@ -2730,6 +2769,10 @@ const App = () => {
 
   const confirmXPlay = () => {
     if (!pendingPlay) return;
+    if (!canControlPlayer(pendingPlay.playerId)) {
+      reportMessage(isMultiplayer ? "Not your team." : "Pass the device to the current player.");
+      return;
+    }
     dispatchAction({
       type: "play_card",
       playerId: pendingPlay.playerId,
@@ -3188,12 +3231,24 @@ const App = () => {
   const pausedZonesLabel = matchState.pausedZones.length
     ? matchState.pausedZones.map(zoneLabel).join(", ")
     : "None";
-  const pendingWindow = getPendingWindow(matchState);
+  const pendingWindow = decisionWindow;
   const pendingWindowLabel = pendingWindow
     ? pendingWindow.type === "counter"
       ? "Counter"
       : "After Use"
     : "Open play";
+  const localHandoffPlayer = decisionPlayerId
+    ? matchState.players[decisionPlayerId]
+    : null;
+  const localHandoffContext = matchState.pendingInnateDecision
+    ? "Innate decision"
+    : pendingWindow?.type === "counter"
+      ? "Counter response"
+      : pendingWindow?.type === "after_use"
+        ? "Follow-Up or Assist opportunity"
+        : matchState.phase === "movement"
+          ? "Movement priority"
+          : "Combat priority";
   const allReactivePlayers = getReactivePlayers(matchState);
   const reactivePlayers = allReactivePlayers.filter(
     (playerId) => playerId !== matchState.activePlayerId
@@ -3583,16 +3638,55 @@ const App = () => {
           );
         })()
       : null;
+  const localHandoffOverlay =
+    localHandoffRequired && !combatPlayback && localHandoffPlayer && decisionPlayerId ? (
+      <div
+        className="ua-handoff"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ua-handoff-title"
+        aria-describedby="ua-handoff-description"
+      >
+        <div className="ua-handoff__card">
+          <p className="ua-handoff__context">{localHandoffContext}</p>
+          <h2 id="ua-handoff-title">Pass the device to {localHandoffPlayer.name}</h2>
+          <p id="ua-handoff-description" className="ua-handoff__description">
+            Private cards and controls are hidden until the receiving player confirms.
+          </p>
+          <button
+            type="button"
+            className="ua-button ua-button--primary ua-handoff__button"
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              event.preventDefault();
+              event.currentTarget.click();
+            }}
+            onClick={() => {
+              setRevealedLocalPlayerId(decisionPlayerId);
+              sound.play("confirm");
+            }}
+          >
+            I’m {localHandoffPlayer.name} — Continue
+          </button>
+        </div>
+      </div>
+    ) : null;
 
   return (
     <div className="ua-app">
       {combatOverlay}
+      {localHandoffOverlay}
       <div className="ua-app__chrome" aria-hidden="true">
         <span className="ua-app__orb ua-app__orb--alpha"></span>
         <span className="ua-app__orb ua-app__orb--beta"></span>
         <span className="ua-app__grid"></span>
       </div>
-      <div className="ua-shell">
+      <div
+        ref={matchShellRef}
+        className="ua-shell"
+        aria-hidden={localHandoffRequired || undefined}
+      >
       <header className="ua-header">
         <div>
           <p className="ua-kicker">Universal Arena</p>
@@ -3643,7 +3737,7 @@ const App = () => {
             <div className="ua-actions">
               <button
                 className="ua-button ua-button--primary"
-                disabled={isMultiplayer && localSeat !== matchState.pendingInnateDecision.playerId}
+                disabled={!canControlPlayer(matchState.pendingInnateDecision.playerId)}
                 onClick={() => dispatchAction({
                   type: "resolve_innate_decision",
                   playerId: matchState.pendingInnateDecision!.playerId,
@@ -3654,7 +3748,7 @@ const App = () => {
               </button>
               <button
                 className="ua-button ua-button--ghost"
-                disabled={isMultiplayer && localSeat !== matchState.pendingInnateDecision.playerId}
+                disabled={!canControlPlayer(matchState.pendingInnateDecision.playerId)}
                 onClick={() => dispatchAction({
                   type: "resolve_innate_decision",
                   playerId: matchState.pendingInnateDecision!.playerId,

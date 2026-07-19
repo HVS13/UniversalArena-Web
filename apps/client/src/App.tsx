@@ -103,12 +103,6 @@ type UltimateEntry = {
   character: Character;
 };
 
-type RedirectOption = {
-  id: MatchCharacterId;
-  label: string;
-  source: "cover" | "redirect";
-};
-
 type ScryState = {
   cards: CardInstance[];
   discardIds: string[];
@@ -143,8 +137,6 @@ type PendingPlay = {
   choiceIndex: number;
   targets: { id: MatchCharacterId; label: string }[];
   targetId: MatchCharacterId;
-  redirectOptions: RedirectOption[];
-  redirectTargetId?: MatchCharacterId;
   scry?: ScryState | null;
   seek?: SeekState | null;
   search?: SearchState | null;
@@ -528,14 +520,6 @@ const parseSearchCriteria = (lines: string[]) => {
   return null;
 };
 
-const parseRedirectSpec = (lines: string[]) => {
-  for (const line of lines) {
-    const match = normalizeLine(line).match(/^Redirect\s*\(([^)]+)\)/i);
-    if (match) return match[1].trim();
-  }
-  return null;
-};
-
 const parsePushAmount = (lines: string[], xValue: number) => {
   for (const line of lines) {
     const match = normalizeText(line).match(/^Push\s+(\d+|X)/i);
@@ -545,18 +529,6 @@ const parsePushAmount = (lines: string[], xValue: number) => {
     if (!Number.isNaN(amount)) return amount;
   }
   return null;
-};
-
-const isSingleTargetCard = (card: Card) => {
-  const targetText = card.target.toLowerCase();
-  if (!targetText) return false;
-  if (targetText.includes("random") || targetText.includes("all")) return false;
-  if (card.types.some((type) => ["aoe", "area"].includes(type.toLowerCase()))) return false;
-  return (
-    targetText.includes("enemy") ||
-    targetText.includes("ally") ||
-    targetText.includes("self")
-  );
 };
 
 const getTopCards = (deck: CardInstance[], count: number) => {
@@ -592,98 +564,6 @@ const matchesSearchCriteria = (card: Card, criteria: string) => {
   const cleaned = normalized.replace(/\b(a|an|the|card|cards)\b/g, "").trim();
   if (!cleaned) return true;
   return normalizeText(card.name).toLowerCase().includes(cleaned);
-};
-
-const parseCoverScope = (statusName: string) => {
-  const normalized = normalizeText(statusName).toLowerCase();
-  return normalized.includes("adjacent") ? "adjacent" : "all";
-};
-
-const getRedirectSpecTargets = (
-  state: MatchState,
-  sourceId: MatchCharacterId,
-  targetId: MatchCharacterId,
-  spec: string
-) => {
-  const normalized = normalizeText(spec).toLowerCase();
-  const sourceEntry = getMemberById(state, sourceId);
-  if (!sourceEntry) return [];
-  const sourceTeam = sourceEntry.team;
-  const enemyTeam = state.players[sourceTeam.id === "p1" ? "p2" : "p1"];
-
-  if (normalized.includes("self")) return [sourceId];
-  if (normalized.includes("target")) return [targetId];
-  if (normalized.includes("ally")) {
-    return sourceTeam.characters.filter((member) => !member.defeated).map((member) => member.id);
-  }
-  if (normalized.includes("enemy") || normalized.includes("opponent")) {
-    return enemyTeam.characters.filter((member) => !member.defeated).map((member) => member.id);
-  }
-  return [];
-};
-
-const buildRedirectOptions = (
-  state: MatchState,
-  card: Card,
-  sourceId: MatchCharacterId,
-  targetId: MatchCharacterId,
-  choiceIndex: number
-) => {
-  if (!isSingleTargetCard(card)) return [];
-  const legalTargets = getLegalTargets(card, sourceId, state, roster);
-  if (!legalTargets.length) return [];
-  const legalSet = new Set(legalTargets);
-  const options: RedirectOption[] = [];
-  const lines = getActiveEffectLines(card, choiceIndex);
-  const isAttack = card.types.some((type) => type.toLowerCase() === "attack");
-
-  if (isAttack) {
-    const targetEntry = getMemberById(state, targetId);
-    if (targetEntry) {
-      const targetMember = targetEntry.member;
-      targetEntry.team.characters.forEach((member) => {
-        if (member.defeated || member.id === targetMember.id) return;
-        const statusNames = Object.keys(member.statuses).filter((status) =>
-          normalizeText(status).toLowerCase().startsWith("cover")
-        );
-        statusNames.forEach((status) => {
-          if (!isStatusActive(member.statuses[status])) return;
-          const scope = parseCoverScope(status);
-          if (scope === "adjacent" && Math.abs(member.position - targetMember.position) !== 1) {
-            return;
-          }
-          if (!legalSet.has(member.id)) return;
-          options.push({
-            id: member.id,
-            label: `${formatMemberLabel(state, member.id)} (Cover)`,
-            source: "cover",
-          });
-        });
-      });
-    }
-  }
-
-  const spec = parseRedirectSpec(lines);
-  if (spec) {
-    const candidates = getRedirectSpecTargets(state, sourceId, targetId, spec);
-    candidates.forEach((candidate) => {
-      if (!legalSet.has(candidate)) return;
-      options.push({
-        id: candidate,
-        label: `${formatMemberLabel(state, candidate)} (Redirect)`,
-        source: "redirect",
-      });
-    });
-  }
-
-  const deduped = new Map<MatchCharacterId, RedirectOption>();
-  options.forEach((option) => {
-    if (!deduped.has(option.id)) deduped.set(option.id, option);
-  });
-
-  return Array.from(deduped.values()).sort((left, right) =>
-    left.label.localeCompare(right.label)
-  );
 };
 
 const buildScryState = (
@@ -1519,6 +1399,7 @@ const App = () => {
   const decisionPlayerId =
     matchState && matchState.phase !== "finished"
       ? matchState.pendingInnateDecision?.playerId ??
+        matchState.pendingRedirectDecision?.playerId ??
         decisionWindow?.playerId ??
         matchState.activePlayerId
       : null;
@@ -1747,6 +1628,9 @@ const App = () => {
           break;
         case "move_swap":
           sound.play("swap");
+          break;
+        case "resolve_redirect_decision":
+          sound.play("confirm");
           break;
         case "clear_log":
           sound.play("click");
@@ -2486,8 +2370,6 @@ const App = () => {
   const buildPendingMeta = (
     base: Omit<
       PendingPlay,
-      | "redirectOptions"
-      | "redirectTargetId"
       | "scry"
       | "seek"
       | "search"
@@ -2519,18 +2401,6 @@ const App = () => {
       base.choiceIndex,
       previous?.search ?? undefined
     );
-    const redirectOptions = buildRedirectOptions(
-      matchState!,
-      base.card,
-      base.sourceId,
-      base.targetId,
-      base.choiceIndex
-    );
-    const redirectTargetId =
-      previous?.redirectTargetId &&
-      redirectOptions.some((option) => option.id === previous.redirectTargetId)
-        ? previous.redirectTargetId
-        : undefined;
     const needsPush = needsPushDirection(
       matchState!,
       base.card,
@@ -2545,8 +2415,6 @@ const App = () => {
       scry,
       seek,
       search,
-      redirectOptions,
-      redirectTargetId,
       needsPushDirection: needsPush,
       pushDirection,
     };
@@ -2584,7 +2452,6 @@ const App = () => {
         choiceIndex: 0,
         targets: base.targets,
         targetId: base.targetId,
-        redirectOptions: [],
         needsPushDirection: false,
       };
     }
@@ -2728,7 +2595,6 @@ const App = () => {
       Boolean(pendingWithMeta.scry) ||
       Boolean(pendingWithMeta.seek) ||
       Boolean(pendingWithMeta.search) ||
-      pendingWithMeta.redirectOptions.length > 1 ||
       pendingWithMeta.needsPushDirection;
     const needsModal =
       zones.length > 1 ||
@@ -2783,7 +2649,6 @@ const App = () => {
       zone: pendingPlay.zone,
       xValue: pendingPlay.xValue,
       choiceIndex: pendingPlay.choices.length ? pendingPlay.choiceIndex : undefined,
-      redirectTargetId: pendingPlay.redirectTargetId,
       scryDiscardIds: pendingPlay.scry?.discardIds,
       scryOrderIds: pendingPlay.scry?.orderIds,
       seekTakeIds: pendingPlay.seek?.takeIds,
@@ -2873,11 +2738,6 @@ const App = () => {
         pickId,
       },
     });
-  };
-
-  const setRedirectTarget = (targetId?: MatchCharacterId) => {
-    if (!pendingPlay) return;
-    updatePendingPlay({ redirectTargetId: targetId });
   };
 
   const setPushDirection = (direction?: "left" | "right") => {
@@ -3232,7 +3092,9 @@ const App = () => {
     ? matchState.pausedZones.map(zoneLabel).join(", ")
     : "None";
   const pendingWindow = decisionWindow;
-  const pendingWindowLabel = pendingWindow
+  const pendingWindowLabel = matchState.pendingRedirectDecision
+    ? "Redirect"
+    : pendingWindow
     ? pendingWindow.type === "counter"
       ? "Counter"
       : "After Use"
@@ -3242,7 +3104,9 @@ const App = () => {
     : null;
   const localHandoffContext = matchState.pendingInnateDecision
     ? "Innate decision"
-    : pendingWindow?.type === "counter"
+    : matchState.pendingRedirectDecision
+      ? "Redirect decision"
+      : pendingWindow?.type === "counter"
       ? "Counter response"
       : pendingWindow?.type === "after_use"
         ? "Follow-Up or Assist opportunity"
@@ -3757,6 +3621,40 @@ const App = () => {
               >
                 Decline
               </button>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {matchState.pendingRedirectDecision && (
+        <section className="ua-panel ua-panel--wide" aria-label="Redirect decision">
+          <div className="ua-panel__header">
+            <div>
+              <p className="ua-kicker">Redirect Decision</p>
+              <h2>Choose the target for the resolving card</h2>
+              <p className="ua-zone-status">
+                Current target: {formatMemberLabel(matchState, matchState.pendingRedirectDecision.baseTargetId)}
+              </p>
+            </div>
+            <div className="ua-actions">
+              {matchState.pendingRedirectDecision.candidates.map((candidate) => (
+                <button
+                  key={`${candidate.source}-${candidate.targetId}-${candidate.status ?? "redirect"}`}
+                  className="ua-button ua-button--primary"
+                  disabled={!canControlPlayer(matchState.pendingRedirectDecision!.playerId)}
+                  onClick={() => dispatchAction({
+                    type: "resolve_redirect_decision",
+                    playerId: matchState.pendingRedirectDecision!.playerId,
+                    targetId: candidate.targetId,
+                    source: candidate.source,
+                    status: candidate.status,
+                  })}
+                >
+                  {formatMemberLabel(matchState, candidate.targetId)} ({candidate.source === "cover"
+                    ? candidate.status ?? "Cover"
+                    : "Redirect"})
+                </button>
+              ))}
             </div>
           </div>
         </section>
@@ -4459,29 +4357,6 @@ const App = () => {
                       onClick={() => updatePendingPlay({ choiceIndex: choice.index })}
                     >
                       {choice.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            {pendingPlay.redirectOptions.length > 1 && (
-              <div className="ua-modal__zones">
-                <p>Choose a redirect target (defender choice):</p>
-                <p className="ua-modal__subnote">Auto uses Cover first, then Redirect targets.</p>
-                <div className="ua-modal__zone-buttons">
-                  <button
-                    className={`ua-button ${!pendingPlay.redirectTargetId ? "ua-button--primary" : ""}`}
-                    onClick={() => setRedirectTarget(undefined)}
-                  >
-                    Auto
-                  </button>
-                  {pendingPlay.redirectOptions.map((option) => (
-                    <button
-                      key={option.id}
-                      className={`ua-button ${pendingPlay.redirectTargetId === option.id ? "ua-button--primary" : ""}`}
-                      onClick={() => setRedirectTarget(option.id)}
-                    >
-                      {option.label}
                     </button>
                   ))}
                 </div>

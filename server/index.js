@@ -1,10 +1,10 @@
-﻿const http = require("http");
+const http = require("http");
 const { WebSocketServer, WebSocket } = require("ws");
 
 const PORT = Number(process.env.PORT) || 8787;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 2;
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 120000;
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
@@ -23,6 +23,31 @@ const send = (ws, payload) => {
 const broadcast = (lobby, payload) => {
   lobby.players.forEach((player) => {
     send(player.ws, payload);
+  });
+};
+
+const statePayloadForPlayer = (lobby, player, snapshot) => {
+  if (player.id === lobby.hostId) {
+    const { guestState, guestStateHash, ...hostPayload } = snapshot;
+    return hostPayload;
+  }
+  const { state, stateHash, guestState, guestStateHash, ...metadata } = snapshot;
+  return {
+    ...metadata,
+    state: guestState,
+    stateHash: guestStateHash,
+    authoritativeStateHash: stateHash,
+  };
+};
+
+const broadcastStateUpdate = (lobby, snapshot, from = lobby.hostId) => {
+  lobby.players.forEach((player) => {
+    send(player.ws, {
+      type: "game_event",
+      event: "state_update",
+      data: statePayloadForPlayer(lobby, player, snapshot),
+      from,
+    });
   });
 };
 
@@ -47,7 +72,7 @@ const sendAuthoritativeSnapshot = (lobby, ws) => {
     send(ws, {
       type: "game_event",
       event: "state_update",
-      data: lobby.matchSnapshot,
+      data: statePayloadForPlayer(lobby, ws.uaClient, lobby.matchSnapshot),
       from: "relay",
     });
     return true;
@@ -75,6 +100,10 @@ const isSha256 = (value) => typeof value === "string" && /^sha256:[0-9a-f]{64}$/
 const hasValidStateMetadata = (data) =>
   data &&
   data.protocolVersion === PROTOCOL_VERSION &&
+  data.authoritativeStateHash === data.stateHash &&
+  data.guestState &&
+  data.guestState.actionId === data.actionId &&
+  isSha256(data.guestStateHash) &&
   Number.isInteger(data.actionId) &&
   data.actionId >= 0 &&
   data.state?.actionId === data.actionId &&
@@ -478,6 +507,8 @@ wss.on("connection", (ws) => {
             names: message.data.names,
           };
         }
+        broadcastStateUpdate(lobby, lobby.matchSnapshot);
+        return;
       }
 
       if (message.type === "game_event" && message.event === "action_request") {

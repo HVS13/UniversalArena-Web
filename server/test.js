@@ -71,17 +71,35 @@ const run = async () => {
     names: { p1: "Alpha", p2: "Bravo" },
   };
   const compatibility = {
-    protocolVersion: 1,
+    protocolVersion: 2,
     engineVersion: "0.2.0-friend-alpha",
     dataSchemaVersion: 1,
     dataContentHash: `sha256:${"a".repeat(64)}`,
   };
-  const stateUpdate = (turn, actionId) => ({
-    state: { turn, actionId },
-    actionId,
-    stateHash: `sha256:${String(actionId).padStart(64, "0")}`,
-    ...compatibility,
-  });
+  const stateUpdate = (turn, actionId) => {
+    const stateHash = `sha256:${String(actionId).padStart(64, "0")}`;
+    const guestStateHash = `sha256:${String(actionId + 100).padStart(64, "0")}`;
+    return {
+      state: {
+        turn,
+        actionId,
+        players: { p1: { hand: [{ id: "host-secret" }], deck: [{ id: "host-deck-secret" }] } },
+        rng: { seed: 99, state: 99, calls: actionId },
+        transcript: { secret: true },
+      },
+      guestState: {
+        turn,
+        actionId,
+        players: { p1: { hand: [{ id: "hidden-p1-hand-0" }], deck: [{ id: "hidden-p1-deck-0" }] } },
+        rng: { seed: 0, state: 0, calls: actionId },
+      },
+      actionId,
+      stateHash,
+      authoritativeStateHash: stateHash,
+      guestStateHash,
+      ...compatibility,
+    };
+  };
   host.send(JSON.stringify({ type: "game_event", event: "selection_update", data: setup }));
   await sendAndWait(
     guest,
@@ -127,7 +145,16 @@ const run = async () => {
     "initial state"
   );
   host.send(JSON.stringify({ type: "game_event", event: "state_update", data: { ...stateUpdate(1, 0), ...setup } }));
-  await initialState;
+  const initialGuestState = await initialState;
+  if (initialGuestState.data.state.players.p1.hand[0].id !== "hidden-p1-hand-0") {
+    throw new Error("Guest received the host hand.");
+  }
+  if (initialGuestState.data.state.rng.seed !== 0 || initialGuestState.data.state.transcript) {
+    throw new Error("Guest received hidden RNG or transcript state.");
+  }
+  if (initialGuestState.data.authoritativeStateHash !== stateUpdate(1, 0).stateHash) {
+    throw new Error("Guest did not receive the opaque authoritative hash.");
+  }
 
   await sendAndWait(
     guest,
@@ -140,7 +167,11 @@ const run = async () => {
     {
       type: "game_event",
       event: "state_update",
-      data: { ...stateUpdate(1, 0), stateHash: `sha256:${"f".repeat(64)}` },
+      data: {
+        ...stateUpdate(1, 0),
+        stateHash: `sha256:${"f".repeat(64)}`,
+        authoritativeStateHash: `sha256:${"f".repeat(64)}`,
+      },
     },
     (message) => message.type === "error" && /Conflicting/.test(message.message),
     "conflicting snapshot rejection"
@@ -158,12 +189,15 @@ const run = async () => {
     "advanced authoritative state"
   );
   host.send(JSON.stringify({ type: "game_event", event: "state_update", data: stateUpdate(2, 1) }));
-  await advancedState;
+  const advancedGuestState = await advancedState;
+  if (advancedGuestState.data.stateHash !== stateUpdate(2, 1).guestStateHash) {
+    throw new Error("Guest seat hash was not used.");
+  }
   const request = {
-    protocolVersion: 1,
+    protocolVersion: 2,
     requestId: "guest-test:1",
     baseActionId: 1,
-    baseStateHash: stateUpdate(2, 1).stateHash,
+    baseStateHash: advancedGuestState.data.authoritativeStateHash,
     action: { type: "pass", playerId: "p2" },
   };
   const forwardedRequest = waitFor(
@@ -205,6 +239,12 @@ const run = async () => {
     (message) => message.type === "game_event" && message.from === "relay" && message.data?.state?.turn === 2,
     "merged authoritative snapshot"
   );
+  if (restored.data.state.players.p1.hand[0].id !== "hidden-p1-hand-0" || restored.data.state.rng.seed !== 0) {
+    throw new Error("Reconnect exposed host-private state.");
+  }
+  if (restored.data.authoritativeStateHash !== stateUpdate(2, 1).stateHash) {
+    throw new Error("Reconnect discarded the opaque authoritative hash.");
+  }
   if (!restored.data.selection || !restored.data.names) {
     throw new Error("Later state update discarded setup metadata.");
   }

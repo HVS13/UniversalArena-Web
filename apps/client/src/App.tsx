@@ -1370,6 +1370,7 @@ const App = () => {
   const selectionRef = useRef(selection);
   const namesRef = useRef(names);
   const matchStateRef = useRef<MatchState | null>(null);
+  const authoritativeStateHashRef = useRef<string | null>(null);
   const syncRequestedRef = useRef(false);
   const actionRequestSequenceRef = useRef(0);
   const winnerRef = useRef<string | null>(null);
@@ -1395,6 +1396,7 @@ const App = () => {
   const isMultiplayer = Boolean(lobby);
   const isHost = lobby?.hostId === clientId;
   const localSeat = isMultiplayer ? (isHost ? "p1" : "p2") : null;
+  const canViewPrivateState = (playerId: PlayerId) => !isMultiplayer || localSeat === playerId;
   const decisionWindow = matchState ? getPendingWindow(matchState) : null;
   const decisionPlayerId =
     matchState && matchState.phase !== "finished"
@@ -1600,6 +1602,7 @@ const App = () => {
       if (!currentState) return;
       const result = applyAction(currentState, action, roster);
       matchStateRef.current = result.state;
+      authoritativeStateHashRef.current = hashMatchState(result.state);
       setMatchState(result.state);
       if (lobbyRef.current && lobbyRef.current.hostId === clientIdRef.current) {
         sendRelay({ type: "game_event", event: "state_update", data: createStateSyncPayload(result.state) });
@@ -1675,7 +1678,7 @@ const App = () => {
           protocolVersion: 1,
           requestId: `${clientIdRef.current}:${actionRequestSequenceRef.current}`,
           baseActionId: currentState.actionId,
-          baseStateHash: hashMatchState(currentState),
+          baseStateHash: authoritativeStateHashRef.current ?? hashMatchState(currentState),
           action,
         },
       });
@@ -1713,6 +1716,7 @@ const App = () => {
       if (message.type === "lobby_event") {
         if (message.event === "return_to_lobby" && message.from !== clientId) {
           setMatchState(null);
+          authoritativeStateHashRef.current = null;
           setStage("setup");
           setPendingPlay(null);
           resetVisualState();
@@ -1805,6 +1809,7 @@ const App = () => {
           resetVisualState();
         }
         matchStateRef.current = data.state;
+        authoritativeStateHashRef.current = data.authoritativeStateHash ?? data.stateHash ?? null;
         setMatchState(data.state);
         setStage("match");
         setPendingPlay(null);
@@ -2040,6 +2045,7 @@ const App = () => {
     setLobby(null);
     syncRequestedRef.current = false;
     setMatchState(null);
+    authoritativeStateHashRef.current = null;
     setStage("setup");
     setPendingPlay(null);
     resetVisualState();
@@ -2170,6 +2176,7 @@ const App = () => {
         { enableTranscript: true }
       );
       setMatchState(state);
+      authoritativeStateHashRef.current = hashMatchState(state);
       setStage("match");
       setMessage(null);
       winnerRef.current = null;
@@ -3138,7 +3145,7 @@ const App = () => {
         };
       })
       .filter((entry): entry is HandEntry => Boolean(entry));
-  const activeHand = buildHandEntries(activeTeam);
+  const activeHand = canViewPrivateState(activeTeam.id) ? buildHandEntries(activeTeam) : [];
   const activeUltimates = activeTeam.characters.flatMap((member) => {
     const character = getCharacter(roster, member.characterId);
     if (!character) return [];
@@ -3151,9 +3158,10 @@ const App = () => {
     inspectPlayer && inspectPile ? getPileInstances(inspectPlayer, inspectPile.pile) : [];
   const isDeckPile = inspectPile?.pile === "deck";
   const orderedInstances = !isDeckPile ? [...inspectInstances].reverse() : [];
-  const inspectSummary = isDeckPile
-    ? summarizePile(inspectInstances)
-    : [];
+  const inspectSummary =
+    isDeckPile && inspectPile && canViewPrivateState(inspectPile.playerId)
+      ? summarizePile(inspectInstances)
+      : [];
   const inspectLabel =
     inspectPile && inspectPlayer
       ? `${inspectPlayer.name} ${pileLabelMap[inspectPile.pile]}`
@@ -4081,7 +4089,9 @@ const App = () => {
                 </button>
               );
             })}
-            {activeHand.length === 0 && <p>No cards in hand.</p>}
+            {activeHand.length === 0 && (
+              <p>{canViewPrivateState(activeTeam.id) ? "No cards in hand." : `Private hand hidden (${activeTeam.hand.length} cards).`}</p>
+            )}
           </div>
           {activeUltimates.length > 0 && (
             <>
@@ -4136,7 +4146,7 @@ const App = () => {
 
       {reactivePlayers.map((playerId) => {
         const team = matchState.players[playerId];
-        const handEntries = buildHandEntries(team);
+        const handEntries = canViewPrivateState(playerId) ? buildHandEntries(team) : [];
         const ultimateEntries: UltimateEntry[] = team.characters.flatMap((member) => {
           const character = getCharacter(roster, member.characterId);
           if (!character) return [];
@@ -4213,7 +4223,9 @@ const App = () => {
                   </button>
                 );
               })}
-              {handEntries.length === 0 && <p>No cards in hand.</p>}
+              {handEntries.length === 0 && (
+                <p>{canViewPrivateState(playerId) ? "No cards in hand." : `Private hand hidden (${team.hand.length} cards).`}</p>
+              )}
             </div>
             {ultimateEntries.length > 0 && (
               <>

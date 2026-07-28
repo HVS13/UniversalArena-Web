@@ -7,9 +7,10 @@
     "dev": "pnpm --filter @ua/client dev",
     "build": "pnpm --filter @ua/client build",
     "preview": "pnpm --filter @ua/client preview",
+    "data:validate": "node packages/data/validate-manifest.mjs",
     "golden": "pnpm --filter @ua/core golden",
     "harness": "pnpm --filter @ua/core harness",
-    "release:check": "pnpm golden && pnpm harness && pnpm build && pnpm --dir server test"
+    "release:check": "pnpm data:validate && pnpm golden && pnpm harness && pnpm build && pnpm --dir server test"
   },
   "devDependencies": {
     "tsx": "^4.8.1"

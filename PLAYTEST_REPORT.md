@@ -1,5 +1,7 @@
 # Friend Alpha Playtest Report
 
+> Historical evidence: this report covers the schema-1 baseline identified below. It does not by itself validate the current schema-2 candidate; repeat the smoke and full-flow scenarios before release approval.
+
 Date: 2026-07-15 (Asia/Jakarta)  
 Baseline commit: `03b59f8`  
 Roster data: schema 1, `sha256:53b9ba0b035458dec1702de2c34e313c73b6a380d8d1d240c598e71077f71600`

@@ -30,7 +30,7 @@ Each requirement must have recorded automated or manual evidence before release.
 | --- | --- | --- |
 | FA-SETUP-01 | Host can create a private lobby and receives a shareable code. | Relay integration test and two-browser check |
 | FA-SETUP-02 | Guest can join the lobby with the code. | Relay integration test and two-browser check |
-| FA-SETUP-03 | Both clients display identical player names and team selections. | Snapshot comparison |
+| FA-SETUP-03 | Each player can edit only their assigned team's name and selection, and both clients display the same accepted setup. | Relay integration test and two-browser check |
 | FA-SETUP-04 | Both players must confirm Ready before a match starts. | Relay integration test |
 | FA-SETUP-05 | Only the host can start or return the match to setup. | Protocol rejection test and browser check |
 | FA-SETUP-06 | A changed name or team selection clears the affected player's readiness. | Relay integration test |
@@ -44,7 +44,7 @@ Each requirement must have recorded automated or manual evidence before release.
 | FA-MATCH-02 | Every submitted action is validated and applied by `@ua/core`. | Action-path integration tests |
 | FA-MATCH-03 | Both clients agree on turn, phase, active player, and initiative. | State-hash comparison |
 | FA-MATCH-04 | Both clients agree on Energy, Ultimate Meter, HP, Shield, and statuses. | State-hash comparison |
-| FA-MATCH-05 | Both clients agree on hand, deck, discard, exhaust, zones, stack, and pending decisions. | State-hash comparison |
+| FA-MATCH-05 | Both clients agree on public pile counts, discard, exhaust, zones, stack, and pending decisions, while each browser keeps only its own hand and deck contents visible. | Personalized snapshot test and two-browser check |
 | FA-MATCH-06 | Both clients agree on the winner and final state. | Full relay flow test and completed playtest |
 | FA-MATCH-07 | A local hot-seat match can complete from setup to winner. | Full local flow test and completed playtest |
 | FA-MATCH-08 | A relay match can complete from setup to winner. | Full relay flow test and completed friend playtest |

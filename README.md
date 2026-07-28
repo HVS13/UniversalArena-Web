@@ -85,12 +85,14 @@ Multiplayer is host-authoritative: the host creates the lobby as P1, the guest
 joins as P2, both players lock Ready, and the host starts the match. If a socket
 drops, reconnect to the same relay and the client will try to reclaim the saved
 lobby code. The in-memory relay keeps the latest host-approved snapshot so either
-seat can restore the current setup or match after reconnecting.
+seat can restore the current setup or match after reconnecting. The relay enforces
+seat-owned team selection. Each browser displays only its own hand and deck details;
+the guest's network snapshot also redacts the host's private state.
 
 ## Deterministic replay and transcripts
 
 - Deterministic replay is built into `@ua/core`. Matches can be seeded and recorded.
-- Transcript version 3 records the engine version, data schema version, and canonical data content hash. Replay rejects unsupported versions, incompatible data, missing characters, malformed actions, and final-state hash mismatches.
+- Transcript version 4 records the engine version, data schema version, and canonical data content hash. Replay retains explicit compatibility with safe version-3 transcripts and rejects other unsupported versions, incompatible data, missing characters, malformed actions, and final-state hash mismatches.
 - `hashMatchState` produces a synchronous SHA-256 identity over canonical gameplay state while excluding presentation-only logs, names, transcript data, and resolution animation details.
 - Golden tests live in `packages/core/src/golden.ts` and are executed via `pnpm golden`.
 - If you change core rules, run `pnpm golden` after syncing data.
@@ -119,14 +121,16 @@ seat can restore the current setup or match after reconnecting.
 - Multiplayer is relay-based and host-authoritative; lobbies support Ready state,
   manual resync, and short reconnect recovery, but they are still in-memory
   session lobbies rather than persistent accounts.
-- Relay protocol version 1 uses state-hash/action-ID preconditions for guest actions,
-  rejects duplicate or stale requests and non-monotonic snapshots, and makes clients
-  verify authoritative snapshot hashes before adoption.
+- Relay protocol version 2 uses seat-specific state hashes plus authoritative
+  hash/action-ID preconditions for guest actions, rejects duplicate or stale requests
+  and non-monotonic snapshots, and redacts host-private state from guest snapshots.
 - Keyword data includes a Core/Advanced tier; status entries include Mode and explicit Turn End lines, surfaced in UI tooltips.
 
 ## Gameplay notes
 
-- Hand display is always the active team's hand (hot-seat flow, shared deck/hand).
+- Local hot-seat play reveals the active team's hand after handoff confirmation.
+- Network play keeps the local player's hand visible and shows only the opponent's public hand count.
+- Network formation and team summaries use a local-first perspective while preserving canonical line positions.
 - Cards are owned by specific characters; owners are shown on hand cards and ultimates.
 - Target selection prompts appear when multiple legal targets exist.
 - Transformable cards resolve to alternates at play time; transform targets are excluded from deck/hand population.

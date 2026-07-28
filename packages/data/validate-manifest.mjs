@@ -10,11 +10,15 @@ const filenames = (await fs.readdir(sourceDir))
   .filter((filename) => filename.endsWith(".json") && filename !== "manifest.json")
   .sort((left, right) => left.localeCompare(right));
 const hash = createHash("sha256");
+const readCanonicalJson = async (filename) => {
+  const contents = await fs.readFile(path.join(sourceDir, filename), "utf8");
+  return contents.replace(/\r\n?/g, "\n");
+};
 
 for (const filename of filenames) {
   hash.update(filename);
   hash.update("\0");
-  hash.update(await fs.readFile(path.join(sourceDir, filename)));
+  hash.update(await readCanonicalJson(filename));
   hash.update("\0");
 }
 

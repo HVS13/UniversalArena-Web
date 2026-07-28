@@ -47,16 +47,22 @@ Lobby notes:
 - Both connected players must mark Ready in the client before the host can start.
 - The relay enforces that readiness before accepting the first authoritative match snapshot.
 - The host remains authoritative for match state; guests send action requests and
-  can request a resync if their client falls behind.
+  can request a resync if their client falls behind. Each browser renders only its
+  assigned seat's private hand and deck information.
 - The relay keeps the latest host-approved setup and match snapshots in memory so
   either seat can restore the current stage after reconnecting. Snapshots disappear
   when the lobby closes or the relay process restarts.
-- Protocol version 1 authoritative snapshots include an action ID, state hash, engine
-  version, data schema version, and data content hash. The relay rejects stale,
-  conflicting, skipped, malformed, or mid-match-incompatible snapshots.
+- Protocol version 2 sends a seat-specific state hash plus an opaque authoritative
+  hash, action ID, engine version, data schema version, and data content hash. Guest
+  snapshots redact the host hand, host deck order, RNG state, transcript, and private
+  stack choices. The relay rejects stale, conflicting, skipped, malformed, or
+  mid-match-incompatible snapshots.
 - Guest action requests include a unique request ID plus the authoritative action ID
   and state hash they were based on. The relay rejects duplicates, stale requests,
   wrong-seat actions, forged host events, and unsupported event names before forwarding.
 - Clients independently verify snapshot compatibility, action sequence, and canonical
   state hash. A rejected or mismatched guest state triggers an explicit resync request.
-- Run `npm test` to verify authority, sequencing, deduplication, resync, readiness, and lobby reset behavior.
+- Team and name updates are seat-scoped by the relay: P1 cannot overwrite P2 setup,
+  and P2 cannot overwrite P1 setup.
+- Run `npm test` to verify seat ownership, privacy, sequencing, deduplication, resync,
+  readiness, and lobby reset behavior.

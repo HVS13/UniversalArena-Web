@@ -1370,6 +1370,7 @@ const App = () => {
   const selectionRef = useRef(selection);
   const namesRef = useRef(names);
   const matchStateRef = useRef<MatchState | null>(null);
+  const authoritativeStateHashRef = useRef<string | null>(null);
   const syncRequestedRef = useRef(false);
   const actionRequestSequenceRef = useRef(0);
   const winnerRef = useRef<string | null>(null);
@@ -1395,6 +1396,7 @@ const App = () => {
   const isMultiplayer = Boolean(lobby);
   const isHost = lobby?.hostId === clientId;
   const localSeat = isMultiplayer ? (isHost ? "p1" : "p2") : null;
+  const canViewPrivateState = (playerId: PlayerId) => !isMultiplayer || localSeat === playerId;
   const decisionWindow = matchState ? getPendingWindow(matchState) : null;
   const decisionPlayerId =
     matchState && matchState.phase !== "finished"
@@ -1408,7 +1410,6 @@ const App = () => {
     !isMultiplayer &&
     Boolean(decisionPlayerId) &&
     revealedLocalPlayerId !== decisionPlayerId;
-  const hasRemotePlayer = (lobby?.players.length ?? 0) > 1;
   const localLobbyPlayer = lobby?.players.find((player) => player.id === clientId) ?? null;
   const connectedLobbyPlayers = lobby?.players.filter((player) => player.connected !== false) ?? [];
   const localReady = Boolean(localLobbyPlayer?.ready);
@@ -1600,6 +1601,7 @@ const App = () => {
       if (!currentState) return;
       const result = applyAction(currentState, action, roster);
       matchStateRef.current = result.state;
+      authoritativeStateHashRef.current = hashMatchState(result.state);
       setMatchState(result.state);
       if (lobbyRef.current && lobbyRef.current.hostId === clientIdRef.current) {
         sendRelay({ type: "game_event", event: "state_update", data: createStateSyncPayload(result.state) });
@@ -1672,10 +1674,10 @@ const App = () => {
         type: "game_event",
         event: "action_request",
         data: {
-          protocolVersion: 1,
+          protocolVersion: relayProtocolVersion,
           requestId: `${clientIdRef.current}:${actionRequestSequenceRef.current}`,
           baseActionId: currentState.actionId,
-          baseStateHash: hashMatchState(currentState),
+          baseStateHash: authoritativeStateHashRef.current ?? hashMatchState(currentState),
           action,
         },
       });
@@ -1685,7 +1687,6 @@ const App = () => {
   const canEditSetup = (playerId: PlayerId) => {
     if (!isMultiplayer) return true;
     if (!isConnected) return false;
-    if (!hasRemotePlayer) return true;
     return localSeat === playerId;
   };
   const canControlPlayer = (playerId: PlayerId) => {
@@ -1713,6 +1714,7 @@ const App = () => {
       if (message.type === "lobby_event") {
         if (message.event === "return_to_lobby" && message.from !== clientId) {
           setMatchState(null);
+          authoritativeStateHashRef.current = null;
           setStage("setup");
           setPendingPlay(null);
           resetVisualState();
@@ -1805,6 +1807,7 @@ const App = () => {
           resetVisualState();
         }
         matchStateRef.current = data.state;
+        authoritativeStateHashRef.current = data.authoritativeStateHash ?? data.stateHash ?? null;
         setMatchState(data.state);
         setStage("match");
         setPendingPlay(null);
@@ -1827,7 +1830,7 @@ const App = () => {
           action?: Parameters<typeof applyAction>[1];
         } | undefined;
         if (!data?.action) return;
-        if (data.protocolVersion !== 1) return;
+        if (data.protocolVersion !== relayProtocolVersion) return;
         if (message.from) {
           const seat = message.from === lobbySnapshot.hostId ? "p1" : "p2";
           if (data.action.playerId && data.action.playerId !== seat) {
@@ -1943,6 +1946,7 @@ const App = () => {
         clearStoredLobbyCode();
         syncRequestedRef.current = false;
         setMatchState(null);
+        authoritativeStateHashRef.current = null;
         setStage("setup");
         setPendingPlay(null);
         resetVisualState();
@@ -2040,6 +2044,7 @@ const App = () => {
     setLobby(null);
     syncRequestedRef.current = false;
     setMatchState(null);
+    authoritativeStateHashRef.current = null;
     setStage("setup");
     setPendingPlay(null);
     resetVisualState();
@@ -2170,6 +2175,7 @@ const App = () => {
         { enableTranscript: true }
       );
       setMatchState(state);
+      authoritativeStateHashRef.current = hashMatchState(state);
       setStage("match");
       setMessage(null);
       winnerRef.current = null;
@@ -2192,6 +2198,7 @@ const App = () => {
       return;
     }
     setMatchState(null);
+    authoritativeStateHashRef.current = null;
     setStage("setup");
     setMessage(null);
     setPendingPlay(null);
@@ -2624,6 +2631,10 @@ const App = () => {
   };
 
   const openPile = (playerId: PlayerId, pile: PileType) => {
+    if (pile === "deck" && !canViewPrivateState(playerId)) {
+      reportMessage("Opponent deck contents are private; only the card count is public.");
+      return;
+    }
     setInspectPile({ playerId, pile });
     sound.play("open");
   };
@@ -3113,9 +3124,47 @@ const App = () => {
         : matchState.phase === "movement"
           ? "Movement priority"
           : "Combat priority";
+  const handTeam =
+    isMultiplayer && localSeat ? matchState.players[localSeat] : activeTeam;
+  const priorityTeam = decisionPlayerId ? matchState.players[decisionPlayerId] : null;
+  const hasLocalPriority =
+    isMultiplayer && Boolean(localSeat) && decisionPlayerId === localSeat;
+  const phaseLabel =
+    matchState.phase === "movement"
+      ? "Movement"
+      : matchState.phase === "combat"
+        ? "Combat"
+        : matchState.phase === "finished"
+          ? "Finished"
+          : "Turn End";
+  const priorityTitle =
+    matchState.phase === "finished"
+      ? "Match complete"
+      : !priorityTeam
+        ? "Resolving game state"
+        : isMultiplayer
+          ? hasLocalPriority
+            ? "Your priority"
+            : `Waiting for ${priorityTeam.name}`
+          : `${priorityTeam.name}'s priority`;
+  const priorityInstruction = matchState.pendingInnateDecision
+    ? "Resolve the required character decision."
+    : matchState.pendingRedirectDecision
+      ? "Choose the target for the resolving card."
+      : pendingWindow
+        ? `Choose a legal ${
+            pendingWindow.type === "counter" ? "Counter" : "Follow-Up or Assist"
+          } response, or pass.`
+        : matchState.phase === "movement"
+          ? "Swap adjacent allies or pass."
+          : matchState.phase === "combat"
+            ? "Play a legal card, pass, or end the turn when available."
+            : "Review the final match state.";
   const allReactivePlayers = getReactivePlayers(matchState);
   const reactivePlayers = allReactivePlayers.filter(
-    (playerId) => playerId !== matchState.activePlayerId
+    (playerId) =>
+      playerId !== matchState.activePlayerId &&
+      (!isMultiplayer || playerId !== localSeat)
   );
   const reactionNames = allReactivePlayers
     .map((playerId) => matchState.players[playerId]?.name)
@@ -3138,8 +3187,8 @@ const App = () => {
         };
       })
       .filter((entry): entry is HandEntry => Boolean(entry));
-  const activeHand = buildHandEntries(activeTeam);
-  const activeUltimates = activeTeam.characters.flatMap((member) => {
+  const activeHand = canViewPrivateState(handTeam.id) ? buildHandEntries(handTeam) : [];
+  const activeUltimates = handTeam.characters.flatMap((member) => {
     const character = getCharacter(roster, member.characterId);
     if (!character) return [];
     return character.cards
@@ -3151,9 +3200,10 @@ const App = () => {
     inspectPlayer && inspectPile ? getPileInstances(inspectPlayer, inspectPile.pile) : [];
   const isDeckPile = inspectPile?.pile === "deck";
   const orderedInstances = !isDeckPile ? [...inspectInstances].reverse() : [];
-  const inspectSummary = isDeckPile
-    ? summarizePile(inspectInstances)
-    : [];
+  const inspectSummary =
+    isDeckPile && inspectPile && canViewPrivateState(inspectPile.playerId)
+      ? summarizePile(inspectInstances)
+      : [];
   const inspectLabel =
     inspectPile && inspectPlayer
       ? `${inspectPlayer.name} ${pileLabelMap[inspectPile.pile]}`
@@ -3219,12 +3269,17 @@ const App = () => {
     ? "Cards may be played in the active zone or any faster zone allowed by their speed. Slower zones are locked until the active zone resolves."
     : "No active zone yet. Cards can be played in any zone allowed by their speed.";
   const logGroups = groupLogEntries(matchState.log);
+  const formationLeftId: PlayerId =
+    isMultiplayer && localSeat ? localSeat : "p1";
+  const formationRightId: PlayerId = formationLeftId === "p1" ? "p2" : "p1";
+  const formationLeftTeam = matchState.players[formationLeftId];
+  const formationRightTeam = matchState.players[formationRightId];
   const formationRows = Array.from({ length: matchState.lineSize }, (_, index) => {
     const left =
-      matchState.players.p1.characters.find((member) => member.position === index) ??
+      formationLeftTeam.characters.find((member) => member.position === index) ??
       null;
     const right =
-      matchState.players.p2.characters.find((member) => member.position === index) ??
+      formationRightTeam.characters.find((member) => member.position === index) ??
       null;
     return { index, left, right };
   });
@@ -3591,6 +3646,27 @@ const App = () => {
 
       {message && <div className="ua-toast">{message}</div>}
 
+      <section
+        className={`ua-priority-banner${
+          hasLocalPriority ? " is-local-priority" : ""
+        }`}
+        aria-label="Turn and priority"
+      >
+        <div>
+          <p className="ua-priority-banner__eyebrow">
+            Turn {matchState.turn} · {phaseLabel}
+          </p>
+          <h2>{priorityTitle}</h2>
+          <p>{priorityInstruction}</p>
+        </div>
+        {priorityTeam && (
+          <span className="ua-priority-banner__seat">
+            {priorityTeam.name}
+            {isMultiplayer && decisionPlayerId === localSeat ? " · You" : ""}
+          </span>
+        )}
+      </section>
+
       {matchState.pendingInnateDecision && (
         <section className="ua-panel ua-panel--wide" aria-label="Innate decision">
           <div className="ua-panel__header">
@@ -3787,8 +3863,10 @@ const App = () => {
       </section>
 
       <section className="ua-match-grid">
-        {(["p1", "p2"] as PlayerId[]).map((playerId) => {
+        {([formationLeftId, formationRightId] as PlayerId[]).map((playerId) => {
           const team = matchState.players[playerId];
+          const isLocalTeam = isMultiplayer && localSeat === playerId;
+          const isOpponentTeam = isMultiplayer && localSeat !== playerId;
           const deckEffect = deckPulse[playerId];
           const deckClass =
             "ua-stat-button ua-pile-button ua-pile-button--deck" +
@@ -3800,7 +3878,11 @@ const App = () => {
               className={`ua-panel ${playerId === matchState.activePlayerId ? "is-active" : ""}`}
             >
               <div className="ua-panel__header">
-                <h2>{team.name}</h2>
+                <h2>
+                  {team.name}
+                  {isLocalTeam && <span className="ua-player-relation">You</span>}
+                  {isOpponentTeam && <span className="ua-player-relation">Opponent</span>}
+                </h2>
                 <span className="ua-panel__tag">{playerId.toUpperCase()}</span>
               </div>
               <div className="ua-team-meta">
@@ -3820,6 +3902,12 @@ const App = () => {
                   <button
                     type="button"
                     className={deckClass}
+                    disabled={!canViewPrivateState(playerId)}
+                    title={
+                      canViewPrivateState(playerId)
+                        ? "Inspect deck composition; card order remains hidden."
+                        : "Opponent deck contents are private; the card count is public."
+                    }
                     onClick={() => openPile(playerId, "deck")}
                   >
                     <span>Deck</span>
@@ -3843,7 +3931,9 @@ const App = () => {
                   </button>
                 </div>
                 <p className="ua-pile-hint">
-                  Click Deck, Discard, or Exhaust to inspect pile contents.
+                  {canViewPrivateState(playerId)
+                    ? "Inspect deck composition, discard, or exhaust. Deck order remains hidden."
+                    : "Deck count is public; discard and exhaust contents are public."}
                 </p>
               </div>
             </div>
@@ -3859,22 +3949,36 @@ const App = () => {
         <div className="ua-formation">
           <div className="ua-formation__header">
             <div className="ua-formation__team ua-formation__team--left">
-              {matchState.players.p1.name}
+              {formationLeftTeam.name}
+              {isMultiplayer && formationLeftId === localSeat && (
+                <span className="ua-player-relation">You</span>
+              )}
             </div>
             <div className="ua-formation__lane"></div>
             <div className="ua-formation__team ua-formation__team--right">
-              {matchState.players.p2.name}
+              {formationRightTeam.name}
+              {isMultiplayer && formationRightId !== localSeat && (
+                <span className="ua-player-relation">Opponent</span>
+              )}
             </div>
           </div>
           {formationRows.map((row) => (
             <div key={row.index} className="ua-formation__row">
-              <div className="ua-formation__cell is-left">
+              <div
+                className={`ua-formation__cell is-left${
+                  isMultiplayer && formationLeftId === localSeat ? " is-local" : ""
+                }`}
+              >
                 {renderCharacterCard(row.left)}
               </div>
               <div className="ua-formation__lane">
                 <span className="ua-formation__slot">Line {row.index + 1}</span>
               </div>
-              <div className="ua-formation__cell is-right">
+              <div
+                className={`ua-formation__cell is-right${
+                  isMultiplayer && formationRightId === localSeat ? " is-local" : ""
+                }`}
+              >
                 {renderCharacterCard(row.right)}
               </div>
             </div>
@@ -4015,14 +4119,14 @@ const App = () => {
         </div>
         <>
           <h3 className="ua-hand-title">
-            Active Hand <span>({activeTeam.name})</span>
+            {isMultiplayer ? "Your Hand" : "Active Hand"} <span>({handTeam.name})</span>
           </h3>
           <div className="ua-card-grid">
             {activeHand.map((entry, index) => {
               const { instance, card, owner } = entry;
               const corePlayable = getCardPlayOptions(
                 matchState,
-                { playerId: activeTeam.id, cardInstanceId: instance.id },
+                { playerId: handTeam.id, cardInstanceId: instance.id },
                 roster
               ).playable;
               const displayCard = resolveCardForDisplay(card, owner.id);
@@ -4039,7 +4143,7 @@ const App = () => {
               const followUpAdjustment = isFollowUpPlay
                 ? getFollowUpCostAdjustment(displayCard)
                 : 0;
-                const canControl = canControlPlayer(activeTeam.id);
+                const canControl = canControlPlayer(handTeam.id);
                 const disabled = !canControl || !corePlayable;
               const adjustment =
                 getEnergyCostAdjustment(owner) +
@@ -4052,7 +4156,7 @@ const App = () => {
                   className={`ua-card${isDealt ? " ua-card--deal" : ""}`}
                   style={isDealt ? { animationDelay: `${index * 0.035}s` } : undefined}
                   disabled={disabled}
-                  onClick={() => handlePlayCard(activeTeam.id, card, owner.id, instance.id)}
+                  onClick={() => handlePlayCard(handTeam.id, card, owner.id, instance.id)}
                 >
                   <div className="ua-card__title">{displayCard.name}</div>
                   <div className="ua-card__meta">
@@ -4081,7 +4185,13 @@ const App = () => {
                 </button>
               );
             })}
-            {activeHand.length === 0 && <p>No cards in hand.</p>}
+            {activeHand.length === 0 && (
+              <p>
+                {canViewPrivateState(handTeam.id)
+                  ? "No cards in hand."
+                  : `Private hand hidden (${handTeam.hand.length} cards).`}
+              </p>
+            )}
           </div>
           {activeUltimates.length > 0 && (
             <>
@@ -4091,20 +4201,20 @@ const App = () => {
                   const { card, member } = entry;
                   const corePlayable = getCardPlayOptions(
                     matchState,
-                    { playerId: activeTeam.id, cardSlot: card.slot, sourceId: member.id },
+                    { playerId: handTeam.id, cardSlot: card.slot, sourceId: member.id },
                     roster
                   ).playable;
                   const displayCard = resolveCardForDisplay(card, member.id);
                   const cost = parseCost(displayCard.cost);
                   const isVariable = Boolean(cost.variable);
-                    const canControl = canControlPlayer(activeTeam.id);
+                    const canControl = canControlPlayer(handTeam.id);
                     const disabled = !canControl || !corePlayable;
                   return (
                     <button
                       key={`${member.id}-${card.slot}`}
                       className="ua-card"
                       disabled={disabled}
-                      onClick={() => handlePlayCard(activeTeam.id, card, member.id)}
+                      onClick={() => handlePlayCard(handTeam.id, card, member.id)}
                     >
                       <div className="ua-card__title">{displayCard.name}</div>
                       <div className="ua-card__meta">
@@ -4136,7 +4246,7 @@ const App = () => {
 
       {reactivePlayers.map((playerId) => {
         const team = matchState.players[playerId];
-        const handEntries = buildHandEntries(team);
+        const handEntries = canViewPrivateState(playerId) ? buildHandEntries(team) : [];
         const ultimateEntries: UltimateEntry[] = team.characters.flatMap((member) => {
           const character = getCharacter(roster, member.characterId);
           if (!character) return [];
@@ -4213,7 +4323,13 @@ const App = () => {
                   </button>
                 );
               })}
-              {handEntries.length === 0 && <p>No cards in hand.</p>}
+              {handEntries.length === 0 && (
+                <p>
+                  {canViewPrivateState(playerId)
+                    ? "No cards in hand."
+                    : `Private hand hidden (${team.hand.length} cards).`}
+                </p>
+              )}
             </div>
             {ultimateEntries.length > 0 && (
               <>
@@ -4576,7 +4692,10 @@ const App = () => {
                     <p className="ua-empty">No cards in this pile.</p>
                   )}
                   {inspectSummary.map((entry) => (
-                    <div key={`${entry.slot}-${entry.name}`} className="ua-pile-item">
+                    <div
+                      key={`${entry.owner}-${entry.slot}-${entry.name}`}
+                      className="ua-pile-item"
+                    >
                       <div>
                         <div className="ua-pile-name">{entry.name}</div>
                         <div className="ua-pile-meta">{entry.types}</div>

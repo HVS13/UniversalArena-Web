@@ -1,5 +1,5 @@
 import { dataManifest } from "@ua/data";
-import { engineVersion, hashMatchState, type MatchState } from "@ua/core";
+import { engineVersion, hashMatchState, type MatchState, type PlayerId } from "@ua/core";
 
 export type SelectionState = { p1: string[]; p2: string[] };
 export type RelayConnectionStatus = "idle" | "connecting" | "connected";
@@ -19,21 +19,60 @@ export type SetupSyncPayload = {
   selection: SelectionState;
   names: { p1: string; p2: string };
 };
-export type StateSyncPayload = SetupSyncPayload & {
+export type StateSyncPayload = Partial<SetupSyncPayload> & {
   protocolVersion: number;
   state: MatchState;
   actionId: number;
   stateHash: string;
+  authoritativeStateHash: string;
   engineVersion: string;
   dataSchemaVersion: number;
   dataContentHash: string;
 };
+export type HostStateSyncPayload = StateSyncPayload & {
+  guestState: MatchState;
+  guestStateHash: string;
+};
 
-export const clientVersion = "0.2.0-friend-alpha";
-export const relayVersion = "0.2.0-friend-alpha";
-export const relayProtocolVersion = 1;
+export const clientVersion = "0.2.1-friend-alpha";
+export const relayVersion = "0.2.1-friend-alpha";
+export const relayProtocolVersion = 2;
 export const defaultRelayUrl = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
 export const multiplayerSeatCount = 2;
+
+const isSha256 = (value: unknown): value is string =>
+  typeof value === "string" && /^sha256:[0-9a-f]{64}$/.test(value);
+
+const hiddenCard = (zone: "hand" | "deck", index: number) => ({
+  id: `hidden-p1-${zone}-${index}`,
+  cardSlot: "__hidden__",
+  characterId: "__hidden__",
+  ownerId: "p1:hidden",
+  costAdjustment: 0,
+});
+
+export const createGuestStateView = (state: MatchState): MatchState => {
+  const view = JSON.parse(JSON.stringify(state)) as MatchState;
+  view.players.p1.hand = state.players.p1.hand.map((_, index) => hiddenCard("hand", index));
+  view.players.p1.deck = state.players.p1.deck.map((_, index) => hiddenCard("deck", index));
+  view.rng = { seed: 0, state: 0, calls: state.rng.calls };
+  delete view.transcript;
+  (Object.keys(view.zones) as Array<keyof MatchState["zones"]>).forEach((zone) => {
+    view.zones[zone].cards.forEach((entry) => {
+      delete entry.scryDiscardIds;
+      delete entry.scryOrderIds;
+      delete entry.seekTakeIds;
+      delete entry.searchPickId;
+    });
+  });
+  if (view.pendingRedirectDecision?.reactionEntry) {
+    delete view.pendingRedirectDecision.reactionEntry.scryDiscardIds;
+    delete view.pendingRedirectDecision.reactionEntry.scryOrderIds;
+    delete view.pendingRedirectDecision.reactionEntry.seekTakeIds;
+    delete view.pendingRedirectDecision.reactionEntry.searchPickId;
+  }
+  return view;
+};
 
 export const validateStateSyncPayload = (data: Partial<StateSyncPayload>) => {
   if (data.protocolVersion !== relayProtocolVersion) return "Relay protocol version mismatch.";
@@ -43,8 +82,11 @@ export const validateStateSyncPayload = (data: Partial<StateSyncPayload>) => {
   if (!data.state || !Number.isInteger(data.actionId) || data.state.actionId !== data.actionId) {
     return "Invalid authoritative action ID; resync required.";
   }
-  if (typeof data.stateHash !== "string" || hashMatchState(data.state) !== data.stateHash) {
-    return "Authoritative state hash mismatch; resync required.";
+  if (!isSha256(data.authoritativeStateHash)) {
+    return "Invalid authoritative state hash; resync required.";
+  }
+  if (!isSha256(data.stateHash) || hashMatchState(data.state) !== data.stateHash) {
+    return "Seat state hash mismatch; resync required.";
   }
   return null;
 };
@@ -52,16 +94,32 @@ export const validateStateSyncPayload = (data: Partial<StateSyncPayload>) => {
 export const createStateSyncPayload = (
   state: MatchState,
   setup?: Partial<SetupSyncPayload>
-) => ({
-  protocolVersion: relayProtocolVersion,
-  state,
-  actionId: state.actionId,
-  stateHash: hashMatchState(state),
-  engineVersion,
-  dataSchemaVersion: dataManifest.schemaVersion,
-  dataContentHash: dataManifest.contentHash,
-  ...setup,
-});
+): HostStateSyncPayload => {
+  const stateHash = hashMatchState(state);
+  const guestState = createGuestStateView(state);
+  return {
+    protocolVersion: relayProtocolVersion,
+    state,
+    actionId: state.actionId,
+    stateHash,
+    authoritativeStateHash: stateHash,
+    guestState,
+    guestStateHash: hashMatchState(guestState),
+    engineVersion,
+    dataSchemaVersion: dataManifest.schemaVersion,
+    dataContentHash: dataManifest.contentHash,
+    ...setup,
+  };
+};
+
+export const getSeatForClient = (
+  lobby: RelayLobbySnapshot | null,
+  clientId: string
+): PlayerId | null => {
+  if (!lobby) return null;
+  if (lobby.hostId === clientId) return "p1";
+  return lobby.players.some((player) => player.id === clientId) ? "p2" : null;
+};
 
 const storedLobbyCodeKey = "ua-relay-lobby-code";
 const storedRelayNameKey = "ua-relay-display-name";

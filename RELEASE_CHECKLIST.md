@@ -1,44 +1,49 @@
 # Friend Alpha Release Checklist
 
-Assessment date: 2026-07-15 (Asia/Jakarta)  
-Target: `v0.2.0-friend-alpha`  
-Current decision: **NO-GO — local release candidate is prepared; required human/full-flow evidence remains open.**
+Assessment date: 2026-07-28 (Asia/Jakarta)
+Target: `v0.2.0-friend-alpha`
+Current decision: **NO-GO — automated validation passes; current-candidate human/full-flow evidence remains open.**
 
 ## Candidate identity
 
-- Client, engine, relay, and package version: `0.2.0-friend-alpha`
-- Relay protocol: 1
-- Transcript version: 3
+- Client and relay version: `0.2.1-friend-alpha`
+- Package target: `0.2.0-friend-alpha`
+- Engine version: `0.2.1-friend-alpha`
+- Relay protocol: 2
+- Transcript version: 4 (safe version-3 replay compatibility retained)
 - Debug bundle version: 1
-- Canonical source: `HVS13/UniversalArena@546baba6da30a7359bd91addd85c8f8680b6c257`
-- Data schema: 1
-- Data content: `sha256:53b9ba0b035458dec1702de2c34e313c73b6a380d8d1d240c598e71077f71600`
+- Canonical source: `HVS13/UniversalArena@def16b684d509001f2c165be08bdac1c91d75e30`
+- Data schema: 2
+- Data content: `sha256:2a9df703f469a7b4096350bca90c158b20ff4c835c21a8b1ecc797736ea7a4c1`
 - Roster: 9 characters
 
 ## Automated and local evidence
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
-| Markdown/YAML canonical validation | Pass | `npm run validate` reports no mismatches. |
 | Strict documentation build | Pass | `python -m mkdocs build --strict`. |
 | Fresh export comparison | Pass | Generated JSON content hash/source identity and all character assets match the checked-in web package. |
-| Core deterministic/contract suite | Pass | 37/37 checks via `pnpm golden`. |
+| Web data manifest validation | Pass | `pnpm data:validate`; canonical JSON hashing is stable across LF/CRLF checkouts. |
+| Core deterministic/contract suite | Pass | 39/39 checks via `pnpm golden`. |
 | Focused invariant harness | Pass | 6/6 checks via `pnpm harness`. |
 | Client production build | Pass | TypeScript and Vite via `pnpm build`. |
-| Relay integration | Pass | Authority, sequencing, deduplication, resync, and reset via server test. |
+| Relay integration | Pass | Seat-owned setup, private guest snapshots, sequencing, resync, and reset via server test. |
 | Combined release command | Pass | `pnpm release:check`. |
-| Local browser smoke flow | Pass | Setup, movement, targeted play, resolution, damage, and discard; see `PLAYTEST_REPORT.md`. |
-| Independent relay smoke flow | Pass | Lobby, readiness, start, bidirectional actions, and guest recovery; see `PLAYTEST_REPORT.md`. |
-| Replay/debug schema | Pass | Golden test reproduces final canonical hash and checks privacy/version rejection. |
+| Two-client ownership UX | Pass | Isolated Host/Guest browser check verifies local-first formation, persistent own hand, turn/priority messaging, and private opponent deck controls through turn handoff. |
+| Local browser smoke flow | Rerun required | Existing evidence in `PLAYTEST_REPORT.md` covers the prior schema-1 baseline. |
+| Independent relay smoke flow | Rerun required | Existing evidence in `PLAYTEST_REPORT.md` covers the prior schema-1 baseline. |
+| Replay/debug schema | Pass | Golden test reproduces the final canonical hash and checks privacy/version rejection. |
 
 ## Open release blockers
 
+- [ ] Repeat the local browser smoke flow on the current schema-2 candidate.
+- [ ] Repeat the independent relay smoke flow on the current schema-2 candidate.
 - [ ] Local UI match completes through winner declaration.
 - [ ] Independent relay match completes with the same winner and final state on both clients.
 - [ ] Host refresh recovery is recorded.
 - [ ] Recovery during reaction and pending-decision windows is recorded.
 - [ ] Relay restart produces the documented lobby-expired path.
-- [ ] A real remote-network friend match completes.
+- [ ] A real LAN friend match completes.
 - [ ] The completed match's downloaded JSON is opened and verified with `verifyDebugBundle`.
 - [ ] All defects found by those sessions are triaged; all P0/P1 defects are closed.
 

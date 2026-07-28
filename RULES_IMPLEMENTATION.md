@@ -1,7 +1,7 @@
 # Rules Implementation Matrix
 
 Status key: Implemented, Partial, Missing, Not used in data.
-Last verified: 2026-07-15.
+Last verified: 2026-07-28.
 
 ## Keywords
 | Keyword | Status | Notes |
@@ -50,7 +50,7 @@ Innate display text is not parsed for gameplay.
 
 ## Rules / Terms / Flow
 
-Friend Alpha compatibility uses transcript version 3 and a canonical SHA-256 gameplay-state hash. Hash input includes turn flow, action ID, RNG, ordered piles, character state, zones, windows, decisions, resources, and winner; presentation-only logs, names, transcript data, and last-resolution display details are excluded.
+Friend Alpha compatibility writes transcript version 4, retains explicit replay compatibility with safe version-3 transcripts, and uses a canonical SHA-256 gameplay-state hash. Hash input includes turn flow, action ID, RNG, ordered piles, character state, zones, windows, decisions, resources, and winner; presentation-only logs, names, transcript data, and last-resolution display details are excluded.
 
 | Rule / Term | Status | Notes |
 | --- | --- | --- |

@@ -4,7 +4,7 @@ const { WebSocketServer, WebSocket } = require("ws");
 const PORT = Number(process.env.PORT) || 8787;
 const MAX_PLAYERS = Number(process.env.MAX_PLAYERS) || 2;
 const RECONNECT_GRACE_MS = Number(process.env.RECONNECT_GRACE_MS) || 120000;
-const PROTOCOL_VERSION = 1;
+const PROTOCOL_VERSION = 2;
 
 const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/plain" });
@@ -23,6 +23,31 @@ const send = (ws, payload) => {
 const broadcast = (lobby, payload) => {
   lobby.players.forEach((player) => {
     send(player.ws, payload);
+  });
+};
+
+const statePayloadForPlayer = (lobby, player, snapshot) => {
+  if (player.id === lobby.hostId) {
+    const { guestState, guestStateHash, ...hostPayload } = snapshot;
+    return hostPayload;
+  }
+  const { state, stateHash, guestState, guestStateHash, ...metadata } = snapshot;
+  return {
+    ...metadata,
+    state: guestState,
+    stateHash: guestStateHash,
+    authoritativeStateHash: stateHash,
+  };
+};
+
+const broadcastStateUpdate = (lobby, snapshot, from = lobby.hostId) => {
+  lobby.players.forEach((player) => {
+    send(player.ws, {
+      type: "game_event",
+      event: "state_update",
+      data: statePayloadForPlayer(lobby, player, snapshot),
+      from,
+    });
   });
 };
 
@@ -47,7 +72,7 @@ const sendAuthoritativeSnapshot = (lobby, ws) => {
     send(ws, {
       type: "game_event",
       event: "state_update",
-      data: lobby.matchSnapshot,
+      data: statePayloadForPlayer(lobby, ws.uaClient, lobby.matchSnapshot),
       from: "relay",
     });
     return true;
@@ -75,6 +100,10 @@ const isSha256 = (value) => typeof value === "string" && /^sha256:[0-9a-f]{64}$/
 const hasValidStateMetadata = (data) =>
   data &&
   data.protocolVersion === PROTOCOL_VERSION &&
+  data.authoritativeStateHash === data.stateHash &&
+  data.guestState &&
+  data.guestState.actionId === data.actionId &&
+  isSha256(data.guestStateHash) &&
   Number.isInteger(data.actionId) &&
   data.actionId >= 0 &&
   data.state?.actionId === data.actionId &&
@@ -419,9 +448,32 @@ wss.on("connection", (ws) => {
           !Array.isArray(data.selection) ||
           data.selection.length !== 3 ||
           !data.selection.every((id) => typeof id === "string" && id.length > 0) ||
+          new Set(data.selection).size !== 3 ||
           typeof data.name !== "string"
         ) {
           send(ws, { type: "error", message: "Invalid selection request." });
+          return;
+        }
+        if (lobby.selectionSnapshot?.selection && lobby.selectionSnapshot?.names) {
+          const nextSnapshot = {
+            selection: {
+              p1: [...lobby.selectionSnapshot.selection.p1],
+              p2: [...data.selection],
+            },
+            names: {
+              p1: lobby.selectionSnapshot.names.p1,
+              p2: data.name.slice(0, 40),
+            },
+          };
+          resetReadyForChangedSetup(lobby, nextSnapshot);
+          lobby.selectionSnapshot = nextSnapshot;
+          sendSnapshot(lobby);
+          broadcast(lobby, {
+            type: "game_event",
+            event: "selection_update",
+            data: nextSnapshot,
+            from: "relay",
+          });
           return;
         }
         const host = lobby.players.get(lobby.hostId);
@@ -444,9 +496,54 @@ wss.on("connection", (ws) => {
       }
 
       if (message.type === "game_event" && message.event === "selection_update") {
-        resetReadyForChangedSetup(lobby, message.data);
-        lobby.selectionSnapshot = message.data ?? {};
+        const data = message.data;
+        if (
+          !Array.isArray(data?.selection?.p1) ||
+          !Array.isArray(data?.selection?.p2) ||
+          data.selection.p1.length !== 3 ||
+          data.selection.p2.length !== 3 ||
+          ![...data.selection.p1, ...data.selection.p2].every(
+            (id) => typeof id === "string" && id.length > 0
+          ) ||
+          new Set(data.selection.p1).size !== 3 ||
+          new Set(data.selection.p2).size !== 3 ||
+          typeof data?.names?.p1 !== "string" ||
+          typeof data?.names?.p2 !== "string"
+        ) {
+          send(ws, { type: "error", message: "Invalid selection update." });
+          return;
+        }
+        const nextSnapshot = lobby.selectionSnapshot?.selection && lobby.selectionSnapshot?.names
+          ? {
+              selection: {
+                p1: [...data.selection.p1],
+                p2: [...lobby.selectionSnapshot.selection.p2],
+              },
+              names: {
+                p1: data.names.p1.slice(0, 40),
+                p2: lobby.selectionSnapshot.names.p2,
+              },
+            }
+          : {
+              selection: {
+                p1: [...data.selection.p1],
+                p2: [...data.selection.p2],
+              },
+              names: {
+                p1: data.names.p1.slice(0, 40),
+                p2: data.names.p2.slice(0, 40),
+              },
+            };
+        resetReadyForChangedSetup(lobby, nextSnapshot);
+        lobby.selectionSnapshot = nextSnapshot;
         sendSnapshot(lobby);
+        broadcast(lobby, {
+          type: "game_event",
+          event: "selection_update",
+          data: nextSnapshot,
+          from: "relay",
+        });
+        return;
       }
 
       if (message.type === "game_event" && message.event === "state_update") {
@@ -478,6 +575,8 @@ wss.on("connection", (ws) => {
             names: message.data.names,
           };
         }
+        broadcastStateUpdate(lobby, lobby.matchSnapshot);
+        return;
       }
 
       if (message.type === "game_event" && message.event === "action_request") {

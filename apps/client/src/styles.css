@@ -2265,6 +2265,7 @@ button {
 /* Phase 1A play-mode setup */
 .ua-play-mode {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
@@ -2313,6 +2314,10 @@ button {
   .ua-play-mode {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .ua-play-mode__copy {
+    flex-basis: auto;
   }
 
   .ua-play-mode__actions {

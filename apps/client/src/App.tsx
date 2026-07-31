@@ -3736,6 +3736,211 @@ const App = () => {
         </section>
       )}
 
+      <section className="ua-panel ua-panel--wide">
+        <div className="ua-panel__header">
+          <h2>Actions</h2>
+          <div className="ua-inline-actions">
+            <button
+              className="ua-button"
+              disabled={!canControlPlayer(activeTeam.id) || matchState.activePlayerId !== activeTeam.id}
+              onClick={() => dispatchAction({ type: "pass", playerId: activeTeam.id })}
+            >
+              Pass
+            </button>
+            <button
+              className="ua-button"
+              disabled={
+                !canControlPlayer(matchState.initiativePlayerId) ||
+                matchState.activePlayerId !== matchState.initiativePlayerId ||
+                matchState.activeZone !== null ||
+                matchState.phase !== "combat"
+              }
+              onClick={() =>
+                dispatchAction({ type: "end_turn", playerId: matchState.initiativePlayerId })
+              }
+            >
+              End Turn
+            </button>
+          </div>
+        </div>
+        <p className="ua-zone-status">
+          Phase: {isMovementRound ? "Movement Round" : "Combat Round"} | Active Zone:{" "}
+          {activeZoneLabel} | Paused Zones: {pausedZonesLabel}
+        </p>
+        {isMovementRound && (
+          <div className="ua-movement">
+            <p>
+              Each team gets one free swap per turn; additional swaps cost 1 Energy. Free swaps
+              remaining: {freeSwapsRemaining}.
+            </p>
+            <div className="ua-movement__actions">
+              {movementPairs.map((pair) => (
+                  <button
+                    key={`${pair.left.id}-${pair.right.id}`}
+                    className="ua-button ua-button--ghost"
+                    disabled={
+                      !canControlPlayer(activeTeam.id) ||
+                      matchState.activePlayerId !== activeTeam.id ||
+                      !canAttemptMovementSwap
+                    }
+                  onClick={() =>
+                    dispatchAction({
+                      type: "move_swap",
+                      playerId: activeTeam.id,
+                      firstId: pair.left.id,
+                      secondId: pair.right.id,
+                    })
+                  }
+                >
+                  Swap {pair.left.name} {"<->"} {pair.right.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {pendingWindow && reactionNames.length > 0 && (
+          <p className="ua-zone-status">
+            Reaction window: {reactionNames.join(" / ")} can play{" "}
+            {pendingWindow.type === "counter" ? "Counter" : "Follow-Up or Assist Attack"} now in the{" "}
+            {zoneLabel(pendingWindow.zone)} Zone.
+          </p>
+        )}
+        <div className="ua-help-row">
+          <span className="ua-help-label">Rules tooltips</span>
+          <span className="ua-tooltip" data-tip={cardFlowTip} tabIndex={0}>
+            Played vs Used vs Cancelled vs Negated
+          </span>
+          <span className="ua-tooltip" data-tip={timingTip} tabIndex={0}>
+            On Hit vs On Damage vs On HP Damage
+          </span>
+        </div>
+        <>
+          <h3 className="ua-hand-title">
+            {isMultiplayer ? "Your Hand" : "Active Hand"} <span>({handTeam.name})</span>
+          </h3>
+          <div className="ua-card-grid">
+            {activeHand.map((entry, index) => {
+              const { instance, card, owner } = entry;
+              const corePlayable = getCardPlayOptions(
+                matchState,
+                { playerId: handTeam.id, cardInstanceId: instance.id },
+                roster
+              ).playable;
+              const displayCard = resolveCardForDisplay(card, owner.id);
+              const cost = parseCost(displayCard.cost);
+              const isVariable = Boolean(cost.variable);
+              const xRange = getXRangeFromText(displayCard);
+              const isAfterUse =
+                pendingWindow?.type === "after_use" &&
+                matchState.afterUseWindow &&
+                matchState.afterUseWindow.validForAction === matchState.actionId + 1;
+              const isFollowUpPlay =
+                Boolean(isAfterUse) &&
+                matchState.afterUseWindow?.lastUsedCharacterId === owner.id;
+              const followUpAdjustment = isFollowUpPlay
+                ? getFollowUpCostAdjustment(displayCard)
+                : 0;
+                const canControl = canControlPlayer(handTeam.id);
+                const disabled = !canControl || !corePlayable;
+              const adjustment =
+                getEnergyCostAdjustment(owner) +
+                (instance.costAdjustment ?? 0) +
+                followUpAdjustment;
+              const isDealt = Boolean(recentlyDealt[instance.id]);
+              return (
+                <button
+                  key={instance.id}
+                  className={`ua-card${isDealt ? " ua-card--deal" : ""}`}
+                  style={isDealt ? { animationDelay: `${index * 0.035}s` } : undefined}
+                  disabled={disabled}
+                  onClick={() => handlePlayCard(handTeam.id, card, owner.id, instance.id)}
+                >
+                  <div className="ua-card__title">{displayCard.name}</div>
+                  <div className="ua-card__meta">
+                    <span>Owner: {owner.name}</span>
+                  </div>
+                  <div className="ua-card__meta">
+                    <span>
+                      Cost: {displayCard.cost}
+                      {adjustment !== 0 &&
+                        ` (Adj ${adjustment >= 0 ? "+" : ""}${adjustment})`}
+                    </span>
+                    <span>Power: {displayCard.power}</span>
+                  </div>
+                  <div className="ua-card__meta">
+                    <span>Speed: {displayCard.speed}</span>
+                    <span>Target: {displayCard.target}</span>
+                  </div>
+                  <div className="ua-card__tags">{displayCard.types.join(" / ")}</div>
+                  <div className="ua-card__effect">
+                    {displayCard.effect.map((line, index) =>
+                      renderEffectLine(line, `${instance.id}-${index}`)
+                    )}
+                  </div>
+                  {isVariable && <span className="ua-card__tag">X Cost</span>}
+                  {xRange && <span className="ua-card__tag">Choose X</span>}
+                </button>
+              );
+            })}
+            {activeHand.length === 0 && (
+              <p>
+                {canViewPrivateState(handTeam.id)
+                  ? "No cards in hand."
+                  : `Private hand hidden (${handTeam.hand.length} cards).`}
+              </p>
+            )}
+          </div>
+          {activeUltimates.length > 0 && (
+            <>
+              <h3>Ultimates</h3>
+              <div className="ua-card-grid">
+                {activeUltimates.map((entry) => {
+                  const { card, member } = entry;
+                  const corePlayable = getCardPlayOptions(
+                    matchState,
+                    { playerId: handTeam.id, cardSlot: card.slot, sourceId: member.id },
+                    roster
+                  ).playable;
+                  const displayCard = resolveCardForDisplay(card, member.id);
+                  const cost = parseCost(displayCard.cost);
+                  const isVariable = Boolean(cost.variable);
+                    const canControl = canControlPlayer(handTeam.id);
+                    const disabled = !canControl || !corePlayable;
+                  return (
+                    <button
+                      key={`${member.id}-${card.slot}`}
+                      className="ua-card"
+                      disabled={disabled}
+                      onClick={() => handlePlayCard(handTeam.id, card, member.id)}
+                    >
+                      <div className="ua-card__title">{displayCard.name}</div>
+                      <div className="ua-card__meta">
+                        <span>Owner: {member.name}</span>
+                      </div>
+                      <div className="ua-card__meta">
+                        <span>Cost: {displayCard.cost}</span>
+                        <span>Power: {displayCard.power}</span>
+                      </div>
+                      <div className="ua-card__meta">
+                        <span>Speed: {displayCard.speed}</span>
+                        <span>Target: {displayCard.target}</span>
+                      </div>
+                      <div className="ua-card__tags">{displayCard.types.join(" / ")}</div>
+                      <div className="ua-card__effect">
+                        {displayCard.effect.map((line, index) =>
+                          renderEffectLine(line, `${member.id}-${card.slot}-${index}`)
+                        )}
+                      </div>
+                      {isVariable && <span className="ua-card__tag">X Cost</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      </section>
+
       <section className="ua-command-bar" aria-label="Match summary">
         <div className="ua-command-bar__item">
           <span>Phase</span>
@@ -4037,211 +4242,6 @@ const App = () => {
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="ua-panel ua-panel--wide">
-        <div className="ua-panel__header">
-          <h2>Actions</h2>
-          <div className="ua-inline-actions">
-            <button
-              className="ua-button"
-              disabled={!canControlPlayer(activeTeam.id) || matchState.activePlayerId !== activeTeam.id}
-              onClick={() => dispatchAction({ type: "pass", playerId: activeTeam.id })}
-            >
-              Pass
-            </button>
-            <button
-              className="ua-button"
-              disabled={
-                !canControlPlayer(matchState.initiativePlayerId) ||
-                matchState.activePlayerId !== matchState.initiativePlayerId ||
-                matchState.activeZone !== null ||
-                matchState.phase !== "combat"
-              }
-              onClick={() =>
-                dispatchAction({ type: "end_turn", playerId: matchState.initiativePlayerId })
-              }
-            >
-              End Turn
-            </button>
-          </div>
-        </div>
-        <p className="ua-zone-status">
-          Phase: {isMovementRound ? "Movement Round" : "Combat Round"} | Active Zone:{" "}
-          {activeZoneLabel} | Paused Zones: {pausedZonesLabel}
-        </p>
-        {isMovementRound && (
-          <div className="ua-movement">
-            <p>
-              Each team gets one free swap per turn; additional swaps cost 1 Energy. Free swaps
-              remaining: {freeSwapsRemaining}.
-            </p>
-            <div className="ua-movement__actions">
-              {movementPairs.map((pair) => (
-                  <button
-                    key={`${pair.left.id}-${pair.right.id}`}
-                    className="ua-button ua-button--ghost"
-                    disabled={
-                      !canControlPlayer(activeTeam.id) ||
-                      matchState.activePlayerId !== activeTeam.id ||
-                      !canAttemptMovementSwap
-                    }
-                  onClick={() =>
-                    dispatchAction({
-                      type: "move_swap",
-                      playerId: activeTeam.id,
-                      firstId: pair.left.id,
-                      secondId: pair.right.id,
-                    })
-                  }
-                >
-                  Swap {pair.left.name} {"<->"} {pair.right.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-        {pendingWindow && reactionNames.length > 0 && (
-          <p className="ua-zone-status">
-            Reaction window: {reactionNames.join(" / ")} can play{" "}
-            {pendingWindow.type === "counter" ? "Counter" : "Follow-Up or Assist Attack"} now in the{" "}
-            {zoneLabel(pendingWindow.zone)} Zone.
-          </p>
-        )}
-        <div className="ua-help-row">
-          <span className="ua-help-label">Rules tooltips</span>
-          <span className="ua-tooltip" data-tip={cardFlowTip} tabIndex={0}>
-            Played vs Used vs Cancelled vs Negated
-          </span>
-          <span className="ua-tooltip" data-tip={timingTip} tabIndex={0}>
-            On Hit vs On Damage vs On HP Damage
-          </span>
-        </div>
-        <>
-          <h3 className="ua-hand-title">
-            {isMultiplayer ? "Your Hand" : "Active Hand"} <span>({handTeam.name})</span>
-          </h3>
-          <div className="ua-card-grid">
-            {activeHand.map((entry, index) => {
-              const { instance, card, owner } = entry;
-              const corePlayable = getCardPlayOptions(
-                matchState,
-                { playerId: handTeam.id, cardInstanceId: instance.id },
-                roster
-              ).playable;
-              const displayCard = resolveCardForDisplay(card, owner.id);
-              const cost = parseCost(displayCard.cost);
-              const isVariable = Boolean(cost.variable);
-              const xRange = getXRangeFromText(displayCard);
-              const isAfterUse =
-                pendingWindow?.type === "after_use" &&
-                matchState.afterUseWindow &&
-                matchState.afterUseWindow.validForAction === matchState.actionId + 1;
-              const isFollowUpPlay =
-                Boolean(isAfterUse) &&
-                matchState.afterUseWindow?.lastUsedCharacterId === owner.id;
-              const followUpAdjustment = isFollowUpPlay
-                ? getFollowUpCostAdjustment(displayCard)
-                : 0;
-                const canControl = canControlPlayer(handTeam.id);
-                const disabled = !canControl || !corePlayable;
-              const adjustment =
-                getEnergyCostAdjustment(owner) +
-                (instance.costAdjustment ?? 0) +
-                followUpAdjustment;
-              const isDealt = Boolean(recentlyDealt[instance.id]);
-              return (
-                <button
-                  key={instance.id}
-                  className={`ua-card${isDealt ? " ua-card--deal" : ""}`}
-                  style={isDealt ? { animationDelay: `${index * 0.035}s` } : undefined}
-                  disabled={disabled}
-                  onClick={() => handlePlayCard(handTeam.id, card, owner.id, instance.id)}
-                >
-                  <div className="ua-card__title">{displayCard.name}</div>
-                  <div className="ua-card__meta">
-                    <span>Owner: {owner.name}</span>
-                  </div>
-                  <div className="ua-card__meta">
-                    <span>
-                      Cost: {displayCard.cost}
-                      {adjustment !== 0 &&
-                        ` (Adj ${adjustment >= 0 ? "+" : ""}${adjustment})`}
-                    </span>
-                    <span>Power: {displayCard.power}</span>
-                  </div>
-                  <div className="ua-card__meta">
-                    <span>Speed: {displayCard.speed}</span>
-                    <span>Target: {displayCard.target}</span>
-                  </div>
-                  <div className="ua-card__tags">{displayCard.types.join(" / ")}</div>
-                  <div className="ua-card__effect">
-                    {displayCard.effect.map((line, index) =>
-                      renderEffectLine(line, `${instance.id}-${index}`)
-                    )}
-                  </div>
-                  {isVariable && <span className="ua-card__tag">X Cost</span>}
-                  {xRange && <span className="ua-card__tag">Choose X</span>}
-                </button>
-              );
-            })}
-            {activeHand.length === 0 && (
-              <p>
-                {canViewPrivateState(handTeam.id)
-                  ? "No cards in hand."
-                  : `Private hand hidden (${handTeam.hand.length} cards).`}
-              </p>
-            )}
-          </div>
-          {activeUltimates.length > 0 && (
-            <>
-              <h3>Ultimates</h3>
-              <div className="ua-card-grid">
-                {activeUltimates.map((entry) => {
-                  const { card, member } = entry;
-                  const corePlayable = getCardPlayOptions(
-                    matchState,
-                    { playerId: handTeam.id, cardSlot: card.slot, sourceId: member.id },
-                    roster
-                  ).playable;
-                  const displayCard = resolveCardForDisplay(card, member.id);
-                  const cost = parseCost(displayCard.cost);
-                  const isVariable = Boolean(cost.variable);
-                    const canControl = canControlPlayer(handTeam.id);
-                    const disabled = !canControl || !corePlayable;
-                  return (
-                    <button
-                      key={`${member.id}-${card.slot}`}
-                      className="ua-card"
-                      disabled={disabled}
-                      onClick={() => handlePlayCard(handTeam.id, card, member.id)}
-                    >
-                      <div className="ua-card__title">{displayCard.name}</div>
-                      <div className="ua-card__meta">
-                        <span>Owner: {member.name}</span>
-                      </div>
-                      <div className="ua-card__meta">
-                        <span>Cost: {displayCard.cost}</span>
-                        <span>Power: {displayCard.power}</span>
-                      </div>
-                      <div className="ua-card__meta">
-                        <span>Speed: {displayCard.speed}</span>
-                        <span>Target: {displayCard.target}</span>
-                      </div>
-                      <div className="ua-card__tags">{displayCard.types.join(" / ")}</div>
-                      <div className="ua-card__effect">
-                        {displayCard.effect.map((line, index) =>
-                          renderEffectLine(line, `${member.id}-${card.slot}-${index}`)
-                        )}
-                      </div>
-                      {isVariable && <span className="ua-card__tag">X Cost</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </>
       </section>
 
       {reactivePlayers.map((playerId) => {

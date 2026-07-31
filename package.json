@@ -8,9 +8,10 @@
     "build": "pnpm --filter @ua/client build",
     "preview": "pnpm --filter @ua/client preview",
     "data:validate": "node packages/data/validate-manifest.mjs",
+    "privacy": "tsx apps/client/src/relay-protocol.golden.ts",
     "golden": "pnpm --filter @ua/core golden",
     "harness": "pnpm --filter @ua/core harness",
-    "release:check": "pnpm data:validate && pnpm golden && pnpm harness && pnpm build && pnpm --dir server test"
+    "release:check": "pnpm data:validate && pnpm privacy && pnpm golden && pnpm harness && pnpm build && pnpm --dir server test"
   },
   "devDependencies": {
     "tsx": "^4.8.1"

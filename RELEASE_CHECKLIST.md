@@ -27,7 +27,7 @@ Current decision: **NO-GO — automated validation passes; current-candidate hum
 | Core deterministic/contract suite | Pass | 39/39 checks via `pnpm golden`. |
 | Focused invariant harness | Pass | 6/6 checks via `pnpm harness`. |
 | Client production build | Pass | TypeScript and Vite via `pnpm build`. |
-| Relay integration | Pass | Seat-owned setup, private guest snapshots, sequencing, resync, and reset via server test. |
+| Network privacy | Pass | Client redaction contract plus relay integration cover seat-owned setup, private guest snapshots, sequencing, resync, and reset. |
 | Combined release command | Pass | `pnpm release:check`. |
 | Two-client ownership UX | Pass | Isolated Host/Guest browser check verifies local-first formation, persistent own hand, turn/priority messaging, and private opponent deck controls through turn handoff. |
 | Local browser smoke flow | Rerun required | Existing evidence in `PLAYTEST_REPORT.md` covers the prior schema-1 baseline. |

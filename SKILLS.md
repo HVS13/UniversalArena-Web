@@ -1,6 +1,6 @@
 # SKILLS
 
-Canonical skill index for Codex in this repo.
+Repository skill index for Web client, engine, and relay work.
 
 ## Local skills
 
@@ -19,6 +19,6 @@ Use these when working in the docs repo (`C:\Git\UniversalArena`).
 | ua-content-authoring | Create or update MkDocs content and navigation for rules/reference pages. | skills/ua-content-authoring/SKILL.md |
 
 ## Notes
-- Use `ua-game-client` for client/core changes; log behavioral fixes in `CODEX_HISTORY.md`.
+- Use `ua-game-client` for client/core changes; record significant behavioral decisions in `DECISIONS.md`.
 - Run `pnpm golden` after core rules changes or when validating engine behavior.
 - The game is 3v3 per team with shared deck/hand/energy/ultimate and per-character HP/status.

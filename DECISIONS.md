@@ -1,4 +1,4 @@
-# Codex History
+# Decision History
 
 - 2026-07-15: Prepared the `0.2.0-friend-alpha` release candidate identity, added a combined release gate and expanded CI, repaired a stale invariant-harness scenario exposed by that gate, and recorded an explicit NO-GO until full winner, recovery, download, and remote-friend evidence is complete.
 
@@ -8,7 +8,7 @@
 
 - 2026-07-15: Added a privacy-conscious, downloadable Friend Alpha debug bundle with pseudonymized transcript/log data, complete build and canonical-data identity, final state evidence, and deterministic replay verification.
 
-This file preserves the historical intent and decisions for the Universal Arena web game. Append new entries after each major Codex task.
+This file preserves significant product, architecture, and behavior decisions for the Universal Arena web game.
 
 ## Project Intent
 - Deliver a modern, maintainable web game for Universal Arena.
@@ -97,7 +97,7 @@ This file preserves the historical intent and decisions for the Universal Arena 
 - 2026-01-14: On Hit now resolves once per hit (multihit triggers multiple On Hit effects).
 - 2026-01-14: Updated the rules implementation matrix to include Close/Far and Distance power adjustments.
 - 2026-01-14: Added a free Movement Round swap per team per turn, clamped Ultimate costs to a 0 floor, and updated movement UI messaging.
-- 2026-03-09: Reworked the client presentation into a darker HUD/codex style, added setup/match command bars, and surfaced character art directly in team preview, roster, and formation cards.
+- 2026-03-09: Reworked the client presentation into a darker game-reference/HUD style, added setup/match command bars, and surfaced character art directly in team preview, roster, and formation cards.
 - 2026-04-21: Fixed core restriction typing to use the exported card data contract and aligned the Counter golden fixture with immediate reaction resolution.
 - 2026-04-21: Hardened relay multiplayer with reconnectable lobby seats, Ready/Unready state, manual resync, saved lobby-code rejoin, and clearer connection/readiness UI.
 - 2026-07-15: Persisted relay display names and cached host-approved setup/match snapshots in the relay so host refresh recovery no longer loses authoritative match state.

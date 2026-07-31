@@ -37,7 +37,7 @@ export type HostStateSyncPayload = StateSyncPayload & {
 export const clientVersion = "0.2.1-friend-alpha";
 export const relayVersion = "0.2.1-friend-alpha";
 export const relayProtocolVersion = 2;
-export const defaultRelayUrl = import.meta.env.VITE_RELAY_URL ?? "ws://localhost:8787";
+export const defaultRelayUrl = import.meta.env?.VITE_RELAY_URL ?? "ws://localhost:8787";
 export const multiplayerSeatCount = 2;
 
 const isSha256 = (value: unknown): value is string =>

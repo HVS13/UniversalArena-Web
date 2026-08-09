@@ -82,3 +82,24 @@ This pass used isolated Playwright browser sessions against the local production
 - Recover during a reaction window and a pending-decision window.
 - Complete one real LAN or remote friend match.
 - Download, open, and verify a completed-match debug JSON with `verifyDebugBundle`.
+
+## Current release-readiness full-flow verification
+
+Date: 2026-08-09 (Asia/Jakarta)
+
+| Scenario | Result | Evidence observed |
+| --- | --- | --- |
+| Local match through victory | Pass | The default 3v3 match completed at turn 15 with Player 1 declared as winner, phase `finished`, no handoff or reaction window left visible, and a clean browser console. |
+| Relay match through victory | Pass | Independent Host and Guest clients completed at turn 17 with Player 1 declared as winner and phase `finished`. Normalized final summary, formation, and event-log hashes matched on both clients. |
+| Reaction-window recovery | Pass | Host refreshed during Player 1's Normal-zone Follow-Up or Assist window, reconnected through Network Match, reclaimed P1 in lobby `MAXASW`, recovered the same reaction window, and continued the match through victory. |
+| Completed debug bundle | Pass | The relay winner bundle opened successfully and `verifyDebugBundle` returned `ok: true`, winner `p1`, phase `finished`, and state hash `sha256:c6bdcf27aa25b4d6e12cee1baf1131c1f9a3bc2e07fc7b15faad4f6544338417`. |
+| Browser consoles | Pass | Local, Host, and Guest sessions reported zero errors and zero warnings. |
+
+### Finding addressed
+
+`FA-PT-006` (P1 victory state, fixed): a finished match could retain its final `pendingResolution` and expose a stale Follow-Up or Assist prompt while labeling the phase as Combat Round. Finished matches now suppress pending decision windows and render the phase as Finished.
+
+### Evidence still open
+
+- Recover during a pending-decision window.
+- Complete one real LAN or remote friend match.

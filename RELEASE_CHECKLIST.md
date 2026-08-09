@@ -2,7 +2,7 @@
 
 Assessment date: 2026-08-09 (Asia/Jakarta)
 Target: `v0.2.0-friend-alpha`
-Current decision: **NO-GO: automated validation and current schema-2 smoke checks pass; full-match evidence remains open.**
+Current decision: **NO-GO: automated validation and full local and relay matches pass; pending-decision recovery and a real LAN friend match remain open.**
 
 ## Candidate identity
 
@@ -39,14 +39,14 @@ Current decision: **NO-GO: automated validation and current schema-2 smoke check
 
 - [x] Repeat the local browser smoke flow on the current schema-2 candidate.
 - [x] Repeat the independent relay smoke flow on the current schema-2 candidate.
-- [ ] Local UI match completes through winner declaration.
-- [ ] Independent relay match completes with the same winner and final state on both clients.
+- [x] Local UI match completes through winner declaration.
+- [x] Independent relay match completes with the same winner and final state on both clients.
 - [x] Host refresh recovery is recorded.
-- [ ] Recovery during reaction and pending-decision windows is recorded.
+- [ ] Recovery during reaction and pending-decision windows is recorded. Reaction recovery passes; pending-decision recovery remains open.
 - [x] Relay restart produces the documented lobby-expired path.
 - [ ] A real LAN friend match completes.
-- [ ] The completed match's downloaded JSON is opened and verified with `verifyDebugBundle`.
-- [x] All defects found by those sessions are triaged; no P0/P1 defect was found.
+- [x] The completed match's downloaded JSON is opened and verified with `verifyDebugBundle`.
+- [x] All defects found by those sessions are triaged; `FA-PT-006` is fixed and no open P0/P1 defect remains.
 
 ## Release procedure after blockers close
 

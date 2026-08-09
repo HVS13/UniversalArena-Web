@@ -1,8 +1,8 @@
 # Friend Alpha Release Checklist
 
-Assessment date: 2026-07-28 (Asia/Jakarta)
+Assessment date: 2026-08-09 (Asia/Jakarta)
 Target: `v0.2.0-friend-alpha`
-Current decision: **NO-GO — automated validation passes; current-candidate human/full-flow evidence remains open.**
+Current decision: **NO-GO: automated validation and current schema-2 smoke checks pass; full-match evidence remains open.**
 
 ## Candidate identity
 
@@ -30,22 +30,23 @@ Current decision: **NO-GO — automated validation passes; current-candidate hum
 | Network privacy | Pass | Client redaction contract plus relay integration cover seat-owned setup, private guest snapshots, sequencing, resync, and reset. |
 | Combined release command | Pass | `pnpm release:check`. |
 | Two-client ownership UX | Pass | Isolated Host/Guest browser check verifies local-first formation, persistent own hand, turn/priority messaging, and private opponent deck controls through turn handoff. |
-| Local browser smoke flow | Rerun required | Existing evidence in `PLAYTEST_REPORT.md` covers the prior schema-1 baseline. |
-| Independent relay smoke flow | Rerun required | Existing evidence in `PLAYTEST_REPORT.md` covers the prior schema-1 baseline. |
+| Local browser smoke flow | Pass | Current schema-2 browser check covered keyboard handoff, movement, one ordinary attack, status gain, clean resolution, and a clean console. |
+| Independent relay smoke flow | Pass | Current schema-2 Host/Guest check covered lobby readiness, private views, authority handoff, ordinary resolution, seat reclaim, relay restart, and clean consoles. |
+| Project document viewer | Pass | Desktop and 390px mobile checks covered the curated document list, document switching, responsive modal placement, Escape close, and a clean console. |
 | Replay/debug schema | Pass | Golden test reproduces the final canonical hash and checks privacy/version rejection. |
 
 ## Open release blockers
 
-- [ ] Repeat the local browser smoke flow on the current schema-2 candidate.
-- [ ] Repeat the independent relay smoke flow on the current schema-2 candidate.
+- [x] Repeat the local browser smoke flow on the current schema-2 candidate.
+- [x] Repeat the independent relay smoke flow on the current schema-2 candidate.
 - [ ] Local UI match completes through winner declaration.
 - [ ] Independent relay match completes with the same winner and final state on both clients.
-- [ ] Host refresh recovery is recorded.
+- [x] Host refresh recovery is recorded.
 - [ ] Recovery during reaction and pending-decision windows is recorded.
-- [ ] Relay restart produces the documented lobby-expired path.
+- [x] Relay restart produces the documented lobby-expired path.
 - [ ] A real LAN friend match completes.
 - [ ] The completed match's downloaded JSON is opened and verified with `verifyDebugBundle`.
-- [ ] All defects found by those sessions are triaged; all P0/P1 defects are closed.
+- [x] All defects found by those sessions are triaged; no P0/P1 defect was found.
 
 ## Release procedure after blockers close
 

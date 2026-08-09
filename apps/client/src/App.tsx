@@ -37,6 +37,7 @@ import {
   type SetupSyncPayload,
   type StateSyncPayload,
 } from "./relay-protocol";
+import { RepositoryDocuments } from "./RepositoryDocuments";
 
 type Stage = "setup" | "match";
 type PlayMode = "local" | "network";
@@ -3085,6 +3086,7 @@ const App = () => {
             {isNetworkMode ? "Start Network Match" : "Start Local Match"}
           </button>
         </div>
+        <RepositoryDocuments />
         </div>
       </div>
     );
@@ -4750,12 +4752,7 @@ const App = () => {
         </div>
       )}
 
-      <footer className="ua-footer">
-        <p>
-          Prototype rules engine: zones, clashes, and priority are live. Structured effects are
-          rolling in, with legacy parsing covering unconverted cards.
-        </p>
-      </footer>
+      <RepositoryDocuments />
     </div>
     </div>
   );

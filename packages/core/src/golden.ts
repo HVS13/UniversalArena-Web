@@ -4347,6 +4347,8 @@ const runStructuredInnateTriggerTest = (): GoldenResult => {
     const attacker = addInnateTestCard(find("light-yagami-kira"), [
       { timing: "on_play", type: "inflict_status", status: "Stolen Information", amount: { kind: "flat", value: 1 } },
       { timing: "on_play", type: "inflict_status", status: "Spectro Frazzle", amount: { kind: "flat", value: 1 } },
+      { timing: "on_play", type: "inflict_status", status: "Weak", amount: { kind: "flat", value: 2 } },
+      { timing: "on_play", type: "inflict_status", status: "Weak", stat: "count", amount: { kind: "flat", value: 2 } },
     ], { target: "1 Enemy" });
     const rover = find("rover-spectro");
     state = createSeededCombatState([attacker, rover], [
@@ -4358,6 +4360,12 @@ const runStructuredInnateTriggerTest = (): GoldenResult => {
     const target = state.players.p2.characters[0];
     if (target.statuses["Spectro Frazzle"]?.stack !== 3) {
       throw new Error("Each eligible Rover did not add exactly one non-recursive Spectro Frazzle.");
+    }
+    if (
+      !state.log.includes(`${target.name} gains 2 Weak.`) ||
+      !state.log.includes(`${target.name} gains 2 Weak Count.`)
+    ) {
+      throw new Error("Structured status logs did not distinguish value from Count changes.");
     }
     if (state.players.p1.hand.length < handBefore) throw new Error("Light did not draw from Meticulous Planner.");
     return { label: "Structured status, threshold, draw, amplification, and once-per-turn innate triggers execute", ok: true };

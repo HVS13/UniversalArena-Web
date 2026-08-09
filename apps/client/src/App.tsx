@@ -408,7 +408,7 @@ type PendingWindowContext = {
 };
 
 const getPendingWindow = (state: MatchState): PendingWindowContext | null => {
-  if (!state.pendingResolution) return null;
+  if (state.phase === "finished" || !state.pendingResolution) return null;
   const nextActionId = state.actionId + 1;
   if (state.pendingResolution.window === "counter") {
     const window = state.counterWindow;
@@ -3766,7 +3766,7 @@ const App = () => {
           </div>
         </div>
         <p className="ua-zone-status">
-          Phase: {isMovementRound ? "Movement Round" : "Combat Round"} | Active Zone:{" "}
+          Phase: {matchState.phase === "finished" ? "Finished" : isMovementRound ? "Movement Round" : "Combat Round"} | Active Zone:{" "}
           {activeZoneLabel} | Paused Zones: {pausedZonesLabel}
         </p>
         {isMovementRound && (

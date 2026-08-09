@@ -92,6 +92,7 @@ Date: 2026-08-09 (Asia/Jakarta)
 | Local match through victory | Pass | The default 3v3 match completed at turn 15 with Player 1 declared as winner, phase `finished`, no handoff or reaction window left visible, and a clean browser console. |
 | Relay match through victory | Pass | Independent Host and Guest clients completed at turn 17 with Player 1 declared as winner and phase `finished`. Normalized final summary, formation, and event-log hashes matched on both clients. |
 | Reaction-window recovery | Pass | Host refreshed during Player 1's Normal-zone Follow-Up or Assist window, reconnected through Network Match, reclaimed P1 in lobby `MAXASW`, recovered the same reaction window, and continued the match through victory. |
+| Pending-decision recovery | Pass | Guest refreshed while DIO's optional defeat replacement was pending, reconnected through Network Match, reclaimed P2 in lobby `VUK9C8`, and recovered the same decision with 4 Stolen Blood and 4 Blood Focus. Accepting it advanced the authoritative action from 0 to 1, kept DIO at 1 HP, reduced both resources to 1, cleared the decision, and restored normal controls. |
 | Completed debug bundle | Pass | The relay winner bundle opened successfully and `verifyDebugBundle` returned `ok: true`, winner `p1`, phase `finished`, and state hash `sha256:c6bdcf27aa25b4d6e12cee1baf1131c1f9a3bc2e07fc7b15faad4f6544338417`. |
 | Browser consoles | Pass | Local, Host, and Guest sessions reported zero errors and zero warnings. |
 
@@ -101,5 +102,4 @@ Date: 2026-08-09 (Asia/Jakarta)
 
 ### Evidence still open
 
-- Recover during a pending-decision window.
 - Complete one real LAN or remote friend match.

@@ -1,7 +1,7 @@
 # v0.2 Friend Alpha Contract
 
 Status: Proposed acceptance contract  
-Target release: `v0.2.0-friend-alpha`  
+Target release: `v0.2.1-friend-alpha`
 Roster: Frozen at the existing nine characters
 
 ## Product promise
@@ -126,6 +126,6 @@ The release checklist must link or record:
 
 ## Current status
 
-Milestones 0-11 have prepared a locally verified `0.2.0-friend-alpha` candidate. Automated gates and structured smoke evidence are recorded in [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) and [`PLAYTEST_REPORT.md`](PLAYTEST_REPORT.md).
+Milestones 0-11 have prepared a locally verified `0.2.1-friend-alpha` candidate. Automated gates and structured smoke evidence are recorded in [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) and [`PLAYTEST_REPORT.md`](PLAYTEST_REPORT.md).
 
-The current release decision is **NO-GO**. Full local/relay winner flows, special-window recovery, relay-restart behavior, a real remote friend match, and manual verification of the completed-match download remain required. A listed requirement is not considered complete until its evidence exists.
+The current release decision is **NO-GO**. A real LAN or remote friend match remains required. A listed requirement is not considered complete until its evidence exists.

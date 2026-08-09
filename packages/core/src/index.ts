@@ -4044,6 +4044,9 @@ const getUseRestrictionError = (
   return null;
 };
 
+const statusChangeLabel = (status: string, stat?: string) =>
+  stat === "count" ? `${status} Count` : status;
+
 const resolveStructuredEffectList = (
   effects: Effect[],
   state: MatchState,
@@ -4163,7 +4166,7 @@ const resolveStructuredEffectList = (
           applyInnateStatusDelta(state, source.id, effect.status, amount, effect.stat, characters, {
             sourceId: source.id,
           });
-          addLog(state, `${source.name} gains ${amount} ${effect.status}.`);
+          addLog(state, `${source.name} gains ${amount} ${statusChangeLabel(effect.status, effect.stat)}.`);
         }
         break;
       }
@@ -4178,7 +4181,10 @@ const resolveStructuredEffectList = (
               sourceId: source.id,
               inflicted: true,
             });
-            addLog(state, `${targetMember.name} gains ${amount} ${effect.status}.`);
+            addLog(
+              state,
+              `${targetMember.name} gains ${amount} ${statusChangeLabel(effect.status, effect.stat)}.`
+            );
           }
         });
         break;
@@ -4198,7 +4204,7 @@ const resolveStructuredEffectList = (
         applyInnateStatusDelta(state, source.id, effect.status, total, effect.stat, characters, {
           sourceId: source.id,
         });
-        addLog(state, `${source.name} gains ${total} ${effect.status}.`);
+        addLog(state, `${source.name} gains ${total} ${statusChangeLabel(effect.status, effect.stat)}.`);
         break;
       }
       case "inflict_status_per_spent": {
@@ -4218,7 +4224,10 @@ const resolveStructuredEffectList = (
             sourceId: source.id,
             inflicted: true,
           });
-          addLog(state, `${targetMember.name} gains ${total} ${effect.status}.`);
+          addLog(
+            state,
+            `${targetMember.name} gains ${total} ${statusChangeLabel(effect.status, effect.stat)}.`
+          );
         });
         break;
       }

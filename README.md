@@ -1,6 +1,6 @@
 # Universal Arena Web
 
-Web-based Universal Arena prototype (local hot-seat 3v3 with shared team deck/hand). Data is exported from the docs repo and the rules engine is still incomplete.
+Web client for Universal Arena. It supports local hot-seat and relay-based network 3v3 matches with shared team decks, hands, Energy, and Ultimate Meter. Canonical rules and game data are maintained in the docs repository and exported here.
 
 Friend Alpha stabilization is governed by [`FRIEND_ALPHA.md`](FRIEND_ALPHA.md), with the captured starting state in [`BASELINE.md`](BASELINE.md).
 Structured milestone-10 browser evidence and remaining release blockers are recorded in [`PLAYTEST_REPORT.md`](PLAYTEST_REPORT.md).
@@ -14,16 +14,16 @@ The final reproducible gate and current ship decision are recorded in [`RELEASE_
 
 ## Prerequisites
 
-- Node.js 18+.
-- pnpm (workspace package manager).
+- Node.js 20.19+ or 22.12+.
+- pnpm 9.12.3 through Corepack, as pinned by this workspace.
 
-Note: On Windows with restricted PowerShell scripts, use `cmd /c` for pnpm commands.
+On Windows, use `corepack.cmd pnpm` as shown below so the pinned workspace version is used even when PowerShell script execution is restricted.
 
 ## Step 1 - Install
 
 ```powershell
 cd C:\Git\UniversalArena-Web
-cmd /c pnpm install
+corepack.cmd pnpm install --frozen-lockfile
 ```
 
 ## Step 2 - Sync data from docs (required)
@@ -40,7 +40,7 @@ Do not edit `packages/data/src/characters.json` by hand.
 
 Each export also writes `packages/data/src/manifest.json`. The manifest exposes the canonical source repository and commit, schema version, deterministic content hash, generation timestamp, and roster count through `@ua/data` as `dataManifest`.
 
-Auto-export note: The docs repo includes a GitHub Actions workflow (`.github/workflows/export-game-data.yml`) that can push data updates into this repo, but it only runs if `UA_GAME_REPO` and `UA_SYNC_TOKEN` are configured. Until that is set, manual export is still required.
+Sync automation lives in the canonical repository at `.github/workflows/export-game-data.yml`. Its current credential and target-repository settings must be configured there. Until that pipeline is available, use the validated manual export above and review the generated diff before committing it.
 
 ## Cross-repo workflow
 
@@ -52,7 +52,7 @@ Auto-export note: The docs repo includes a GitHub Actions workflow (`.github/wor
 
 ```powershell
 cd C:\Git\UniversalArena-Web
-cmd /c pnpm --filter @ua/client dev
+corepack.cmd pnpm --filter @ua/client dev
 ```
 
 Open http://localhost:5173.
@@ -63,7 +63,7 @@ Golden tests validate deterministic replay and key combat edge cases.
 
 ```powershell
 cd C:\Git\UniversalArena-Web
-cmd /c pnpm golden
+corepack.cmd pnpm --filter @ua/core golden
 ```
 
 CI runs `pnpm golden` on pull requests that touch core/data files.
@@ -71,7 +71,7 @@ CI runs `pnpm golden` on pull requests that touch core/data files.
 ## Step 5 - Build (optional)
 
 ```powershell
-cmd /c pnpm --filter @ua/client build
+corepack.cmd pnpm --filter @ua/client build
 ```
 
 ## Relay server (multiplayer)

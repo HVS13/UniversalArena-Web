@@ -1,13 +1,13 @@
 # Friend Alpha Release Checklist
 
 Assessment date: 2026-08-09 (Asia/Jakarta)
-Target: `v0.2.0-friend-alpha`
+Target: `v0.2.1-friend-alpha`
 Current decision: **NO-GO: automated validation, full local and relay matches, and decision recovery pass; a real LAN friend match remains open.**
 
 ## Candidate identity
 
 - Client and relay version: `0.2.1-friend-alpha`
-- Package target: `0.2.0-friend-alpha`
+- Package target: `0.2.1-friend-alpha`
 - Engine version: `0.2.1-friend-alpha`
 - Relay protocol: 2
 - Transcript version: 4 (safe version-3 replay compatibility retained)
@@ -54,4 +54,4 @@ Current decision: **NO-GO: automated validation, full local and relay matches, a
 2. Run canonical validation, strict docs build, fresh export comparison, and `pnpm release:check` again from clean repositories.
 3. Confirm both repositories are synchronized and the data manifest does not contain a `-dirty` source revision.
 4. Change this decision to **GO** only when every P0/P1 evidence checkbox is complete.
-5. Create and push the annotated `v0.2.0-friend-alpha` tag from the verified web commit; do not tag the current NO-GO state.
+5. Create and push the annotated `v0.2.1-friend-alpha` tag from the verified web commit; do not tag the current NO-GO state.
